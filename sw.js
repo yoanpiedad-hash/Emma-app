@@ -1,7 +1,7 @@
 // Guarda la app en el equipo para que abra aunque no haya internet.
 // Siempre intenta traer la versión nueva primero; si no hay red, usa la guardada.
-const CACHE = 'emma-app-v3';
-const ARCHIVOS = ['./', 'index.html', 'nube.js', 'despacho.js', 'vendor/supabase-2.45.4.js', 'manifest.json', 'iconos/icono-192.png'];
+const CACHE = 'emma-app-v4';
+const ARCHIVOS = ['./', 'index.html', 'nube.js', 'despacho.js', 'pagos.js', 'vendor/supabase-2.45.4.js', 'manifest.json', 'iconos/icono-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))); self.clients.claim(); });
 self.addEventListener('fetch', e => {

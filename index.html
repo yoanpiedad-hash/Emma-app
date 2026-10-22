@@ -297,10 +297,11 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 
 <div id="avisos"></div>
 <nav class="tabs" id="tabs">
+  <button class="tab" data-act="tab" data-t="despacho">🚚 Despacho<span id="bdg-desp"></span></button>
+  <button class="tab" data-act="tab" data-t="pagos">💸 Pagos</button>
   <button class="tab on" data-act="tab" data-t="live">📦 Live</button>
   <button class="tab" data-act="tab" data-t="clientes">👥 Clientes</button>
   <button class="tab" data-act="tab" data-t="guardados">📦 Guardados<span id="bdg-guard"></span></button>
-  <button class="tab" data-act="tab" data-t="despacho">🚚 Despacho<span id="bdg-desp"></span></button>
   <button class="tab" data-act="tab" data-t="mostrador">🏪 Mostrador</button>
   <button class="tab" data-act="tab" data-t="config">⚙️ Config</button>
 </nav>
@@ -383,6 +384,7 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 
 <!-- ═════════ DESPACHO ═════════ -->
 <section class="panel" id="p-despacho"></section>
+<section class="panel" id="p-pagos"></section>
 
 <!-- ═════════ SALIDAS ═════════ -->
 <section class="panel" id="p-salidas">
@@ -519,7 +521,7 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 <nav class="bbar">
   <button class="b pri" data-act="bbNuevo">➕ Nuevo pedido</button>
   <button class="b" data-act="bbScan">📷 Escanear</button>
-  <button class="b" data-act="etiquetasLive">🏷️ Etiquetas</button>
+  <button class="b" data-act="tab" data-t="pagos">💸 Pagos</button>
 </nav>
 
 <div id="modal"><div class="mbox" id="mbox"></div></div>
@@ -1226,6 +1228,7 @@ function render() {
     else if (UI.tab === 'guardados') renderGuardados();
     else if (UI.tab === 'salidas') renderSalidas();
     else if (UI.tab === 'despacho') renderDespacho();
+    else if (UI.tab === 'pagos') renderPagos();
     else if (UI.tab === 'mostrador') renderMostrador();
     else if (UI.tab === 'config') renderConfig();
   });
@@ -2864,5 +2867,6 @@ init();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 <script src="despacho.js"></script>
+<script src="pagos.js"></script>
 </body>
 </html>

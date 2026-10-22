@@ -53,11 +53,22 @@ function abiertosDe(cid) {
 const principal = ps => [...ps].sort((a, b) => (b.fechas.creado || '').localeCompare(a.fechas.creado || '') || b.num - a.num)[0];
 const numsTxt = ps => ps.map(p => '#' + p.num).join(' · ');
 
-function marcarPago(p, cuenta) {
-  const g = { id: uid('g'), pedidoId: p.id, clienteId: p.clienteId, cuenta, monto: p.cambio ? (p.cambio.cobrar || 0) : calc(p).total, fecha: ahoraISO(), origen: 'despacho' };
+function marcarPago(p, cuenta, origen) {
+  const g = { id: uid('g'), pedidoId: p.id, clienteId: p.clienteId, cuenta, monto: p.cambio ? (p.cambio.cobrar || 0) : calc(p).total, fecha: ahoraISO(), origen: origen || 'despacho', antes: p.estado };
   DB.pagos.push(g);
   p.pago = { id: g.id, cuenta, fecha: g.fecha };
   if (p.estado === 'pendiente') setEstado(p, 'listo');
+  return g;
+}
+/** Anula un pago marcado por error: el pedido vuelve a "sin pagar" (y a pendiente si estaba pendiente). */
+function anularPago(id) {
+  const g = DB.pagos.find(x => x.id === id); if (!g) return;
+  const p = pedById(g.pedidoId);
+  DB.pagos = DB.pagos.filter(x => x.id !== id);
+  if (p && p.pago && p.pago.id === id) {
+    delete p.pago;
+    if (g.antes === 'pendiente' && p.estado === 'listo') setEstado(p, 'pendiente');
+  }
 }
 
 /** Pagados que esperan salir, por tipo de entrega (sin retiro: esos se entregan cuando vienen). */
