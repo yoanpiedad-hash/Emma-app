@@ -94,7 +94,7 @@ function despBadge() {
 function renderDespacho() {
   const el = $('#p-despacho'); if (!el) return;
   if (!el.dataset.ok) {
-    el.innerHTML = `<div class="card"><div class="sw"><input id="dsp-q" class="dsp-q" data-inp="despQ" placeholder="🔎 Nombre, teléfono o código (escaneá)" autocomplete="off" autocapitalize="off" enterkeyhint="search"><div class="sug" id="dsp-sug"></div></div></div>
+    el.innerHTML = `<div class="card"><div class="row" style="flex-wrap:nowrap"><div class="sw" style="flex:1;min-width:0"><input id="dsp-q" class="dsp-q" data-inp="despQ" placeholder="🔎 Nombre, teléfono o código" autocomplete="off" autocapitalize="off" enterkeyhint="search"><div class="sug" id="dsp-sug"></div></div><button class="b lg" data-act="camDesp" title="Escanear con la cámara" style="padding:14px 16px">📷</button></div></div>
       <div id="dsp-res"></div><div id="dsp-body"></div>`;
     el.dataset.ok = '1';
   }

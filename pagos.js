@@ -64,7 +64,7 @@ function renderPagos() {
   const el = $('#p-pagos'); if (!el) return;
   if (!el.dataset.ok) {
     el.innerHTML = `<div class="row mb"><button class="b seg" data-act="pagModo" data-m="marcar">💸 Marcar pago</button><button class="b seg" data-act="pagModo" data-m="control">📊 Control del día</button></div>
-      <div id="pg-marcar"><div class="card"><input id="pg-q" class="pg-q" data-inp="pagQ" placeholder="🔎 Nombre, teléfono o #pedido" autocomplete="off" autocapitalize="off" enterkeyhint="search"></div><div id="pg-ok"></div><div id="pg-body"></div></div>
+      <div id="pg-marcar"><div class="card"><div class="row" style="flex-wrap:nowrap"><input id="pg-q" class="pg-q" data-inp="pagQ" placeholder="🔎 Nombre, teléfono o #pedido" autocomplete="off" autocapitalize="off" enterkeyhint="search" style="flex:1"><button class="b lg" data-act="camPag" title="Escanear la etiqueta con la cámara" style="padding:15px 16px">📷</button></div></div><div id="pg-ok"></div><div id="pg-body"></div></div>
       <div id="pg-control"></div>`;
     el.dataset.ok = '1';
   }
