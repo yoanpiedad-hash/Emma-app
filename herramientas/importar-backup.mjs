@@ -52,5 +52,8 @@ await subir('movimientos', (d.emma_movimientos || []).map(m => ({
 })));
 await subir('mostrador', (d.emma_mostrador || []).map(v => ({ id: v.id, fecha: v.fecha || null, datos: v })));
 await subir('compras', (d.emma_compras || []).map(c => ({ id: String(c.id), datos: c })));
+const idsPed = new Set(pedidos.map(p => p.id));
+await subir('paquetes', (d.emma_paquetes || []).map(k => ({ id: k.id, tipo: k.tipo, fecha: k.fecha || new Date().toISOString(), pedidos: k.pedidos || [], grisal_orden: k.grisalOrden || null, datos: k })));
+await subir('pagos', (d.emma_pagos || []).filter(g => idsPed.has(g.pedidoId)).map(g => ({ id: g.id, pedido_id: g.pedidoId, cuenta: g.cuenta || '', monto: g.monto == null ? null : +g.monto, fecha: g.fecha || new Date().toISOString(), comprobante: g.comprobante || null, datos: g })));
 await subir('config', Object.entries(d.emma_config || {}).map(([clave, valor]) => ({ clave, valor })), 'clave');
 console.log('Listo.');
