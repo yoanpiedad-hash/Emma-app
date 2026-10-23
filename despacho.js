@@ -33,7 +33,7 @@
 
 UI.desp = { q: '', idx: 0, items: [], cid: null, sel: new Set(), salida: null, f: {}, sinPago: false, aviso: '', res: null };
 
-const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Efectivo'];
+const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo'];
 const cuentasPago = () => { const c = cfg('cuentasPago'); return Array.isArray(c) && c.length ? c : CUENTAS_DEF; };
 const SALIDAS = [['retiro', '🏠 Retiro'], ['agencia', '📦 Agencia'], ['cadeteria', '🚴 Cadetería'], ['guardado', '⏸️ Guardado'], ['liberado', '❌ Liberado']];
 const ENVIOS = new Set(['retiro', 'agencia', 'cadeteria']);
@@ -44,6 +44,8 @@ const paqById = id => (DB.paquetes || []).find(k => k.id === id);
 // ─── Reglas ───────────────────────────────────────────────────
 /** Pagado = marcado con "Pagó", o en estado listo (así se marcaba hasta ahora). Un cambio no se cobra acá. */
 const pagado = p => !!p.cambio || !!p.pago || p.estado === 'listo';
+/** En Despacho se pide la cuenta de todo pedido que no tenga un pago marcado (los cambios no se cobran acá). */
+const porCobrar = p => !p.cambio && !p.pago;
 /** Pedidos de una clienta que todavía no salieron, del más viejo al más nuevo. */
 function abiertosDe(cid) {
   return todosPedidos().filter(p => p.clienteId === cid && sinSalir(p))
@@ -135,6 +137,7 @@ function inicioHTML() {
   let h = grupo('cadeteria', '🚴 Pagados para armar · Cadetería') + grupo('agencia', '📦 Pagados para armar · Agencia')
     + grupo('sin_definir', '❓ Pagados sin entrega definida', 'Tocá la clienta y elegí cómo sale.');
   if (!h) h = '<div class="empty">No hay pedidos pagados esperando salir 🎉</div>';
+  h = `<div class="row mb" style="justify-content:flex-end"><button class="b sm" data-act="tab" data-t="pagos">📊 Pagos del día</button></div>` + h;
   if (sinPagar) h += `<div class="small muted" style="margin:-4px 2px 12px">⏳ ${sinPagar} pedido${sinPagar > 1 ? 's' : ''} todavía sin pagar.</div>`;
   return h + hoyHTML();
 }
@@ -206,16 +209,21 @@ function salidaHTML(c, ps) {
   }
   if (t === 'guardado') form = '<div class="small muted mt">Quedan guardados: el plazo de 30 días corre desde hoy (pestaña Guardados).</div>';
   if (t === 'liberado') form = '<div class="alert li">La ropa vuelve al stock y el pedido cuenta como ❌ (queda como deuda en la ficha).</div>';
-  // Pago
-  const sinPagar = ENVIOS.has(t) ? ps.filter(p => !pagado(p)) : [];
+  // Pago: se marca acá mismo, junto con la salida
+  const porCob = ENVIOS.has(t) ? ps.filter(porCobrar) : [];
+  const yaPag = ENVIOS.has(t) ? ps.filter(p => p.pago) : [];
   let pago = '';
-  if (sinPagar.length && !D.sinPago) {
-    const tot = sinPagar.reduce((s, p) => s + calc(p).total, 0);
-    pago = `<div class="alert pe" style="margin-top:12px">⚠️ ${numsTxt(sinPagar)} no figura${sinPagar.length > 1 ? 'n' : ''} pagado${sinPagar.length > 1 ? 's' : ''} (${fmt(tot)}). ¿Pagó? Tocá la cuenta:</div>
-      <div class="row mt">${cuentasPago().map(cta => `<button class="b" data-act="despPago" data-c="${esc(cta)}">${esc(cta)}</button>`).join('')}<button class="b gh" data-act="despPago" data-c="">Otra…</button></div>
-      <div class="mt"><button class="b sm gh" data-act="despSinPago">Sale igual, sin pago confirmado</button></div>`;
-  } else if (sinPagar.length) pago = `<div class="alert pe" style="margin-top:12px">Sale sin pago confirmado: ${numsTxt(sinPagar)} <button class="b sm gh" data-act="despSinPago">deshacer</button></div>`;
-  const bloqueado = !t || (sinPagar.length && !D.sinPago);
+  if (yaPag.length) pago += `<div class="small mt" style="color:var(--ok)">✓ Ya pagó: ${yaPag.map(p => '#' + p.num + ' (' + esc(p.pago.cuenta) + ')').join(' · ')}</div>`;
+  if (porCob.length) {
+    const tar = +cfg('tarifaEnvio') || 0, base = porCob.reduce((s2, p) => s2 + calc(p).total, 0), env = t === 'cadeteria' && f.conEnvio ? tar : 0, auto = base + env;
+    const ctas = cuentasPago(), extra = f.cuenta && f.cuenta !== 'sin' && !ctas.includes(f.cuenta) ? [f.cuenta] : [];
+    pago += `<label class="lb mt">¿Cómo pagó${porCob.length < ps.length ? ' ' + numsTxt(porCob) : ''}? *</label>
+      <div class="row">${ctas.concat(extra).map(cta => `<button class="b sm seg${f.cuenta === cta ? ' on' : ''}" data-act="despCuenta" data-c="${esc(cta)}">${esc(cta)}</button>`).join('')}<button class="b sm gh" data-act="despCuenta" data-c="">Otra…</button><button class="b sm seg${f.cuenta === 'sin' ? ' on' : ''}" data-act="despCuenta" data-c="sin">Sin confirmar</button></div>`;
+    if (t === 'cadeteria') pago += `<div class="row mt"><button class="b sm seg${f.conEnvio ? ' on' : ''}" data-act="despConEnvio">${f.conEnvio ? '✓' : '＋'} La transferencia incluye el envío (${fmt(tar)})</button></div>`;
+    if (f.cuenta && f.cuenta !== 'sin') pago += `<div class="row mt"><label class="small muted" for="dsf-transf">Monto transferido</label><input id="dsf-transf" type="number" inputmode="numeric" data-inp="despF" data-f="transf" value="${esc(f.transfEdit ? f.transf : String(auto))}" style="width:130px"><span class="small muted">pedido ${fmt(base)}${env ? ' + envío ' + fmt(env) : ''}</span></div>`;
+    if (f.cuenta === 'sin') pago += '<div class="small muted mt">Sale sin pago marcado: queda anotado en el paquete.</div>';
+  }
+  const bloqueado = !t || (porCob.length && !f.cuenta);
   const cobro = t === 'cadeteria' ? (f.cobro === 'pago' ? ' · envío pago' : f.cobro === 'monto' ? (num(f.monto) > 0 ? ' · cobra ' + fmt(num(f.monto)) : '') : f.cobro === 'cobrar' ? ' · cobra ' + fmt(cfg('tarifaEnvio')) : '') : '';
   const txt = !t ? 'Elegí cómo sale' : { retiro: `✓ Entregar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, agencia: `📦 Despachar por agencia${n > 1 ? ' · ' + n + ' pedidos, 1 etiqueta' : ''}`, cadeteria: `🚴 Despachar por cadetería${cobro}`, guardado: `⏸️ Guardar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, liberado: `❌ Liberar ${n > 1 ? n + ' pedidos' : 'el pedido'}` }[t];
   return `<div class="card dsp-sal"><div class="card-t">¿Cómo sale${n > 1 ? 'n' : ''}? · ${numsTxt(ps)}</div>
@@ -243,7 +251,8 @@ function elegirSalida(t) {
   const m = ps.length ? principal(ps) : null;
   D.f = { agencia: c.agencia || '', nombreEnvio: c.nombreEnvio || '', ci: c.ci || '', ciudad: c.ciudad || '', depto: c.depto || '', direccion: c.direccion || '', barrio: c.barrio || '', notaCadete: c.notaCadete || '',
     tipo: ps.some(p => tipoEnvioDe(p) === 'cambio') ? 'cambio' : 'comun',
-    cobro: m && m.cobroEnvio && m.entrega === 'cadeteria' ? m.cobroEnvio : null, monto: m && m.cobroMonto ? String(m.cobroMonto) : '' };
+    cobro: m && m.cobroEnvio && m.entrega === 'cadeteria' ? m.cobroEnvio : null, monto: m && m.cobroMonto ? String(m.cobroMonto) : '',
+    cuenta: (D.f && D.f.cuenta) || null, conEnvio: false, transf: '', transfEdit: false };
 }
 function cerrarClientaDesp() { const D = UI.desp; D.cid = null; D.sel = new Set(); D.salida = null; D.f = {}; D.aviso = ''; D.sinPago = false; }
 function focoBuscar() { setTimeout(() => { const q = $('#dsp-q'); if (q && UI.tab === 'despacho') q.focus(); }, 30); }
@@ -281,8 +290,8 @@ function despGo() {
     D.res = t === 'guardado' ? { cls: 'mu', html: `⏸️ Guardado${ps.length > 1 ? 's' : ''} ${numsTxt(ps)} · ${esc(c.nombre)}`, cid: c.id } : { cls: 'li', html: `❌ Liberado${ps.length > 1 ? 's' : ''} ${numsTxt(ps)} · ${esc(c.nombre)}`, cid: c.id };
     cerrarClientaDesp(); render(); focoBuscar(); return;
   }
-  const sinPagar = ps.filter(p => !pagado(p));
-  if (sinPagar.length && !D.sinPago) return toast('Marcá el pago (o "Sale igual") antes de despachar');
+  const porCob = ps.filter(porCobrar);
+  if (porCob.length && !f.cuenta) return toast('Elegí cómo pagó (o "Sin confirmar") antes de despachar');
   if (t === 'agencia') {
     const falta = []; if (!String(f.agencia || '').trim()) falta.push('la agencia'); if (!String(f.ciudad || '').trim()) falta.push('la ciudad');
     if (falta.length) return alert('⚠️ No salió.\n\nFalta cargar ' + falta.join(' y ') + '.');
@@ -294,7 +303,17 @@ function despGo() {
     if (f.barrio && !barrioCanon(f.barrio)) return alert('⚠️ "' + f.barrio + '" no está en la lista de barrios de GrisalExpress.\n\nElegilo de las sugerencias o dejalo vacío.');
     editarClienta(c, { nombreEnvio: f.nombreEnvio, direccion: f.direccion, barrio: f.barrio, notaCadete: f.notaCadete });
   }
-  const k = crearPaquete(c, ps, t, f, D.sinPago ? sinPagar.map(p => p.id) : []);
+  const k = crearPaquete(c, ps, t, f, f.cuenta === 'sin' ? porCob.map(p => p.id) : []);
+  if (porCob.length && f.cuenta !== 'sin') {
+    const tar = +cfg('tarifaEnvio') || 0, env = t === 'cadeteria' && f.conEnvio ? tar : 0;
+    const base = porCob.reduce((s2, p) => s2 + calc(p).total, 0), transf = f.transfEdit ? num(f.transf) : base + env;
+    const gs = porCob.map(p => marcarPago(p, f.cuenta, 'despacho'));
+    const g0 = gs[gs.length - 1]; // el pedido más nuevo carga el envío y la diferencia, así la suma da lo transferido
+    g0.envio = env; g0.ajuste = transf - base - env; g0.monto = (+g0.monto || 0) + env + g0.ajuste;
+    gs.forEach(g => { g.paqueteId = k.id; });
+    k.pagos = gs.map(g => g.id); k.transferido = transf; k.cuenta = f.cuenta;
+    savePagos(); savePaquetes(); guardar();
+  }
   D.res = { paqId: k.id };
   cerrarClientaDesp(); render();
   if (t === 'retiro') focoBuscar(); else setTimeout(() => { const b = $('#dsp-print'); if (b) b.focus(); }, 30);
@@ -302,7 +321,9 @@ function despGo() {
 function deshacerPaquete(id) {
   const k = paqById(id); if (!k) return;
   const c = cliById(k.clienteId) || { nombre: '?' };
-  if (!confirm(`¿Deshacer la salida de ${c.nombre} (${k.nums.map(n => '#' + n).join(' · ')})?\n\nLos pedidos vuelven a como estaban. Los pagos marcados quedan.`)) return;
+  if (!confirm(`¿Deshacer la salida de ${c.nombre} (${k.nums.map(n => '#' + n).join(' · ')})?\n\nLos pedidos vuelven a como estaban y se anula el pago marcado al despachar.`)) return;
+  (k.pagos || []).forEach(anularPago);
+  if ((k.pagos || []).length) savePagos();
   for (const a of k.antes || []) {
     const p = pedById(a.id); if (!p || p.paqueteId !== k.id) continue;
     setEstado(p, a.estado);
@@ -412,7 +433,7 @@ function abrirPorCodigo(p) {
     cerrarClientaDesp(); render(); focoBuscar(); return;
   }
   const ab = abiertosDe(p.clienteId);
-  if (entregaEf(p) === 'retiro' && pagado(p) && ab.length === 1) {
+  if (entregaEf(p) === 'retiro' && !porCobrar(p) && ab.length === 1) {
     const k = crearPaquete(c, [p], 'retiro', {}, []);
     D.res = { paqId: k.id };
     cerrarClientaDesp(); render(); focoBuscar(); return;
@@ -458,17 +479,17 @@ Object.assign(ACT, {
     elegirSalida(d.k); render();
     setTimeout(() => { const el = d.k === 'agencia' ? $('#dsf-agencia') : d.k === 'cadeteria' ? $('#dsf-direccion') : $('#dsp-go'); if (el) { el.focus(); if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); } }, 30);
   },
-  despFv: d => { UI.desp.f[d.f] = d.v; render(); if (d.f === 'cobro' && d.v === 'monto') setTimeout(() => { const el = $('#dsf-monto'); if (el) el.focus(); }, 20); },
-  despPago: d => {
+  despFv: d => { UI.desp.f[d.f] = d.v; if (d.f === 'cobro' && d.v !== 'pago') UI.desp.f.conEnvio = false; render(); if (d.f === 'cobro' && d.v === 'monto') setTimeout(() => { const el = $('#dsf-monto'); if (el) el.focus(); }, 20); },
+  despCuenta: d => {
     let cta = d.c;
     if (!cta) { cta = (prompt('¿En qué cuenta entró la transferencia?') || '').trim(); if (!cta) return; }
-    const D = UI.desp, ps = [...D.sel].map(pedById).filter(p => p && !pagado(p));
-    ps.forEach(p => marcarPago(p, cta));
-    savePagos(); guardar();
-    toast(`✓ ${numsTxt(ps)} pagó por ${cta}`);
-    render();
+    const f = UI.desp.f; f.cuenta = f.cuenta === cta ? null : cta; render();
   },
-  despSinPago: () => { UI.desp.sinPago = !UI.desp.sinPago; render(); },
+  despConEnvio: () => {
+    const f = UI.desp.f; f.conEnvio = !f.conEnvio;
+    if (f.conEnvio) { f._cobroAntes = f.cobro; f.cobro = 'pago'; } else if (f.cobro === 'pago') f.cobro = f._cobroAntes === 'pago' ? 'pago' : (f._cobroAntes || null);
+    f.transfEdit = false; render();
+  },
   despGo: () => despGo(),
   despPrint: d => imprimirPaquete(d.k),
   despDeshacer: d => deshacerPaquete(d.k),
@@ -480,6 +501,7 @@ Object.assign(INP, {
   despQ: el => { UI.desp.q = el.value; despSug(); },
   despF: el => {
     UI.desp.f[el.dataset.f] = el.value;
+    if (el.dataset.f === 'transf') UI.desp.f.transfEdit = true;
     // El texto del botón de cadetería muestra el monto: se actualiza sin re-dibujar la pantalla
     if (el.dataset.f === 'monto') { const b = $('#dsp-go'); if (b && UI.desp.salida === 'cadeteria') b.textContent = '🚴 Despachar por cadetería' + (num(el.value) > 0 ? ' · cobra ' + fmt(num(el.value)) : ''); }
   }

@@ -7,7 +7,7 @@
    Para que imprima sin preguntar, Chrome se abre con --kiosk-printing y la térmica
    como impresora predeterminada con la etiqueta chica.
    ══════════════════════════════════════════════════════════════ */
-const EMMA_VERSION = '23/10 · Despacho, Pagos, escáner, etiqueta al cargar';
+const EMMA_VERSION = '23/10 · pago en Despacho';
 
 (() => {
   const st = document.createElement('style');

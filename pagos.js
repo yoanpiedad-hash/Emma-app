@@ -63,12 +63,13 @@ function sinPagarUltimoLive() {
 function renderPagos() {
   const el = $('#p-pagos'); if (!el) return;
   if (!el.dataset.ok) {
-    el.innerHTML = `<div class="row mb"><button class="b seg" data-act="pagModo" data-m="marcar">💸 Marcar pago</button><button class="b seg" data-act="pagModo" data-m="control">📊 Control del día</button></div>
+    el.innerHTML = `<div class="row mb"><button class="b" data-act="tab" data-t="despacho">← Despacho</button><span class="card-t" style="margin:0">📊 Pagos del día</span></div>
       <div id="pg-marcar"><div class="card"><div class="row" style="flex-wrap:nowrap"><input id="pg-q" class="pg-q" data-inp="pagQ" placeholder="🔎 Nombre, teléfono o #pedido" autocomplete="off" autocapitalize="off" enterkeyhint="search" style="flex:1"><button class="b lg" data-act="camPag" title="Escanear la etiqueta con la cámara" style="padding:15px 16px">📷</button></div></div><div id="pg-ok"></div><div id="pg-body"></div></div>
       <div id="pg-control"></div>`;
     el.dataset.ok = '1';
   }
   const P = UI.pag;
+  P.modo = 'control'; // los pagos se marcan en Despacho; esta pantalla queda para el control
   document.querySelectorAll('[data-act=pagModo]').forEach(b => b.classList.toggle('on', b.dataset.m === P.modo));
   $('#pg-marcar').hidden = P.modo !== 'marcar';
   $('#pg-control').hidden = P.modo !== 'control';
