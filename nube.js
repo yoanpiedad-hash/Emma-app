@@ -177,7 +177,11 @@ async function subir() {
     if (!red && e.code === '23505' && e.col === 'pedidos') arreglarCodigoRepetido();
     _reintento = Math.min(_reintento * 2, 60000);
     programarSubida(_reintento);
-  } finally { NUBE.subiendo = false; pintarNube(); }
+  } finally {
+    NUBE.subiendo = false; pintarNube();
+    // Si entraron cambios mientras se subía (o se pidió subir en el medio), se sube de nuevo enseguida
+    if (NUBE.estado === 'ok' && pendientes()) programarSubida(200);
+  }
 }
 /** Dos equipos crearon un pedido con el mismo código al mismo tiempo: se le da otro al nuestro. */
 function arreglarCodigoRepetido() {
