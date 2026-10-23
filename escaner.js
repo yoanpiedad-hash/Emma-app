@@ -104,7 +104,7 @@ function cerrarCamara() {
 // ─── Qué hace cada pantalla con lo leído ──────────────────────
 function codigoLeido(t) {
   const s = String(t).trim();
-  if (/^emma/i.test(s)) return s.toUpperCase();
+  if (esGrisal(s)) return s.toUpperCase();
   const d = s.replace(/\D/g, '');
   return d.length >= 3 && d.length <= 6 && /^\D*\d+\D*$/.test(s) ? d.padStart(5, '0') : s;
 }
@@ -118,7 +118,7 @@ function camEnDespacho() {
 function camEnPagos() {
   abrirCamara(t => {
     const v = codigoLeido(t);
-    if (/^EMMA/.test(v)) return toast('Esa es la etiqueta de GrisalExpress: para pagos escaneá la de Emma', 4000);
+    if (esGrisal(v)) return toast('Esa es la etiqueta de GrisalExpress: para pagos escaneá la de Emma', 4000);
     const p = todosPedidos().find(x => x.codigo === v);
     if (!p) { UI.pag.q = v; const q = $('#pg-q'); if (q) q.value = v; renderPagLista(); return toast('No hay un pedido con ese código', 3000); }
     if (pagado(p)) { const c = cliById(p.clienteId) || { nombre: '?' }; return toast(`#${p.num} ${c.nombre} ya figura pagado${p.pago ? ' (' + p.pago.cuenta + ')' : ''}`, 4000); }

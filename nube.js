@@ -159,7 +159,9 @@ async function subir() {
       const out = NUBE.out[col];
       while (out.size) {
         const lote = [...out.entries()].slice(0, 300);
-        const { error } = await NUBE.sb.from(col === 'config' ? 'config' : col).upsert(lote.map(([, f]) => f), { onConflict: pk(col) });
+        // Todas las filas del lote con las mismas columnas: si una lleva "borrado" y otra no, la base rechaza el lote entero
+        const filas = lote.map(([, f]) => SIN_BORRADO.has(col) || f.borrado !== undefined ? f : Object.assign({}, f, { borrado: false }));
+        const { error } = await NUBE.sb.from(col === 'config' ? 'config' : col).upsert(filas, { onConflict: pk(col) });
         if (error) throw Object.assign(new Error(error.message), { col, code: error.code, status: error.status });
         for (const [id, f] of lote) if (out.get(id) === f) out.delete(id);
         guardarCola();
@@ -168,7 +170,8 @@ async function subir() {
     NUBE.estado = 'ok'; NUBE.error = ''; _reintento = 2000;
   } catch (e) {
     console.error('Nube:', e);
-    const red = !navigator.onLine || /fetch|network|Failed|timeout/i.test(e.message) || !e.status || e.status >= 500;
+    // Error de la base (trae código): se muestra como error, no como "sin conexión"
+    const red = !navigator.onLine || (!e.code && (/fetch|network|Failed|timeout/i.test(e.message) || !e.status || e.status >= 500));
     NUBE.estado = red ? 'offline' : 'error';
     NUBE.error = red ? '' : `${e.col}: ${e.message}`;
     if (!red && e.code === '23505' && e.col === 'pedidos') arreglarCodigoRepetido();
