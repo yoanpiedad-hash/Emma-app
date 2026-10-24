@@ -1836,7 +1836,7 @@ function gananciaLiveHTML(live, r) {
     <div class="row mt"><input id="vg-desc" class="grow" placeholder="Gasto extra (ej: Ayudante, Uber, flete)" data-enter="gastoAdd" data-live="${id}" style="min-width:160px"><input id="vg-monto" type="number" inputmode="numeric" placeholder="$" style="width:110px" data-enter="gastoAdd" data-live="${id}"><button class="b" data-act="gastoAdd" data-live="${id}">+ Sumar gasto</button></div>
     <div class="gl tot"><span>= Ganancia real</span><b class="mono ${real >= 0 ? 'c-ok' : 'c-li'}">${fmt(real)}</b></div>
     ${r.sinCosto ? `<div class="small muted mt">⚠️ ${r.sinCosto} prendas sin costo cargado (manuales o del stock viejo) no entran: la ganancia real puede ser un poco mayor.</div>` : ''}
-    <div class="small muted mt">Packaging y gastos se cuentan sobre los pedidos cobrados (listos / enviados). El costo por pedido vale para todos los lives.</div>
+    <div class="small muted mt">Packaging y gastos se cuentan sobre los pedidos cobrados. El costo por pedido vale para todos los lives.</div>
   </div>`;
 }
 
@@ -1848,7 +1848,7 @@ function calcPedido(p, live) {
   if (typeof calcularPedido === 'function') {
     const s = p.promoCalc || {};
     const r = calcularPedido(p, { promos: s.promos || [], modeloDe: id => (stockById(id) || {}).modeloId, liveId: p.liveId, hoy: s.fecha || hoyISO(), livePct: live ? live.descuento : 0, vipPct: s.vipPct || 0 });
-    return { bruto: r.bruto, art: r.art, desc: r.livePct, sub: r.sub, total: r.total };
+    return { bruto: r.bruto, art: r.art, desc: r.livePct, sub: r.sub, total: r.total, dPromo: r.descPromos + r.ahorroEspecial, dVip: r.descVip, dLive: r.descLive };
   }
   let bruto = 0, art = 0;
   for (const pr of p.prendas || []) { const q = pr.qty || 1; bruto += pr.precio * q; art += q; }
@@ -1864,19 +1864,35 @@ function costoPrendas(prendas, factor, costos, acc) {
     if (u) { acc.costo += u * q; acc.ventaConCosto += pr.precio * q * factor; } else acc.sinCosto += q;
   }
 }
-function resumenLive(l, costos) {
-  const r = { n: 0, vendido: 0, cobrado: 0, nCob: 0, pendiente: 0, nPen: 0, guardado: 0, nGua: 0, liberado: 0, nLib: 0, prendas: 0, manU: 0, manP: 0, costo: 0, ventaConCosto: 0, sinCosto: 0 };
+/** Pagos (tabla pagos) por pedido. */
+function pagosPorPedido() { const m = new Map(); for (const g of DB.pagos || []) { if (!m.has(g.pedidoId)) m.set(g.pedidoId, []); m.get(g.pedidoId).push(g); } return m; }
+/** Cobrado = tiene un pago marcado (Despacho / Pagos). Pedidos que no pasaron por Despacho nuevo (sin paquete): listo o enviado cuenta como cobrado, como antes. */
+function cobradoP(p, gs) {
+  if (p.cambio) return false;
+  if (p.pago || (gs && gs.length)) return true;
+  return !p.paqueteId && esCobrado(p.estado);   // Despacho nuevo siempre deja paqueteId; lo de antes (Salidas viejo) cuenta por estado
+}
+function resumenLive(l, costos, pagosMap) {
+  const PM = pagosMap || pagosPorPedido();
+  const r = { n: 0, vendido: 0, cobrado: 0, nCob: 0, porCobrar: 0, nPor: 0, sinPago: 0, nSinPago: 0, guardado: 0, nGua: 0, liberado: 0, nLib: 0, prendas: 0, manU: 0, manP: 0,
+    costo: 0, ventaConCosto: 0, sinCosto: 0, transf: 0, envios: 0, ajustes: 0, cuentas: new Map(), salidas: { retiro: 0, agencia: 0, cadeteria: 0, otro: 0 }, paraArmar: 0, dPromo: 0, dVip: 0, dLive: 0 };
   for (const p of l.pedidos || []) {
-    const t = calcPedido(p, l); r.n++;
-    if (esCobrado(p.estado)) { r.cobrado += t.total; r.nCob++; costoPrendas(p.prendas, t.bruto ? t.sub / t.bruto : 1, costos, r); }
-    else if (p.estado === 'pendiente') { r.pendiente += t.total; r.nPen++; }
+    if (p.cambio) continue;
+    const t = calcPedido(p, l), gs = PM.get(p.id) || [], activo = esActivo(p.estado); r.n++;
+    if (!activo) { r.liberado += t.total; r.nLib++; continue; }
+    r.vendido += t.total; r.dPromo += t.dPromo || 0; r.dVip += t.dVip || 0; r.dLive += t.dLive || 0;
+    for (const pr of p.prendas || []) { const q = pr.qty || 1; r.prendas += q; if (!pr.stockId) { r.manU += q; r.manP += pr.precio * q; } }
+    const salio = p.estado === 'enviado';
+    if (salio) { const tp = (p.salida && p.salida.tipo) || p.entrega; if (r.salidas[tp] !== undefined) r.salidas[tp]++; else r.salidas.otro++; }
+    if (cobradoP(p, gs)) {
+      r.cobrado += t.total; r.nCob++; costoPrendas(p.prendas, t.bruto ? t.sub / t.bruto : 1, costos, r);
+      if (!salio) r.paraArmar++;
+      for (const g of gs) { const m = +g.monto || 0; r.transf += m; r.envios += +g.envio || 0; r.ajustes += +g.ajuste || 0; r.cuentas.set(g.cuenta || '¿?', (r.cuentas.get(g.cuenta || '¿?') || 0) + m); }
+    } else if (salio) { r.sinPago += t.total; r.nSinPago++; }
     else if (p.estado === 'guardado') { r.guardado += t.total; r.nGua++; }
-    else { r.liberado += t.total; r.nLib++; }
-    if (esActivo(p.estado)) {
-      r.vendido += t.total;
-      for (const pr of p.prendas || []) { const q = pr.qty || 1; r.prendas += q; if (!pr.stockId) { r.manU += q; r.manP += pr.precio * q; } }
-    }
+    else { r.porCobrar += t.total; r.nPor++; }
   }
+  r.pendiente = r.porCobrar; r.nPen = r.nPor;
   // Lives archivados en Pedidos: el detalle de los pedidos cerrados ya no está, pero queda su resumen.
   const z = l.resumen;
   if (z) {
@@ -1893,7 +1909,8 @@ function balanceMensual(costos) {
   const M = new Map();
   const g = ym => { if (!M.has(ym)) M.set(ym, { ym, lives: 0, nLives: 0, mostr: 0, cambios: 0, costo: 0, ventaConCosto: 0, sinCosto: 0, compras: 0, gastos: 0 }); return M.get(ym); };
   const pk = packPedido();
-  DB.lives.forEach(l => { const r = resumenLive(l, costos), row = g(mesDe(l.fecha)); row.nLives++; row.lives += r.cobrado; row.costo += r.costo; row.ventaConCosto += r.ventaConCosto; row.sinCosto += r.sinCosto; row.gastos += r.nCob * pk + gastosDe(l.id).reduce((s, x) => s + num(x.monto), 0); });
+  const PM = pagosPorPedido();
+  DB.lives.forEach(l => { const r = resumenLive(l, costos, PM), row = g(mesDe(l.fecha)); row.nLives++; row.lives += r.cobrado; row.costo += r.costo; row.ventaConCosto += r.ventaConCosto; row.sinCosto += r.sinCosto; row.gastos += r.nCob * pk + gastosDe(l.id).reduce((s, x) => s + num(x.monto), 0); });
   DB.mostrador.forEach(v => {
     const row = g(mesDe(v.fecha));
     if (v.tipo === 'venta') { row.mostr += +v.total || 0; costoPrendas(v.prendas, 1, costos, row); }
@@ -1909,27 +1926,44 @@ function renderVentas() {
   const lives = [...DB.lives].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
   if (!UI.vt.live || !DB.lives.some(l => l.id === UI.vt.live)) UI.vt.live = (DB.lives.find(l => l.id === cfg('liveActualId')) || lives[0] || {}).id;
   const live = DB.lives.find(l => l.id === UI.vt.live);
-  let html = '<div class="alert pe mb">⚠️ Ventas todavía cuenta como "cobrado" los pedidos en estado listo/enviado. Se rehace con los pagos y salidas de Despacho en una próxima etapa.</div>';
+  let html = '';
+  const PM = pagosPorPedido();
   if (live) {
-    const r = resumenLive(live, costos), gan = r.ventaConCosto - r.costo;
+    const r = resumenLive(live, costos, PM), act = r.n - r.nLib;
+    const cuentas = [...r.cuentas].sort((a, b) => b[1] - a[1]);
     html += `<div class="card"><div class="row mb"><div class="card-t grow" style="margin:0">📦 Live</div>
       <select data-chg="vtLive" id="vt-live" style="max-width:340px">${lives.map(l => `<option value="${esc(l.id)}"${l.id === live.id ? ' selected' : ''}>${esc(l.nombre)} · ${fechaUY(l.fecha)}${l.id === cfg('liveActualId') ? ' (actual)' : ''}</option>`).join('')}</select></div>
       <div class="tiles">
-        ${tile('Total vendido', fmt(r.vendido), 'c-ac', `${r.n - r.nLib} pedidos · ${r.prendas} prendas`)}
-        ${tile('Cobrado', fmt(r.cobrado), 'c-ok', `${r.nCob} listos / enviados`)}
-        ${tile('Pendiente', fmt(r.pendiente), 'c-pe', `${r.nPen} pedidos`)}
+        ${tile('Total vendido', fmt(r.vendido), 'c-ac', `${act} pedidos · ${r.prendas} prendas`)}
+        ${tile('Cobrado', fmt(r.cobrado), 'c-ok', `${r.nCob} pedidos${r.vendido ? ' · ' + pctTxt(r.cobrado / r.vendido * 100) : ''}`)}
+        ${tile('Por cobrar', fmt(r.porCobrar), 'c-pe', `${r.nPor} pedidos`)}
+        ${r.nSinPago ? tile('Salió sin pago confirmado', fmt(r.sinPago), 'c-li', `${r.nSinPago} pedidos`) : ''}
         ${tile('Guardado', fmt(r.guardado), 'c-gu', `${r.nGua} pedidos`)}
         ${tile('Liberado', fmt(r.liberado), 'c-li', `${r.nLib} pedidos`)}
-        ${tile('Ticket promedio', r.n - r.nLib ? fmt(r.vendido / (r.n - r.nLib)) : '—', '')}
+        ${tile('Ticket promedio', act ? fmt(r.vendido / act) : '—', '')}
       </div>
       ${r.archivados ? `<div class="small muted mt">📦 Incluye ${r.archivados} pedidos archivados en Pedidos (solo totales).</div>` : ''}
+      <div class="grid2 mt">
+        <div><div class="sec-t">💳 Cobros por cuenta</div>
+          ${cuentas.length ? cuentas.map(([c, m]) => `<div class="gl"><span>${esc(c)}</span><b class="mono">${fmt(m)}</b></div>`).join('') + `<div class="gl"><span><b>Total transferido</b>${r.envios ? ` <span class="muted small">(incluye ${fmt(r.envios)} de envíos)</span>` : ''}${r.ajustes ? ` <span class="muted small">· diferencias ${fmt(r.ajustes)}</span>` : ''}</span><b class="mono c-ok">${fmt(r.transf)}</b></div>` : '<div class="small muted">Sin pagos marcados en Despacho / Pagos.</div>'}
+        </div>
+        <div><div class="sec-t">🚚 Salidas</div>
+          <div class="gl"><span>🏠 Retiro</span><b class="mono">${r.salidas.retiro}</b></div>
+          <div class="gl"><span>📦 Agencia</span><b class="mono">${r.salidas.agencia}</b></div>
+          <div class="gl"><span>🚴 Cadetería</span><b class="mono">${r.salidas.cadeteria}</b></div>
+          ${r.salidas.otro ? `<div class="gl"><span class="muted">Sin dato de salida (antes de Despacho)</span><b class="mono">${r.salidas.otro}</b></div>` : ''}
+          <div class="gl"><span>Pagados sin salir (para armar)</span><b class="mono ${r.paraArmar ? 'c-pe' : ''}">${r.paraArmar}</b></div>
+        </div>
+      </div>
+      ${r.dPromo || r.dVip || r.dLive ? `<div class="sec-t">🎁 Descuentos entregados</div><div class="tiles">${tile('Promos', fmt(r.dPromo), 'c-ac')}${tile('VIP', fmt(r.dVip), 'c-ac')}${tile('Descuento del live', fmt(r.dLive), 'c-ac')}${tile('Total', fmt(r.dPromo + r.dVip + r.dLive), '')}</div>` : ''}
+      <p class="small muted mt">Cobrado = pedidos con pago marcado en Despacho o Pagos (los de antes de los pagos cuentan por estado listo/enviado). Los cambios no entran.</p>
     </div>` + gananciaLiveHTML(live, r);
   }
   // Historial de lives
-  const rs = lives.map(l => ({ l, r: resumenLive(l, costos) }));
+  const rs = lives.map(l => ({ l, r: resumenLive(l, costos, PM) }));
   html += `<div class="card"><div class="card-t">📋 Historial de lives</div>
-    <table class="rt"><thead><tr><th>Live</th><th class="n">Pedidos</th><th class="n">Vendido</th><th class="n">Cobrado</th><th class="n">Pend. + guard.</th><th class="n">Liberado</th></tr></thead><tbody>
-    ${rs.map(({ l, r }) => `<tr class="cl" data-act="vtLiveSel" data-id="${esc(l.id)}"><td data-l="" class="full"><b>${esc(l.nombre)}</b> <span class="muted small mono">${fechaUY(l.fecha)}</span>${l.archivado ? ' <span class="chip">📦 archivado</span>' : ''}</td><td data-l="Pedidos" class="n">${r.n}</td><td data-l="Vendido" class="n c-ac">${fmt(r.vendido)}</td><td data-l="Cobrado" class="n c-ok">${fmt(r.cobrado)}</td><td data-l="Pend. + guard." class="n c-pe">${fmt(r.pendiente + r.guardado)}</td><td data-l="Liberado" class="n c-li">${fmt(r.liberado)}</td></tr>`).join('')}
+    <table class="rt"><thead><tr><th>Live</th><th class="n">Pedidos</th><th class="n">Vendido</th><th class="n">Cobrado</th><th class="n">Por cobrar + guard.</th><th class="n">Liberado</th></tr></thead><tbody>
+    ${rs.map(({ l, r }) => `<tr class="cl" data-act="vtLiveSel" data-id="${esc(l.id)}"><td data-l="" class="full"><b>${esc(l.nombre)}</b> <span class="muted small mono">${fechaUY(l.fecha)}</span>${l.archivado ? ' <span class="chip">📦 archivado</span>' : ''}</td><td data-l="Pedidos" class="n">${r.n}</td><td data-l="Vendido" class="n c-ac">${fmt(r.vendido)}</td><td data-l="Cobrado" class="n c-ok">${fmt(r.cobrado)}</td><td data-l="Por cobrar + guard." class="n c-pe">${fmt(r.porCobrar + r.guardado + r.sinPago)}</td><td data-l="Liberado" class="n c-li">${fmt(r.liberado)}</td></tr>`).join('')}
     </tbody></table></div>`;
   // Balance mensual
   const bm = balanceMensual(costos);
