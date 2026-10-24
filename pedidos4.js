@@ -161,10 +161,22 @@ function hacerVip(c, si) {
   guardar();
 }
 const VIP_MIN = 4, VIP_DIAS = 60;
+/** Compras de cada clienta en los últimos VIP_DIAS días (pedidos que no se liberaron ni abandonaron). */
+function comprasRecientes() {
+  const desde = sumarDias(hoyISO(), -VIP_DIAS), r = new Map();
+  for (const l of DB.lives) for (const p of l.pedidos || []) {
+    if (p.cambio || !esActivo(p.estado) || String((p.fechas && p.fechas.creado) || l.fecha || '') < desde) continue;
+    const x = r.get(p.clienteId) || { n: 0, monto: 0 }; x.n++; x.monto += calc(p).total; r.set(p.clienteId, x);
+  }
+  return r;
+}
+/** Puntaje VIP: 1 punto por pedido + 1 punto cada $1.000, de los últimos VIP_DIAS días. */
+const puntajeVip = x => Math.round(((x ? x.n : 0) + (x ? x.monto : 0) / 1000) * 10) / 10;
 function candidatasVip() {
-  const m = stats(), lim = new Date(Date.now() - VIP_DIAS * 864e5).toISOString();
+  const m = stats(), lim = new Date(Date.now() - VIP_DIAS * 864e5).toISOString(), rec = comprasRecientes();
   return DB.clientes.filter(c => !c.vip && !c.noVip && (m[c.id] || ST0).ok >= VIP_MIN && !(m[c.id] || ST0).mal && !(m[c.id] || ST0).deudas.length && (c.ultimoUso || '') >= lim)
-    .sort((a, b) => (m[b.id].ok - m[a.id].ok) || (b.ultimoUso || '').localeCompare(a.ultimoUso || ''));
+    .map(c => { c._vipRec = rec.get(c.id) || { n: 0, monto: 0 }; c._vipPts = puntajeVip(c._vipRec); return c; })
+    .sort((a, b) => b._vipPts - a._vipPts || b._vipRec.monto - a._vipRec.monto || (m[b.id].ok - m[a.id].ok));
 }
 const _nomAlias = nomAlias;
 nomAlias = c => _nomAlias(c) + (c && c.vip ? ' <span class="chip ac" title="Clienta VIP">⭐ VIP</span>' : '');
@@ -183,8 +195,8 @@ renderClientes = function () {
   const cs = candidatasVip(), el = $('#cl-deshacer'); if (!el) return;
   const vips = DB.clientes.filter(c => c.vip).length;
   el.insertAdjacentHTML('beforeend', `<details class="card" id="cl-vip"${UI.vipAbierto ? ' open' : ''}><summary style="cursor:pointer;font-weight:700">⭐ VIP: ${vips} clienta${vips === 1 ? '' : 's'} · ${cs.length} candidata${cs.length === 1 ? '' : 's'}</summary>
-    <p class="small muted mt">Candidatas: ${VIP_MIN} o más pedidos ✅, ningún ❌ ni deuda, y compró en los últimos ${VIP_DIAS} días. Decidís vos.</p>
-    ${cs.length ? cs.slice(0, 30).map(c => { const h = stats()[c.id] || ST0; return `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--bd)"><span class="grow" style="flex:1;min-width:0">${esc(c.nombre)} ${histHTML(h)}</span><button class="b sm" data-act="vipSi" data-cid="${c.id}">⭐ Hacer VIP</button><button class="b sm gh" data-act="vipDescartar" data-cid="${c.id}" title="No mostrarla más como candidata">No</button></div>`; }).join('') : '<div class="small muted">No hay candidatas nuevas.</div>'}
+    <p class="small muted mt">Candidatas: ${VIP_MIN} o más pedidos ✅, ningún ❌ ni deuda, y compró en los últimos ${VIP_DIAS} días. Ordenadas por puntaje: 1 punto por pedido + 1 punto cada $1.000, de los últimos ${VIP_DIAS} días. Decidís vos.</p>
+    ${cs.length ? cs.slice(0, 30).map((c, i) => { const h = stats()[c.id] || ST0, x = c._vipRec; return `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--bd)"><b class="mono" style="min-width:26px">${i + 1}.</b><span class="grow" style="flex:1;min-width:0">${esc(c.nombre)} ${histHTML(h)}<div class="small muted">${x.n} pedido${x.n === 1 ? '' : 's'} · ${fmt(x.monto)} en ${VIP_DIAS} días</div></span><span class="chip ac" title="Puntaje VIP">${String(c._vipPts).replace('.', ',')} pts</span><button class="b sm" data-act="vipSi" data-cid="${c.id}">⭐ Hacer VIP</button><button class="b sm gh" data-act="vipDescartar" data-cid="${c.id}" title="No mostrarla más como candidata">No</button></div>`; }).join('') : '<div class="small muted">No hay candidatas nuevas.</div>'}
   </details>`);
   const d = $('#cl-vip'); if (d) d.addEventListener('toggle', () => { UI.vipAbierto = d.open; });
 };
