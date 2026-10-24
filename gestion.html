@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0e0e10">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="iconos/icono-192.png">
+<title>Emma Gestión</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap');
+:root{
+  --bg:#0e0e10;--s1:#18181b;--s2:#222226;--s3:#2b2b30;--bd:#313137;--tx:#f2f2f3;--mu:#8d8d96;
+  --ac:#e9b949;--ac2:#e9b94922;
+  --ok:#22c55e;--ok2:#22c55e22;--pe:#f59e0b;--pe2:#f59e0b22;--gu:#a78bfa;--gu2:#a78bfa22;--li:#ef4444;--li2:#ef444422;
+  --bl:#74b9ff;
+  --mono:'DM Mono',ui-monospace,Menlo,monospace;--sans:'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:14px;min-height:100vh;padding:16px 16px 60px;max-width:1080px;margin:0 auto;overflow-x:hidden}
+[hidden]{display:none!important}
+header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#f3d27a,#c9932a);display:flex;align-items:center;justify-content:center;font-size:17px}
+h1{font-size:19px;font-weight:800;letter-spacing:-.3px;white-space:nowrap}h1 span{color:var(--ac)}
+.tabs{display:flex;gap:4px;background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:4px;margin-bottom:16px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1 0 auto;padding:9px 10px;border:none;background:transparent;color:var(--mu);border-radius:9px;font:600 13px var(--sans);cursor:pointer;white-space:nowrap}
+.tab.on{background:var(--s3);color:var(--tx)}
+.panel{display:none}.panel.on{display:block}
+.card{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.card-t{font-size:11.5px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px}
+details.card>summary{cursor:pointer;font-weight:700;list-style:none}
+details.card>summary::-webkit-details-marker{display:none}
+details.card[open]>summary{margin-bottom:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.full{grid-column:1/-1}
+.mt{margin-top:10px}.mb{margin-bottom:10px}
+.muted{color:var(--mu)}.small{font-size:12px}.mono{font-family:var(--mono)}
+.c-ok{color:var(--ok)}.c-pe{color:var(--pe)}.c-li{color:var(--li)}.c-gu{color:var(--gu)}.c-ac{color:var(--ac)}.c-bl{color:var(--bl)}
+input,select,textarea{background:var(--s2);border:1px solid var(--bd);border-radius:10px;color:var(--tx);font:15px var(--sans);padding:10px 12px;outline:none;width:100%;min-width:0}
+input:focus,select:focus,textarea:focus{border-color:var(--ac)}
+input[type=number]{-moz-appearance:textfield}
+input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type=checkbox]{width:auto;accent-color:var(--ac)}
+input.in-sm{padding:5px 8px;font:13px var(--mono);width:96px;border-radius:7px}
+input.in-desc{padding:5px 8px;font:600 13.5px var(--sans);min-width:170px;border-radius:7px}
+input.in-xs{padding:5px 6px;font:13px var(--mono);width:60px;text-align:center;border-radius:7px}
+label.lb{display:block;font-size:11.5px;color:var(--mu);margin:0 0 4px 2px}
+.b{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--bd);background:var(--s2);color:var(--tx);border-radius:10px;font:600 14px var(--sans);padding:9px 14px;cursor:pointer;white-space:nowrap;line-height:1.1;text-decoration:none}
+.b:hover{border-color:var(--mu)}
+.b.sm{padding:6px 10px;font-size:12.5px;border-radius:8px}
+.b.lg{padding:13px 18px;font-size:16px;border-radius:12px}
+.b.blk{width:100%}
+.b.pri{background:var(--ac);border-color:var(--ac);color:#231800}
+.b.ok{background:var(--ok);border-color:var(--ok);color:#052e14}
+.b.dan{background:transparent;color:var(--li);border-color:#ef444466}
+.b.gh{background:transparent}
+.b.seg.on{background:var(--ac2);border-color:var(--ac);color:var(--tx)}
+.b:disabled{opacity:.45;cursor:default}
+.bdg{display:inline-block;background:var(--ac);color:#231800;font:700 10.5px var(--sans);padding:2px 7px;border-radius:10px;vertical-align:middle}
+.chip{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--s3);color:var(--mu);white-space:nowrap}
+.chip.ok{background:var(--ok2);color:var(--ok)}.chip.pe{background:var(--pe2);color:var(--pe)}.chip.gu{background:var(--gu2);color:var(--gu)}.chip.li{background:var(--li2);color:var(--li)}.chip.ac{background:var(--ac2);color:var(--ac)}
+.cod{font-family:var(--mono);font-size:12px;font-weight:700;padding:2px 7px;border-radius:6px;background:var(--ac2);color:var(--ac);white-space:nowrap}
+.empty{color:var(--mu);text-align:center;padding:22px 0;font-size:13px}
+.alert{border-radius:10px;padding:8px 11px;font-size:13px;font-weight:600;margin-top:6px}
+.alert.li{background:var(--li2);color:#ff8a8a;border:1px solid #ef444455}
+.alert.pe{background:var(--pe2);color:var(--pe);border:1px solid #f59e0b55}
+.alert.ok{background:var(--ok2);color:var(--ok);border:1px solid #22c55e55}
+.alert.ac{background:var(--ac2);color:var(--ac);border:1px solid #e9b94955}
+.err{color:var(--li);font-size:12.5px;min-height:16px;margin-top:6px}
+.prev{background:var(--s2);border:1px solid var(--bd);border-radius:10px;padding:9px 11px;font-size:12.5px;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+.prev b{font-family:var(--mono)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.tile{background:var(--s2);border:1px solid var(--bd);border-radius:10px;padding:10px 12px}
+.tile .l{font-size:10.5px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px}
+.tile .v{font:700 18px var(--mono);margin-top:3px}
+.tile .s{font-size:11.5px;color:var(--mu);margin-top:2px}
+.banner{position:sticky;top:8px;z-index:50;background:var(--ac);color:#231800;border-radius:12px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700}
+.banner .b{background:#231800;color:var(--ac);border-color:#231800}
+.ic{background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:8px;cursor:pointer}
+.ic:hover,.ic.on{border-color:var(--ac)}
+.ic .t{font-weight:700;font-size:15px}
+.ic .s{font-size:12px;color:var(--mu);margin-top:4px;display:flex;gap:10px;flex-wrap:wrap}
+.sec-t{font-size:11px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 8px}
+.qty{display:inline-flex;align-items:center;gap:3px}
+.qty .b{padding:3px 9px;min-width:28px}
+.stk{font-family:var(--mono);font-weight:700;font-size:15px;min-width:26px;text-align:center}
+.mov{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12.5px}
+.mov:last-child{border-bottom:none}
+/* Tablas que en el celu se vuelven tarjetas */
+table.rt{width:100%;border-collapse:collapse;font-size:13px}
+.rt th{text-align:left;color:var(--mu);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;padding:7px 6px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.rt td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:middle}
+.rt td.n,.rt th.n{text-align:right;font-family:var(--mono);white-space:nowrap}
+.rt tr.cl{cursor:pointer}.rt tr.cl:hover td{background:var(--s2)}
+.rt tr.off td{opacity:.55}
+.rt tr.det td{background:var(--s2)}
+.rt tr.tot td{font-weight:800;border-top:2px solid var(--bd)}
+@media (max-width:760px){
+  body{padding:12px 12px 40px}
+  .grid2,.grid3{grid-template-columns:1fr}
+  table.rt,.rt tbody{display:block}
+  .rt thead{display:none}
+  .rt tr{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;border:1px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--s1)}
+  .rt tr.det{background:var(--s2)}
+  .rt td{border:none;padding:0;display:flex;justify-content:space-between;align-items:center;gap:6px;min-width:0}
+  .rt td.n{text-align:right}
+  .rt td::before{content:attr(data-l);color:var(--mu);font-size:11px;font-family:var(--sans);font-weight:500}
+  .rt td[data-l=""]::before{display:none}
+  .rt td.full,.rt td[colspan]{grid-column:1/-1}
+  .rt td.fin{grid-column:1/-1;justify-content:flex-end}
+  .hide-m{display:none!important}
+  .b.pedidos .tx{display:none}
+}
+/* Bloqueo con código */
+#lock{position:fixed;inset:0;background:var(--bg);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
+.lk-box{width:100%;max-width:360px;text-align:center}
+.lk-box .logo{width:56px;height:56px;font-size:26px;border-radius:16px;margin:0 auto 12px}
+.lk-box h2{font-size:22px;margin-bottom:6px}.lk-box h2 span{color:var(--ac)}
+.lk-box p{color:var(--mu);font-size:13px;line-height:1.45;margin-bottom:14px}
+.lk-box input{font:700 26px var(--mono);text-align:center;letter-spacing:10px;margin-bottom:8px}
+#modal{position:fixed;inset:0;background:#000b;z-index:600;display:none;align-items:flex-start;justify-content:center;padding:40px 14px;overflow-y:auto}
+#modal.on{display:flex}
+#modal .mbox{background:var(--s1);border:1px solid var(--bd);border-radius:16px;padding:18px;width:100%;max-width:560px}
+#modal h3{font-size:17px;margin-bottom:10px}
+#modal li{margin:5px 0 5px 18px;font-size:13.5px}
+/* Nube */
+.nube{margin-left:auto;font:600 12px var(--sans);padding:5px 10px;border-radius:999px;border:1px solid var(--bd);background:var(--s2);color:var(--mu);white-space:nowrap}
+.nube.ok{color:var(--ok)}.nube.sub{color:var(--pe)}.nube.off{color:var(--pe);border-color:var(--pe)}.nube.err{color:var(--li);border-color:var(--li)}
+#login,#carga{position:fixed;inset:0;z-index:900;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px}
+#login[hidden],#carga[hidden]{display:none}
+#login .bx{width:100%;max-width:360px;text-align:center}
+#login .bx .logo{width:56px;height:56px;font-size:26px;margin:0 auto 12px}
+#login h2{font-size:22px;margin-bottom:14px}#login h2 span{color:var(--ac)}
+#login input{margin-bottom:10px}
+#lg-err{color:var(--li);font-size:13px;min-height:18px;margin-top:8px}
+#carga{flex-direction:column;gap:12px;color:var(--mu);font-weight:600}
+#toast{position:fixed;left:50%;top:12px;transform:translateX(-50%);background:var(--s3);border:1px solid var(--bd);color:var(--tx);padding:10px 16px;border-radius:12px;font-weight:600;z-index:700;box-shadow:0 8px 24px #000a;max-width:92vw;display:none;font-size:14px}
+#toast.on{display:block}
+</style>
+</head>
+<body>
+<div id="login" hidden><div class="bx">
+  <div class="logo">📊</div>
+  <h2>Emma <span>Gestión</span></h2>
+  <input id="lg-email" type="email" autocomplete="username" placeholder="Mail">
+  <input id="lg-pass" type="password" autocomplete="current-password" placeholder="Contraseña" onkeydown="if(event.key==='Enter')entrar()">
+  <button class="b pri blk" id="lg-btn" onclick="entrar()">Entrar</button>
+  <div id="lg-err"></div>
+</div></div>
+<div id="carga" hidden><div style="font-size:34px">☁️</div><div>Trayendo tus datos…</div></div>
+
+<div id="lock">
+  <div class="lk-box">
+    <div class="logo">🔒</div>
+    <h2>Emma <span>Gestión</span></h2>
+    <p id="lk-msg"></p>
+    <input id="lk-code" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="••••">
+    <input id="lk-code2" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="repetir" hidden>
+    <button class="b pri lg blk" data-act="lkOk" id="lk-btn">Entrar</button>
+    <div class="err" id="lk-err"></div>
+    <button class="b sm gh mt" data-act="lkOlvide" id="lk-olv">Olvidé el código</button>
+    <div class="mt"><a class="b sm gh" href="./">🛍️ Ir a Emma Pedidos</a></div>
+  </div>
+</div>
+
+<div id="app" hidden>
+<header>
+  <div class="logo">📊</div>
+  <h1>Emma <span>Gestión</span></h1>
+  <span id="nube-estado" class="nube">☁️</span>
+  <a class="b sm pedidos" href="./" title="Ir a Emma Pedidos">🛍️<span class="tx"> Pedidos</span></a>
+  <button class="b sm" data-act="bloquear" title="Bloquear">🔒</button>
+</header>
+
+<nav class="tabs">
+  <button class="tab on" data-act="tab" data-t="imp">📥 Importación</button>
+  <button class="tab" data-act="tab" data-t="local">🛍️ Compra local</button>
+  <button class="tab" data-act="tab" data-t="hist">📋 Historial</button>
+  <button class="tab" data-act="tab" data-t="stock">📦 Stock</button>
+  <button class="tab" data-act="tab" data-t="ventas">📈 Ventas</button>
+  <button class="tab" data-act="tab" data-t="config">⚙️ Config</button>
+</nav>
+
+<!-- ═════════ IMPORTACIÓN ═════════ -->
+<section class="panel on" id="p-imp">
+  <div class="card">
+    <div class="card-t">Datos de la importación</div>
+    <div class="grid2">
+      <div><label class="lb">Fecha</label><input type="date" id="ai-fecha" data-inp="cab" data-b="imp" data-f="fecha"></div>
+      <div><label class="lb">Nombre / referencia</label><input id="ai-nombre" data-inp="cab" data-b="imp" data-f="nombre" placeholder="ej: Importación octubre"></div>
+      <div><label class="lb">Dólar blue (ARS)</label><input type="number" inputmode="decimal" id="ai-blue" data-inp="cab" data-b="imp" data-f="blue" placeholder="ej: 1525"></div>
+      <div><label class="lb">Dólar en pesos uruguayos</label><input type="number" inputmode="decimal" step="0.1" id="ai-uyu" data-inp="cab" data-b="imp" data-f="uyu" placeholder="ej: 40,5"></div>
+      <div class="full"><label class="lb">Gasto de importación en UYU (flete + trámites) <span class="c-ac">— podés dejarlo en 0 y cargarlo cuando llegue</span></label><input type="number" inputmode="decimal" id="ai-costo" data-inp="cab" data-b="imp" data-f="costoImp" placeholder="0"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-t">Agregar artículo</div>
+    <div class="grid2">
+      <div><label class="lb">Categoría</label><select id="ai-cat" data-chg="sugerir" data-px="ai"></select></div>
+      <div><label class="lb">Código (automático)</label><div class="row"><input id="ai-cod" class="grow mono" style="text-transform:uppercase;font-weight:700" placeholder="R01" data-enter="addImp"><button class="b" data-act="sugerir" data-px="ai" title="Próximo libre">↺</button></div></div>
+      <div class="full"><label class="lb">Descripción</label><input id="ai-desc" placeholder="ej: Remera manga corta broderi" data-enter="addImp"></div>
+      <div><label class="lb">Precio importador (ARS)</label><input type="number" inputmode="decimal" id="ai-pimp" data-inp="prev" data-enter="addImp" placeholder="ej: 8000"></div>
+      <div><label class="lb">Precio real (ARS)</label><input type="number" inputmode="decimal" id="ai-preal" data-inp="prev" data-enter="addImp" placeholder="ej: 12000"></div>
+      <div><label class="lb">Cantidad</label><input type="number" inputmode="numeric" id="ai-qty" data-inp="prev" data-enter="addImp" placeholder="ej: 10"></div>
+      <div><label class="lb">Precio de venta (opcional, se puede después)</label><input type="number" inputmode="numeric" id="ai-pv" data-inp="prev" data-enter="addImp" placeholder="$ venta"></div>
+    </div>
+    <div id="ai-prev"></div>
+    <button class="b pri blk mt" data-act="addImp">+ Agregar artículo</button>
+    <div class="err" id="ai-err"></div>
+  </div>
+  <div class="banner" id="ai-banner" hidden><span>⚠️ Tenés artículos sin guardar</span><button class="b sm" data-act="guardarImp">💾 Guardar ahora</button></div>
+  <div class="card">
+    <div class="row mb"><div class="card-t grow" style="margin:0">Artículos <span class="bdg" id="ai-n">0</span></div>
+      <button class="b sm" data-act="csvImportador" data-src="borrador" title="PDF para mandarle al importador (sin costos internos)">📄 PDF importador</button>
+      <button class="b sm" data-act="csvInterna" data-src="borrador">📊 Interna</button>
+      <button class="b sm dan" data-act="vaciarBorrador" data-b="imp">Vaciar</button>
+    </div>
+    <div id="ai-lista"></div>
+    <button class="b pri lg blk mt" data-act="guardarImp" id="ai-guardar" hidden>💾 Guardar importación (entra al stock)</button>
+  </div>
+</section>
+
+<!-- ═════════ COMPRA LOCAL ═════════ -->
+<section class="panel" id="p-local">
+  <div class="card">
+    <div class="card-t">Nueva compra local</div>
+    <div class="grid2">
+      <div><label class="lb">Fecha</label><input type="date" id="al-fecha" data-inp="cab" data-b="local" data-f="fecha"></div>
+      <div><label class="lb">Referencia</label><input id="al-nombre" data-inp="cab" data-b="local" data-f="nombre" placeholder="ej: Compra mayorista octubre"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-t">Agregar artículo</div>
+    <div class="grid2">
+      <div><label class="lb">Categoría</label><select id="al-cat" data-chg="sugerir" data-px="al"></select></div>
+      <div><label class="lb">Código (automático)</label><div class="row"><input id="al-cod" class="grow mono" style="text-transform:uppercase;font-weight:700" placeholder="R05" data-enter="addLocal"><button class="b" data-act="sugerir" data-px="al">↺</button></div></div>
+      <div class="full"><label class="lb">Descripción</label><input id="al-desc" placeholder="ej: Remera lisa" data-enter="addLocal"></div>
+      <div><label class="lb">Precio de compra (UYU)</label><input type="number" inputmode="decimal" id="al-pcomp" data-inp="prev" data-enter="addLocal" placeholder="ej: 450"></div>
+      <div><label class="lb">Cantidad</label><input type="number" inputmode="numeric" id="al-qty" data-enter="addLocal" placeholder="ej: 5"></div>
+      <div class="full"><label class="lb">Precio de venta (opcional)</label><input type="number" inputmode="numeric" id="al-pv" data-inp="prev" data-enter="addLocal" placeholder="$ venta"></div>
+    </div>
+    <div id="al-prev"></div>
+    <button class="b pri blk mt" data-act="addLocal">+ Agregar artículo</button>
+    <div class="err" id="al-err"></div>
+  </div>
+  <div class="banner" id="al-banner" hidden><span>⚠️ Tenés artículos sin guardar</span><button class="b sm" data-act="guardarLocal">💾 Guardar ahora</button></div>
+  <div class="card">
+    <div class="row mb"><div class="card-t grow" style="margin:0">Artículos <span class="bdg" id="al-n">0</span></div><button class="b sm dan" data-act="vaciarBorrador" data-b="local">Vaciar</button></div>
+    <div id="al-lista"></div>
+    <button class="b pri lg blk mt" data-act="guardarLocal" id="al-guardar" hidden>💾 Guardar compra (entra al stock)</button>
+  </div>
+</section>
+
+<!-- ═════════ HISTORIAL ═════════ -->
+<section class="panel" id="p-hist"><div id="h-lista"></div></section>
+
+<!-- ═════════ STOCK ═════════ -->
+<section class="panel" id="p-stock">
+  <div class="tiles mb" id="st-tiles"></div>
+  <details class="card" id="st-alta">
+    <summary>+ Agregar artículo <span class="muted small" style="font-weight:500">(mercadería que ya tenías, no cuenta como compra)</span></summary>
+    <div class="grid2">
+      <div><label class="lb">Categoría</label><select id="sa-cat" data-chg="sugerir" data-px="sa"></select></div>
+      <div><label class="lb">Código</label><div class="row"><input id="sa-cod" class="grow mono" style="text-transform:uppercase;font-weight:700" data-enter="stkAlta"><button class="b" data-act="sugerir" data-px="sa">↺</button></div></div>
+      <div class="full"><label class="lb">Descripción</label><input id="sa-desc" data-enter="stkAlta" placeholder="ej: Remera manga corta broderi"></div>
+      <div><label class="lb">Cantidad</label><input id="sa-qty" type="number" inputmode="numeric" data-enter="stkAlta" placeholder="ej: 8"></div>
+      <div><label class="lb">Precio de venta</label><input id="sa-pv" type="number" inputmode="numeric" data-enter="stkAlta" placeholder="ej: 990"></div>
+    </div>
+    <button class="b pri blk mt" data-act="stkAlta">+ Agregar al stock</button>
+    <div class="err" id="sa-err"></div>
+  </details>
+  <div class="card">
+    <div class="row">
+      <input id="st-q" data-inp="stkQ" class="grow" placeholder="🔎 Código o nombre…" autocomplete="off" style="flex:2;min-width:160px">
+      <select id="st-cat" data-chg="stkCat" style="flex:1;min-width:120px"></select>
+    </div>
+    <div class="row mt" id="st-f"></div>
+    <div id="st-lista" class="mt"></div>
+  </div>
+</section>
+
+<!-- ═════════ VENTAS ═════════ -->
+<section class="panel" id="p-ventas"><div id="v-cont"></div></section>
+
+<!-- ═════════ CONFIG ═════════ -->
+<section class="panel" id="p-config">
+  <div class="card">
+    <div class="card-t">🔒 Código de acceso</div>
+    <p class="small muted mb">Se pide al abrir y se bloquea sola a los 10 minutos sin uso. Los costos y márgenes viajan a la nube encriptados con este código: sin el código nadie los puede leer, ni siquiera desde la base. Es el mismo en todos los equipos.</p>
+    <div class="grid3">
+      <input id="cc-act" type="password" inputmode="numeric" maxlength="6" placeholder="Código actual">
+      <input id="cc-new" type="password" inputmode="numeric" maxlength="6" placeholder="Código nuevo">
+      <input id="cc-rep" type="password" inputmode="numeric" maxlength="6" placeholder="Repetir nuevo">
+    </div>
+    <div class="row mt"><button class="b pri" data-act="cambiarCodigo">Cambiar código</button><button class="b" data-act="bloquear">🔒 Bloquear ahora</button></div>
+    <div class="err" id="cc-err"></div>
+  </div>
+  <div class="card">
+    <div class="card-t">☁️ Cuenta y nube</div>
+    <p class="small muted mb">Gestión usa la misma cuenta y la misma nube que Emma Pedidos: lo que cargás acá (en el celu o en la compu) aparece en los otros equipos al instante. Los borradores de importación y compra local también se guardan en la nube, así que podés empezar una importación en el celu y terminarla en la compu.</p>
+    <div class="row"><button class="b" onclick="cambiarPass()">🔑 Cambiar contraseña</button><button class="b dan" onclick="salir()">Cerrar sesión</button></div>
+  </div>
+  <div id="cf-version" class="small muted" style="text-align:center;margin:8px 0 20px"></div>
+</section>
+</div>
+
+<div id="modal"><div class="mbox" id="mbox"></div></div>
+<div id="toast"></div>
+
+<script src="vendor/supabase-2.45.4.js"></script>
+<script src="version.js"></script>
+<script src="nube.js"></script>
+<script>
+'use strict';
+/* ══════════════════════════════════════════════════════════════
+   EMMA GESTIÓN — v2 (nube)
+   Mismos datos que Emma Pedidos, en Supabase (nube.js): stock, movimientos,
+   lives, pedidos, clientas, mostrador, compras y config.
+   Las compras guardan su parte privada (dólar, precios del importador, costos,
+   márgenes) encriptada en el navegador con el código de acceso.
+   ══════════════════════════════════════════════════════════════ */
+
+// ─── 1. UTILIDADES ────────────────────────────────────────────
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad2 = n => String(n).padStart(2, '0');
+const fmt = n => (n < 0 ? '−$' : '$') + Math.round(Math.abs(+n || 0)).toLocaleString('es-UY');
+const fmtD = n => +n ? fmt(n) : '—';
+const num = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isNaN(n) ? 0 : n; };
+const localISO = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const hoyISO = () => localISO(new Date());
+const ahoraISO = () => new Date().toISOString();
+function fechaUY(iso, corto) { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); if (!d) return String(iso); return corto ? d + '/' + m : d + '/' + m + '/' + y; }
+function parseFechaUY(s) {
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return String(s).slice(0, 10);
+  const m = String(s).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return '';
+  let y = +m[3]; if (y < 100) y += 2000;
+  return y + '-' + pad2(m[2]) + '-' + pad2(m[1]);
+}
+const fechaHora = iso => { const d = new Date(iso); return isNaN(d) ? '' : pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+const mesDe = iso => String(iso || '').slice(0, 7);
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre'];
+const mesTxt = ym => { const [y, m] = String(ym).split('-'); return m ? MESES[+m - 1] + ' ' + y : ym; };
+let _uidN = 0;
+const uid = p => p + Date.now().toString(36) + (_uidN++).toString(36) + Math.random().toString(36).slice(2, 5);
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+const pctTxt = n => (Math.round(n * 10) / 10).toLocaleString('es-UY') + '%';
+const margenCls = m => !m ? 'muted' : m >= 40 ? 'c-ok' : m >= 25 ? 'c-pe' : 'c-li';
+function descargar(contenido, nombre, tipo) {
+  const blob = new Blob([contenido], { type: tipo });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+/** CSV para Excel en español: punto y coma, UTF-8 con BOM, números de verdad. */
+function csv(filas) {
+  const celda = v => typeof v === 'number' ? String(Math.round(v * 100) / 100).replace('.', ',') : '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  return '﻿' + filas.map(f => f.map(celda).join(';')).join('\r\n');
+}
+const nombreArchivo = s => String(s || 'archivo').replace(/[^\w\-áéíóúñÁÉÍÓÚÑ ]/g, '').trim().replace(/\s+/g, '_');
+
+// ─── 2. DATOS (en la nube, compartidos con Emma Pedidos) ──────
+// nube.js llena DB al entrar y sube cada cambio. put(clave) avisa qué colección cambió.
+const DB = { clientes: [], lives: [], stock: [], movimientos: [], mostrador: [], config: {}, paquetes: [], pagos: [] };
+const CLAVES_NUBE = new Set(['emma_stock', 'emma_movimientos', 'emma_config', 'emma_compras']);
+function put(k) { if (CLAVES_NUBE.has(k)) nubeCambio(k); return true; }
+const cfg = (k, def) => (DB.config[k] ?? def);
+/** Config se comparte con Pedidos: cada clave es una fila aparte en la nube, así no se pisan. */
+function saveConfig(patch) { Object.assign(DB.config, patch || {}); put('emma_config'); }
+/** Todo cambio de stock: aplica y sube (stock y movimientos). Lo que vende Pedidos llega solo en tiempo real. */
+function mutStock(fn) {
+  const r = fn();
+  put('emma_stock'); put('emma_movimientos');
+  return r;
+}
+/** Solo dentro de mutStock. */
+function mov(stockId, cantidad, motivo, ref) {
+  const a = DB.stock.find(s => s.id === stockId);
+  if (!a || !cantidad) return;
+  a.stock = (+a.stock || 0) + cantidad;
+  DB.movimientos.push({ id: uid('m'), fecha: ahoraISO(), stockId, cantidad, motivo, ref: ref || null });
+}
+const stockActivo = () => DB.stock.filter(s => s.activo !== false);
+const stockById = id => DB.stock.find(s => s.id === id);
+
+// ─── 3. CIFRADO (candado contra miradas curiosas, no seguridad de banco) ───
+const CR = { key: null, code: null, salt: null };
+const TE = new TextEncoder(), TD = new TextDecoder();
+function b64(buf) { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 8192) s += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); return btoa(s); }
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(code, saltB64, iter) {
+  const base = await crypto.subtle.importKey('raw', TE.encode(String(code)), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: unb64(saltB64), iterations: iter || 150000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function cifrar(obj, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key || CR.key, TE.encode(JSON.stringify(obj)));
+  return b64(iv) + '.' + b64(ct);
+}
+async function descifrar(s, key) {
+  const [iv, ct] = String(s).split('.');
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, key || CR.key, unb64(ct));
+  return JSON.parse(TD.decode(pt));
+}
+const CHECK = 'emma-gestion-ok';
+async function crearAcceso(code) {
+  const salt = b64(crypto.getRandomValues(new Uint8Array(16))), iter = 150000;
+  const key = await deriveKey(code, salt, iter);
+  return { acceso: { salt, iter, check: await cifrar(CHECK, key) }, key };
+}
+async function verificar(key, check) { try { return (await descifrar(check, key)) === CHECK; } catch (e) { return false; } }
+
+// ─── 4. COMPRAS (tabla compras: parte pública + parte encriptada) ───
+const CATS = { R: 'Remera', J: 'Jean', S: 'Short', V: 'Vestido', B: 'Buzo/Campera', C: 'Conjunto' };
+const PRIV_TOP = ['blue', 'uyu', 'costoImp'];
+const PRIV_ART = ['precioImp', 'precioReal', 'precioCompra', 'precioVenta', 'costoUnitUYU', 'costoPropUnit', 'costoFinal', 'minVenta', 'margen'];
+const PUB_TOP = ['id', 'tipo', 'nombre', 'fecha', 'creado', 'origen', 'syncEnviado'];
+const PUB_ART = ['aid', 'stockId', 'codigo', 'descripcion', 'categoria', 'qty'];
+let COMPRAS = [];   // en memoria, descifradas (solo con la herramienta desbloqueada)
+const SELLO = new Map();   // id → { firma, raw, key }: si la compra no cambió no se vuelve a encriptar (no se re-sube)
+const BORRADAS = new Set(); // compras eliminadas en esta sesión
+
+/** Compra vieja sin encriptar → formato de trabajo. */
+function desdeLegacy(imp) {
+  const tipo = (imp.tipo === 'local') ? 'local' : 'importacion';
+  return {
+    id: String(imp.id), tipo, nombre: imp.nombre || (tipo === 'local' ? 'Compra local' : 'Importación'), fecha: parseFechaUY(imp.fecha) || imp.fecha || '',
+    creado: imp.creado || '', origen: imp.origen, syncEnviado: imp.syncEnviado,
+    blue: num(imp.blue), uyu: num(imp.uyu), costoImp: num(imp.costoImp),
+    articulos: (imp.articulos || []).map(a => {
+      const codigo = String(a.codigo || '').toUpperCase();
+      const s = a.stockId ? null : stockActivo().find(x => x.codigo === codigo);
+      const o = { aid: a.aid || uid('a'), stockId: a.stockId || (s ? s.id : null), codigo, descripcion: a.descripcion || '', categoria: a.categoria || codigo.charAt(0), qty: +a.qty || 0 };
+      PRIV_ART.forEach(k => o[k] = num(a[k]));
+      return o;
+    })
+  };
+}
+function partir(c) {
+  const pub = { v: 2 };
+  PUB_TOP.forEach(k => { if (c[k] !== undefined && c[k] !== null) pub[k] = c[k]; });
+  pub.articulos = c.articulos.map(a => { const o = {}; PUB_ART.forEach(k => o[k] = a[k] ?? null); return o; });
+  const priv = { arts: {} };
+  PRIV_TOP.forEach(k => priv[k] = num(c[k]));
+  c.articulos.forEach(a => { const o = {}; PRIV_ART.forEach(k => { if (num(a[k])) o[k] = num(a[k]); }); priv.arts[a.aid] = o; });
+  return { pub, priv };
+}
+async function sellar(c, key) {
+  if (c._bloqueada) return c._raw;
+  const { pub, priv } = partir(c);
+  const firma = JSON.stringify([pub, priv]), s = SELLO.get(String(c.id));
+  if (s && s.key === key && s.firma === firma) return s.raw;
+  pub.priv = await cifrar(priv, key);
+  SELLO.set(String(c.id), { firma, raw: pub, key });
+  return pub;
+}
+async function abrir(raw, key) {
+  if (raw.v !== 2 || !raw.priv) return { c: desdeLegacy(raw), legacy: true };
+  try {
+    const priv = await descifrar(raw.priv, key);
+    const c = Object.assign({}, raw); delete c.priv; delete c.v;
+    PRIV_TOP.forEach(k => c[k] = num(priv[k]));
+    c.articulos = raw.articulos.map(a => Object.assign({}, a, priv.arts[a.aid] || {}));
+    const p = partir(c);
+    SELLO.set(String(c.id), { firma: JSON.stringify([p.pub, p.priv]), raw, key });
+    return { c };
+  } catch (e) {
+    const c = Object.assign({}, raw, { articulos: raw.articulos.map(a => Object.assign({}, a)), _bloqueada: true, _raw: raw });
+    delete c.priv; delete c.v;
+    return { c, bloqueada: true };
+  }
+}
+async function cargarCompras() {
+  const raw = NUBE.compras || [];
+  const out = []; let legacy = 0, bloq = 0;
+  SELLO.clear();
+  for (const r of raw) { const x = await abrir(r, CR.key); out.push(x.c); if (x.legacy) legacy++; if (x.bloqueada) bloq++; }
+  COMPRAS = out;
+  ordenarCompras();
+  if (legacy) await saveCompras();
+  return { legacy, bloq };
+}
+const ordenarCompras = () => COMPRAS.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || String(b.creado || '').localeCompare(String(a.creado || '')));
+let _cadena = Promise.resolve();
+/** Encripta lo que cambió y lo deja listo para subir. Las compras que llegaron de otro equipo y todavía no se abrieron se conservan. */
+async function sellarTodas(key) {
+  const arr = [], ids = new Set();
+  for (const c of COMPRAS) { arr.push(await sellar(c, key)); ids.add(String(c.id)); }
+  for (const r of NUBE.compras || []) if (!ids.has(String(r.id)) && !BORRADAS.has(String(r.id))) arr.push(r);
+  NUBE.compras = arr;
+  put('emma_compras');
+}
+function saveCompras() {
+  _cadena = _cadena.then(async () => { const key = CR.key; if (key) await sellarTodas(key); })
+    .catch(e => { console.error(e); toast('⚠️ No se pudieron guardar las compras'); });
+  return _cadena;
+}
+const compraById = id => COMPRAS.find(c => c.id === id);
+function stockDeArt(a) { return (a.stockId && stockById(a.stockId)) || stockActivo().find(s => s.codigo === a.codigo) || null; }
+
+// ── Cálculos ──
+function calcImp(c) {
+  const blue = num(c.blue), uyu = num(c.uyu), ci = num(c.costoImp);
+  const tu = c.articulos.reduce((s, a) => s + (+a.qty || 0), 0);
+  c.articulos.forEach(a => {
+    const pv = num(a.precioVenta);
+    a.costoUnitUYU = blue > 0 && uyu > 0 ? num(a.precioReal) / blue * uyu : 0;
+    a.costoPropUnit = tu > 0 ? ci / tu : 0;
+    a.costoFinal = a.costoUnitUYU ? a.costoUnitUYU + a.costoPropUnit : 0;
+    a.minVenta = a.costoFinal ? a.costoFinal / 0.60 : 0;
+    a.margen = pv > 0 && a.costoFinal > 0 ? (pv - a.costoFinal) / pv * 100 : 0;
+  });
+}
+function calcLocal(c) {
+  c.articulos.forEach(a => {
+    const pc = num(a.precioCompra), pv = num(a.precioVenta);
+    a.minVenta = pc ? pc / 0.70 : 0;
+    a.margen = pv > 0 && pc > 0 ? (pv - pc) / pv * 100 : 0;
+  });
+}
+const recalc = c => c.tipo === 'local' ? calcLocal(c) : calcImp(c);
+const costoUnit = (c, a) => c.tipo === 'local' ? num(a.precioCompra) : num(a.costoFinal);
+function totales(c) {
+  const blue = num(c.blue), uyu = num(c.uyu);
+  const und = c.articulos.reduce((s, a) => s + (+a.qty || 0), 0);
+  const arsReal = c.articulos.reduce((s, a) => s + num(a.precioReal) * a.qty, 0);
+  const usd = blue > 0 ? arsReal / blue : 0;
+  const costo = c.articulos.reduce((s, a) => s + costoUnit(c, a) * a.qty, 0);
+  const venta = c.articulos.reduce((s, a) => s + num(a.precioVenta) * a.qty, 0);
+  const costoConVenta = c.articulos.filter(a => num(a.precioVenta)).reduce((s, a) => s + costoUnit(c, a) * a.qty, 0);
+  const pctImp = usd > 0 && uyu > 0 ? (num(c.costoImp) / uyu) / usd * 100 : 0;
+  return { und, arsReal, usd, costo, venta, ganancia: venta - costoConVenta, pctImp };
+}
+/** stockId → costo unitario de la compra más reciente que lo trajo. */
+function mapaCostos() {
+  const m = new Map();
+  [...COMPRAS].reverse().forEach(c => { if (c._bloqueada) return; c.articulos.forEach(a => { const u = costoUnit(c, a); if (a.stockId && u > 0) m.set(a.stockId, u); }); });
+  return m;
+}
+
+// ── Borradores (autoguardados, encriptados, en la nube: config "gestionBorradores") ──
+let BOR = { imp: null, local: null };
+let _borVisto = null, _borPlano = null;   // lo último leído/escrito, para no re-subir ni pisar lo de otro equipo
+const borVacio = tipo => tipo === 'local' ? { fecha: hoyISO(), nombre: '', articulos: [] } : { fecha: hoyISO(), nombre: '', blue: '', uyu: '', costoImp: '', articulos: [] };
+async function cargarBorradores() {
+  const r = cfg('gestionBorradores', null) || {};
+  const abre = async s => { try { return s ? await descifrar(s) : null; } catch (e) { return null; } };
+  BOR.imp = (await abre(r.imp)) || borVacio('imp');
+  BOR.local = (await abre(r.local)) || borVacio('local');
+  _borVisto = JSON.stringify(cfg('gestionBorradores', null));
+  _borPlano = JSON.stringify(BOR);
+}
+let _borT = null;
+function saveBorr() { clearTimeout(_borT); _borT = setTimeout(flushBorr, 300); }
+async function flushBorr(key, forzar) {
+  clearTimeout(_borT); _borT = null;
+  key = key || CR.key; if (!key || !BOR.imp) return;
+  const plano = JSON.stringify(BOR);
+  if (!forzar && plano === _borPlano) return;
+  const o = {};
+  if (BOR.imp.articulos.length || BOR.imp.nombre || BOR.imp.blue) o.imp = await cifrar(BOR.imp, key);
+  if (BOR.local.articulos.length || BOR.local.nombre) o.local = await cifrar(BOR.local, key);
+  saveConfig({ gestionBorradores: o });
+  _borVisto = JSON.stringify(o); _borPlano = plano;
+}
+
+// ─── 5. ACCESO Y BLOQUEO ──────────────────────────────────────
+let _fallos = 0, _esperaHasta = 0;
+function pintarLock() {
+  const acc = cfg('gestionAcceso');
+  const nuevo = !acc;
+  $('#lk-code2').hidden = !nuevo;
+  $('#lk-olv').hidden = nuevo;
+  $('#lk-btn').textContent = nuevo ? 'Crear código y entrar' : 'Entrar';
+  let msg = nuevo
+    ? 'Creá tu código de acceso (4 a 6 números). Los costos y márgenes se encriptan con él: <b>si lo olvidás, se pierden</b> (el stock y los pedidos no).'
+    : 'Ingresá tu código.';
+  if (!window.crypto || !crypto.subtle) msg = '⚠️ Este navegador no permite encriptar. Abrí Emma Gestión en Chrome.';
+  $('#lk-msg').innerHTML = msg;
+  $('#lk-err').textContent = '';
+  $('#lk-code').value = ''; $('#lk-code2').value = '';
+  $('#lock').hidden = false; $('#app').hidden = true;
+  setTimeout(() => $('#lk-code').focus(), 50);
+}
+async function lkOk() {
+  const err = m => { $('#lk-err').textContent = m; };
+  if (Date.now() < _esperaHasta) return err(`Demasiados intentos. Esperá ${Math.ceil((_esperaHasta - Date.now()) / 1000)} segundos.`);
+  const code = $('#lk-code').value.trim();
+  if (!/^\d{4,6}$/.test(code)) return err('El código tiene que ser de 4 a 6 números.');
+  const btn = $('#lk-btn'); btn.disabled = true; err('');
+  try {
+    const acc = cfg('gestionAcceso');
+    if (!acc) {
+      if ($('#lk-code2').value.trim() !== code) { btn.disabled = false; return err('Los dos códigos no coinciden.'); }
+      const { acceso, key } = await crearAcceso(code);
+      saveConfig({ gestionAcceso: acceso });
+      CR.key = key; CR.salt = acceso.salt;
+    } else {
+      const key = await deriveKey(code, acc.salt, acc.iter);
+      if (!await verificar(key, acc.check)) {
+        _fallos++; if (_fallos >= 5) { _esperaHasta = Date.now() + 30000; _fallos = 0; }
+        btn.disabled = false; $('#lk-code').value = ''; return err('Código incorrecto.');
+      }
+      CR.key = key; CR.salt = acc.salt;
+    }
+    CR.code = code; _fallos = 0;
+    await abrirApp();
+  } catch (e) { console.error(e); err('Error: ' + e.message); }
+  btn.disabled = false;
+}
+async function abrirApp() {
+  const r = await cargarCompras();
+  await cargarBorradores();
+  $('#lock').hidden = true; $('#app').hidden = false;
+  tocar();
+  pintarForms();
+  render();
+  if (r.bloq) toast(`🔒 ${r.bloq} compra(s) tienen costos encriptados con otro código`, 4500);
+}
+async function bloquear(auto, motivo) {
+  if (!CR.key) return;
+  try { if (_borT) await flushBorr(); await _cadena; } catch (e) { /* seguimos */ }
+  CR.key = null; CR.code = null; CR.salt = null; COMPRAS = []; SELLO.clear(); BOR = { imp: null, local: null }; _borPlano = null;
+  $$('#app input').forEach(i => { if (i.type === 'checkbox') i.checked = false; else i.value = ''; });
+  ['#ai-lista', '#al-lista', '#h-lista', '#st-lista', '#v-cont', '#ai-prev', '#al-prev'].forEach(s => $(s).innerHTML = '');
+  closeModal();
+  pintarLock();
+  if (motivo) $('#lk-err').textContent = motivo;
+}
+async function olvideCodigo() {
+  if (!confirm('¿Olvidaste el código?\n\nSe van a BORRAR los costos y márgenes encriptados (dólar, precios del importador, costos, borradores), en TODOS los equipos.\nEl stock, los pedidos, las clientas y los precios de venta NO se tocan.\n\n¿Seguir?')) return;
+  if (!confirm('Última confirmación: los costos encriptados no se pueden recuperar. ¿Borrarlos y crear un código nuevo?')) return;
+  NUBE.compras = (NUBE.compras || []).map(c => { const o = Object.assign({}, c); delete o.priv; return o; });
+  put('emma_compras');
+  SELLO.clear();
+  saveConfig({ gestionAcceso: null, gestionBorradores: null });
+  toast('Listo. Creá tu código nuevo.');
+  pintarLock();
+}
+let _ultimo = Date.now();
+const tocar = () => { _ultimo = Date.now(); };
+['click', 'keydown', 'input', 'touchstart', 'scroll'].forEach(ev => document.addEventListener(ev, tocar, { passive: true, capture: true }));
+setInterval(() => { if (CR.key && Date.now() - _ultimo > 10 * 60 * 1000) bloquear(true); }, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && CR.key && Date.now() - _ultimo > 10 * 60 * 1000) bloquear(true); });
+
+async function cambiarCodigo() {
+  const err = m => { $('#cc-err').textContent = m; };
+  const a = $('#cc-act').value.trim(), n = $('#cc-new').value.trim(), r = $('#cc-rep').value.trim();
+  if (a !== CR.code) return err('El código actual no es correcto.');
+  if (!/^\d{4,6}$/.test(n)) return err('El código nuevo tiene que ser de 4 a 6 números.');
+  if (n !== r) return err('El código nuevo no coincide al repetirlo.');
+  err('');
+  if (_borT) await flushBorr(); await _cadena;
+  const { acceso, key } = await crearAcceso(n);
+  await (_cadena = _cadena.then(() => sellarTodas(key)));
+  await flushBorr(key, true);
+  saveConfig({ gestionAcceso: acceso });
+  CR.key = key; CR.code = n; CR.salt = acceso.salt;
+  $('#cc-act').value = $('#cc-new').value = $('#cc-rep').value = '';
+  toast('✓ Código cambiado (vale para todos los equipos)');
+}
+
+// ─── 6. TIEMPO REAL: lo que cambian los otros equipos ─────────
+/** nube.js llama a esto cada vez que llega algo de otro equipo. */
+let _refT = null;
+async function nubeRefresco() {
+  if (!CR.key) return;
+  // Si se está escribiendo en un campo de una tabla, se espera a que termine (para no borrar lo tipeado)
+  const ae = document.activeElement;
+  if (ae && ae.matches && ae.matches('#app [data-chg]') && ae.tagName === 'INPUT') { clearTimeout(_refT); _refT = setTimeout(nubeRefresco, 1500); return; }
+  // Cambiaron el código en otro equipo: esta clave ya no sirve
+  const acc = cfg('gestionAcceso');
+  if (!acc || acc.salt !== CR.salt) { await bloquear(true, '🔑 El código se cambió en otro equipo: entrá con el código nuevo.'); return; }
+  await _cadena;
+  const ids = new Set();
+  let cambio = false;
+  for (const raw of NUBE.compras || []) {
+    const id = String(raw.id); ids.add(id);
+    const i = COMPRAS.findIndex(c => String(c.id) === id), s = SELLO.get(id);
+    if (i >= 0 && ((s && s.raw === raw) || (COMPRAS[i]._bloqueada && COMPRAS[i]._raw === raw))) continue;
+    const x = await abrir(raw, CR.key);
+    if (i >= 0) COMPRAS[i] = x.c; else COMPRAS.push(x.c);
+    cambio = true;
+  }
+  const antes = COMPRAS.length;
+  COMPRAS = COMPRAS.filter(c => ids.has(String(c.id)));
+  if (cambio || COMPRAS.length !== antes) ordenarCompras();
+  // Borradores cambiados en otro equipo (si acá no hay nada sin guardar)
+  if (!_borT && JSON.stringify(cfg('gestionBorradores', null)) !== _borVisto) { await cargarBorradores(); pintarForms(); }
+  render();
+}
+
+// ─── 7. UI GENERAL ────────────────────────────────────────────
+const UI = { tab: 'imp', histSel: null, stk: { q: '', cat: '', f: 'todos', ab: null }, vt: { live: null, mes: null } };
+function toast(t, ms) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), ms || 2600); }
+function showModal(html) { delete $('#mbox').dataset.tipo; $('#mbox').innerHTML = html; $('#modal').classList.add('on'); }
+function closeModal() { $('#modal').classList.remove('on'); $('#mbox').innerHTML = ''; delete $('#mbox').dataset.tipo; }
+function conFoco(fn) {
+  const a = document.activeElement, id = a && a.id;
+  let s = null, e = null; try { s = a.selectionStart; e = a.selectionEnd; } catch (_) {}
+  fn();
+  if (id) { const n = document.getElementById(id); if (n && n !== document.activeElement) { n.focus(); try { if (s != null) n.setSelectionRange(s, e); } catch (_) {} } }
+}
+function setTab(t) {
+  UI.tab = t;
+  $$('.tab').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  $$('.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + t));
+  render();
+  window.scrollTo(0, 0);
+}
+function render() {
+  if (!CR.key) return;
+  conFoco(() => {
+    if (UI.tab === 'imp') renderImp();
+    else if (UI.tab === 'local') renderLocal();
+    else if (UI.tab === 'hist') renderHist();
+    else if (UI.tab === 'stock') renderStock();
+    else if (UI.tab === 'ventas') renderVentas();
+    else if (UI.tab === 'config') renderConfig();
+  });
+}
+const optsCat = (sel, todas) => (todas ? '<option value="">Todas las categorías</option>' : '') + Object.entries(CATS).map(([k, v]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${k} — ${v}</option>`).join('');
+/** Pasa el borrador a los campos (solo al abrir o vaciar; no durante la escritura). */
+function pintarForms() {
+  ['ai', 'al', 'sa'].forEach(px => { if (!$('#' + px + '-cat').options.length) $('#' + px + '-cat').innerHTML = optsCat('R'); });
+  $('#st-cat').innerHTML = optsCat(UI.stk.cat, true);
+  const i = BOR.imp, l = BOR.local;
+  $('#ai-fecha').value = i.fecha || hoyISO(); $('#ai-nombre').value = i.nombre || ''; $('#ai-blue').value = i.blue || ''; $('#ai-uyu').value = i.uyu || ''; $('#ai-costo').value = i.costoImp || '';
+  $('#al-fecha').value = l.fecha || hoyISO(); $('#al-nombre').value = l.nombre || '';
+  ['ai', 'al', 'sa'].forEach(sugerir);
+}
+
+// ── Códigos ──
+function siguienteCodigo(pref) {
+  const usados = new Set();
+  const re = new RegExp('^' + pref + '(\\d+)$');
+  const mirar = c => { const m = String(c || '').toUpperCase().match(re); if (m) usados.add(+m[1]); };
+  stockActivo().forEach(s => mirar(s.codigo));
+  if (BOR.imp) BOR.imp.articulos.forEach(a => mirar(a.codigo));
+  if (BOR.local) BOR.local.articulos.forEach(a => mirar(a.codigo));
+  let n = 1; while (usados.has(n)) n++;
+  return pref + pad2(n);
+}
+function sugerir(px) { const el = $('#' + px + '-cod'); if (el) el.value = siguienteCodigo($('#' + px + '-cat').value || 'R'); }
+/** Valida un código nuevo contra la compra en curso y el stock. Si existe en stock, ofrece reposición. */
+function resolverCodigo(codigo, desc, enCurso) {
+  if (enCurso.some(a => a.codigo === codigo)) return { ok: false, msg: `El código ${codigo} ya está en esta compra.` };
+  const ex = stockActivo().find(s => s.codigo === codigo);
+  if (ex) {
+    if (confirm(`El código ${codigo} ya existe: "${ex.descripcion}" (quedan ${ex.stock}).\n\n¿Es reposición del mismo artículo?\nAceptar = suma las unidades a ese artículo.\nCancelar = te doy el próximo código libre.`))
+      return { ok: true, stockId: ex.id, descripcion: desc || ex.descripcion, precioVenta: +ex.precioVenta || 0 };
+    return { ok: false, sugerir: true, msg: 'Te puse el próximo código libre.' };
+  }
+  const mismo = desc && stockActivo().find(s => norm(s.descripcion) === norm(desc) && s.stock > 0);
+  if (mismo && !confirm(`Ya hay stock de "${mismo.descripcion}" con el código ${mismo.codigo} (quedan ${mismo.stock}).\n\n¿Agregarlo igual como artículo diferente?`)) return { ok: false };
+  return { ok: true, stockId: null };
+}
+function catDe(codigo, sel) { const p = codigo.charAt(0); return CATS[p] ? p : (sel || p); }
+
+// ─── 8. IMPORTACIÓN Y COMPRA LOCAL (borradores) ───────────────
+function previewImp() {
+  const d = BOR.imp, g = k => num($('#ai-' + k).value);
+  const blue = num(d.blue), uyu = num(d.uyu), preal = g('preal'), qty = Math.max(1, g('qty')), pv = g('pv');
+  if (!blue || !uyu || !preal) { $('#ai-prev').innerHTML = preal ? '<div class="prev muted">Cargá el dólar blue y el dólar en pesos para ver el costo.</div>' : ''; return; }
+  const tu = d.articulos.reduce((s, a) => s + (+a.qty || 0), 0) + qty;
+  const cf = preal / blue * uyu + (tu ? num(d.costoImp) / tu : 0);
+  const m = pv > 0 ? (pv - cf) / pv * 100 : 0;
+  $('#ai-prev').innerHTML = `<div class="prev"><span>Costo unitario: <b class="c-ok">${fmt(cf)}</b></span><span>Precio mínimo: <b class="c-pe">${fmt(cf / 0.6)}</b></span>${pv ? `<span>Margen: <b class="${margenCls(m)}">${pctTxt(m)}</b></span>` : ''}</div>`;
+}
+function previewLocal() {
+  const pc = num($('#al-pcomp').value), pv = num($('#al-pv').value);
+  if (!pc) { $('#al-prev').innerHTML = ''; return; }
+  const m = pv > 0 ? (pv - pc) / pv * 100 : 0;
+  $('#al-prev').innerHTML = `<div class="prev"><span>Precio mínimo (30%): <b class="c-pe">${fmt(pc / 0.7)}</b></span>${pv ? `<span>Margen: <b class="${margenCls(m)}">${pctTxt(m)}</b></span>` : ''}</div>`;
+}
+function agregarArt(tipo) {
+  const px = tipo === 'local' ? 'al' : 'ai', d = tipo === 'local' ? BOR.local : BOR.imp, g = k => $('#' + px + '-' + k).value.trim();
+  const err = m => { $('#' + px + '-err').textContent = m || ''; };
+  err('');
+  const codigo = g('cod').toUpperCase(), desc = g('desc'), qty = parseInt(g('qty'), 10) || 0;
+  if (tipo === 'local') { if (!codigo || !desc || qty < 1) return err('Completá código, descripción y cantidad.'); }
+  else if (!codigo || !desc || !num(g('preal')) || qty < 1) return err('Completá código, descripción, precio real y cantidad.');
+  const r = resolverCodigo(codigo, desc, d.articulos);
+  if (!r.ok) { err(r.msg); if (r.sugerir) sugerir(px); return; }
+  const a = { aid: uid('a'), stockId: r.stockId, codigo, descripcion: r.descripcion || desc, categoria: catDe(codigo, g('cat')), qty, precioVenta: num(g('pv')) || r.precioVenta || 0 };
+  if (tipo === 'local') a.precioCompra = num(g('pcomp'));
+  else { a.precioImp = num(g('pimp')); a.precioReal = num(g('preal')); }
+  d.articulos.push(a);
+  ['desc', 'pimp', 'preal', 'pcomp', 'qty', 'pv'].forEach(k => { const el = $('#' + px + '-' + k); if (el) el.value = ''; });
+  $('#' + px + '-prev').innerHTML = '';
+  sugerir(px);
+  saveBorr();
+  render();
+  $('#' + px + '-desc').focus();
+}
+function filaArt(c, a, ctx) {
+  const id = `data-ctx="${ctx}" data-cid="${esc(c.id || '')}" data-aid="${esc(a.aid)}"`;
+  const bloq = c._bloqueada;
+  const inPrecio = (f, ph) => `<input class="in-sm" type="number" inputmode="decimal" id="${f}-${ctx}-${esc(a.aid)}" data-chg="artPrecio" data-f="${f}" ${id} value="${num(a[f]) || ''}" placeholder="${ph}">`;
+  const precios = bloq ? `<td data-l="Costos" class="n muted">🔒</td>` : c.tipo === 'local'
+    ? `<td data-l="Compra UYU">${inPrecio('precioCompra', '$ compra')}</td><td data-l="Mín. venta" class="n c-pe">${fmtD(a.minVenta)}</td>`
+    : `<td data-l="P. imp (ARS)">${inPrecio('precioImp', '$ imp.')}</td><td data-l="P. real (ARS)">${inPrecio('precioReal', '$ real')}</td><td data-l="Costo UYU" class="n c-ok">${fmtD(a.costoFinal)}</td><td data-l="Mín. venta" class="n c-pe">${fmtD(a.minVenta)}</td>`;
+  return `<tr>
+    <td data-l="Código"><span class="cod">${esc(a.codigo)}</span>${a.stockId && ctx !== 'h' ? ' <span class="chip ac" title="Se suma a un artículo que ya existe">repos.</span>' : ''}</td>
+    <td data-l="" class="full">${bloq ? `<b>${esc(a.descripcion)}</b>` : `<input class="in-desc" id="d-${ctx}-${esc(a.aid)}" data-chg="artDesc" ${id} value="${esc(a.descripcion)}" placeholder="Descripción">`}</td>
+    <td data-l="Cant."><input class="in-xs" type="number" inputmode="numeric" min="0" id="q-${ctx}-${esc(a.aid)}" data-chg="artQty" ${id} value="${+a.qty || 0}"${bloq ? ' disabled' : ''}></td>
+    ${precios}
+    <td data-l="P. venta"><input class="in-sm" type="number" inputmode="numeric" id="pv-${ctx}-${esc(a.aid)}" data-chg="artPv" ${id} value="${num(a.precioVenta) || ''}" placeholder="$ venta"${bloq ? ' disabled' : ''}></td>
+    <td data-l="Margen" class="n ${margenCls(a.margen)}">${a.margen ? pctTxt(a.margen) : '—'}</td>
+    <td data-l="" class="fin"><button class="b sm dan" data-act="delArt" ${id} title="Quitar"${bloq ? ' disabled' : ''}>✕</button></td>
+  </tr>`;
+}
+function tablaArts(c, ctx) {
+  const th = c._bloqueada ? '<th class="n">Costos</th>' : c.tipo === 'local'
+    ? '<th class="n">Compra UYU</th><th class="n">Mín. venta</th>'
+    : '<th class="n">P. imp ARS</th><th class="n">P. real ARS</th><th class="n">Costo UYU</th><th class="n">Mín. venta</th>';
+  return `<table class="rt"><thead><tr><th>Cód.</th><th>Descripción</th><th>Cant.</th>${th}<th>P. venta</th><th class="n">Margen</th><th></th></tr></thead>
+    <tbody>${c.articulos.map(a => filaArt(c, a, ctx)).join('')}</tbody></table>`;
+}
+function tilesTotales(c) {
+  const t = totales(c);
+  if (c._bloqueada) return `<div class="tiles mt"><div class="tile"><div class="l">Unidades</div><div class="v">${t.und}</div></div></div>`;
+  const tiles = c.tipo === 'local'
+    ? [['Unidades', t.und, ''], ['Costo total UYU', fmtD(t.costo), 'c-pe'], ['Venta estimada', fmtD(t.venta), 'c-ok'], ['Ganancia estimada', t.venta ? fmt(t.ganancia) : '—', 'c-ok']]
+    : [['Total ARS real', t.arsReal ? '$' + Math.round(t.arsReal).toLocaleString('es-UY') : '—', ''], ['Total USD real', t.usd ? 'U$S ' + Math.round(t.usd).toLocaleString('es-UY') : '—', 'c-bl'], ['Costo total UYU', fmtD(t.costo), 'c-pe'], ['Venta estimada', fmtD(t.venta), 'c-ok'], ['Ganancia estimada', t.venta ? fmt(t.ganancia) : '—', 'c-ok'], ['% gasto de importación', t.pctImp ? pctTxt(t.pctImp) : '—', 'c-gu']];
+  return `<div class="tiles mt">${tiles.map(([l, v, cl]) => `<div class="tile"><div class="l">${l}</div><div class="v ${cl}">${v}</div></div>`).join('')}</div>`;
+}
+function renderImp() {
+  const d = BOR.imp; d.tipo = 'importacion'; calcImp(d);
+  $('#ai-n').textContent = d.articulos.length;
+  $('#ai-banner').hidden = $('#ai-guardar').hidden = !d.articulos.length;
+  $('#ai-lista').innerHTML = d.articulos.length ? tablaArts(d, 'bi') + tilesTotales(d) : '<div class="empty">Todavía no cargaste artículos</div>';
+  previewImp();
+}
+function renderLocal() {
+  const d = BOR.local; d.tipo = 'local'; calcLocal(d);
+  $('#al-n').textContent = d.articulos.length;
+  $('#al-banner').hidden = $('#al-guardar').hidden = !d.articulos.length;
+  $('#al-lista').innerHTML = d.articulos.length ? tablaArts(d, 'bl') + tilesTotales(d) : '<div class="empty">Todavía no cargaste artículos</div>';
+  previewLocal();
+}
+/** Mete las unidades de la compra al stock compartido, con su movimiento. */
+function entrarStock(c, arts) {
+  mutStock(() => {
+    for (const a of arts) {
+      let s = (a.stockId && DB.stock.find(x => x.id === a.stockId && x.activo !== false)) || DB.stock.find(x => x.activo !== false && x.codigo === a.codigo);
+      if (!s) {
+        s = { id: uid('s'), codigo: a.codigo, descripcion: a.descripcion, categoria: a.categoria || a.codigo.charAt(0), stock: 0, precioVenta: num(a.precioVenta), activo: true };
+        DB.stock.push(s);
+      } else if (num(a.precioVenta)) s.precioVenta = num(a.precioVenta);
+      a.stockId = s.id;
+      mov(s.id, +a.qty || 0, 'compra', c.id);
+    }
+  });
+}
+let _guardando = false;
+async function guardarCompra(tipo) {
+  if (_guardando) return;
+  const d = tipo === 'local' ? BOR.local : BOR.imp;
+  if (!d.articulos.length) return toast('Agregá al menos un artículo');
+  if (d.articulos.some(a => !(+a.qty > 0))) return toast('Hay artículos con cantidad 0');
+  const conf = d.articulos.filter(a => !a.stockId && stockActivo().some(s => s.codigo === a.codigo));
+  if (conf.length && !confirm(`Estos códigos ya existen en el stock:\n\n${conf.map(a => a.codigo + ' → ' + stockActivo().find(s => s.codigo === a.codigo).descripcion).join('\n')}\n\nAceptar = sumar las unidades a esos artículos (reposición).\nCancelar = volver a revisar.`)) return;
+  if (tipo !== 'local' && (!num(d.blue) || !num(d.uyu)) && !confirm('No cargaste el dólar blue o el dólar en pesos: los costos van a quedar en 0. Los podés completar después en Historial (✏️ Editar datos).\n\n¿Guardar igual?')) return;
+  _guardando = true;
+  try {
+    recalc(Object.assign(d, { tipo: tipo === 'local' ? 'local' : 'importacion' }));
+    const c = {
+      id: uid('k'), tipo: tipo === 'local' ? 'local' : 'importacion',
+      nombre: (d.nombre || '').trim() || (tipo === 'local' ? 'Compra local ' : 'Importación ') + fechaUY(d.fecha || hoyISO()),
+      fecha: d.fecha || hoyISO(), creado: ahoraISO(),
+      blue: num(d.blue), uyu: num(d.uyu), costoImp: num(d.costoImp),
+      articulos: d.articulos.map(a => Object.assign({}, a, { qty: +a.qty }))
+    };
+    if (c.tipo === 'local') { delete c.blue; delete c.uyu; delete c.costoImp; }
+    entrarStock(c, c.articulos);
+    COMPRAS.unshift(c); ordenarCompras();
+    await saveCompras();
+    BOR[tipo === 'local' ? 'local' : 'imp'] = borVacio(tipo);
+    await flushBorr();
+    pintarForms();
+    toast(`✓ Guardada · ${c.articulos.reduce((s, a) => s + a.qty, 0)} unidades entraron al stock`);
+    UI.histSel = c.id;
+    setTab('hist');
+  } finally { _guardando = false; }
+}
+
+// ─── 9. HISTORIAL ─────────────────────────────────────────────
+function renderHist() {
+  if (!COMPRAS.length) { $('#h-lista').innerHTML = '<div class="empty">Sin compras ni importaciones guardadas.<br>Cargalas en Importación o Compra local y tocá 💾 Guardar.</div>'; return; }
+  const card = c => {
+    const t = totales(c);
+    return `<div class="ic${UI.histSel === c.id ? ' on' : ''}" data-act="histSel" data-cid="${esc(c.id)}">
+      <div class="row"><span class="t grow">${esc(c.nombre)}</span><span class="mono small muted">${fechaUY(c.fecha)}</span></div>
+      <div class="s"><span>${c.articulos.length} artículos · ${t.und} unidades</span>
+        ${c._bloqueada ? '<span class="chip">🔒 otro código</span>' : c.tipo === 'local' ? `<span class="c-gu">${fmt(t.costo)} UYU</span>` : `<span class="c-bl">${t.usd ? 'U$S ' + Math.round(t.usd).toLocaleString('es-UY') + ' real' : 'sin dólar'}</span>`}</div>
+    </div>${UI.histSel === c.id ? detalleCompra(c) : ''}`;
+  };
+  const imps = COMPRAS.filter(c => c.tipo !== 'local'), locs = COMPRAS.filter(c => c.tipo === 'local');
+  $('#h-lista').innerHTML = `<div class="sec-t">📥 Importaciones (${imps.length})</div>${imps.length ? imps.map(card).join('') : '<div class="empty">Sin importaciones</div>'}
+    <div class="sec-t">🛍️ Compras locales (${locs.length})</div>${locs.length ? locs.map(card).join('') : '<div class="empty">Sin compras locales</div>'}`;
+}
+function detalleCompra(c) {
+  if (!c._bloqueada) recalc(c);
+  const id = esc(c.id), imp = c.tipo !== 'local';
+  const info = c._bloqueada ? '<div class="alert pe">🔒 Esta compra se guardó con otro código: los costos no se pueden ver ni editar.</div>'
+    : imp ? `<div class="small muted">Blue $${num(c.blue).toLocaleString('es-UY')} ARS · Dólar $${num(c.uyu).toLocaleString('es-UY')} · Gasto de importación ${fmt(c.costoImp)}</div>` : '<div class="small muted">Compra local en pesos uruguayos</div>';
+  const add = c._bloqueada ? '' : `<div class="sec-t">+ Agregar artículo a esta ${imp ? 'importación' : 'compra'}</div>
+    <div class="grid3">
+      <input id="ha-cod-${id}" placeholder="Código" class="mono" style="text-transform:uppercase">
+      <input id="ha-desc-${id}" placeholder="Descripción">
+      ${imp ? `<input id="ha-pimp-${id}" type="number" inputmode="decimal" placeholder="P. importador ARS"><input id="ha-preal-${id}" type="number" inputmode="decimal" placeholder="P. real ARS">` : `<input id="ha-pcomp-${id}" type="number" inputmode="decimal" placeholder="P. compra UYU">`}
+      <input id="ha-qty-${id}" type="number" inputmode="numeric" placeholder="Cantidad">
+      <button class="b pri" data-act="histAdd" data-cid="${id}">+ Agregar</button>
+    </div>`;
+  const f = (k, lb, tipo, cls) => `<div${cls ? ' class="' + cls + '"' : ''}><label class="lb">${lb}</label><input id="hc-${k}-${id}" ${tipo === 'date' ? 'type="date"' : tipo ? 'type="number" inputmode="decimal"' : ''} value="${esc(k === 'fecha' ? c.fecha : tipo ? (num(c[k]) || '') : c[k])}"></div>`;
+  const edit = UI.cabEdit === c.id && !c._bloqueada ? `<div class="alert ac" style="font-weight:500">
+    <div class="grid2">${f('nombre', 'Nombre / referencia')}${f('fecha', 'Fecha', 'date')}${imp ? f('blue', 'Dólar blue (ARS)', 1) + f('uyu', 'Dólar en pesos uruguayos', 1) + f('costoImp', 'Gasto de importación en UYU (flete + trámites)', 1, 'full') : ''}</div>
+    <div class="small mt" style="color:var(--tx)">Al cambiar el dólar o el gasto se recalculan los costos y márgenes de todos los artículos.</div>
+    <div class="row mt"><button class="b ok sm" data-act="cabGuardar" data-cid="${id}">✓ Guardar</button><button class="b sm gh" data-act="cabEdit" data-cid="${id}">Cancelar</button></div>
+  </div>` : '';
+  return `<div class="card" style="margin-top:-2px">
+    ${edit || info}
+    <div class="row mt mb">
+      ${imp ? `<button class="b sm" data-act="csvImportador" data-src="${id}" title="PDF para mandarle al importador (sin costos internos)">📄 PDF importador</button>` : ''}
+      <button class="b sm" data-act="csvInterna" data-src="${id}">📊 Interna</button>
+      ${!c._bloqueada ? `<button class="b sm" data-act="cabEdit" data-cid="${id}">✏️ Editar datos</button>` : ''}
+      <span class="grow"></span>
+      <button class="b sm dan" data-act="delCompra" data-cid="${id}">🗑️ Eliminar</button>
+    </div>
+    ${tablaArts(c, 'h')}
+    ${tilesTotales(c)}
+    ${add}
+  </div>`;
+}
+function artDe(d) {
+  const c = d.ctx === 'bi' ? BOR.imp : d.ctx === 'bl' ? BOR.local : compraById(d.cid);
+  return c ? { c, a: c.articulos.find(x => x.aid === d.aid) } : {};
+}
+function cambiarQtyArt(d, n) {
+  const { c, a } = artDe(d); if (!a) return;
+  n = Math.max(0, parseInt(n, 10) || 0);
+  const delta = n - (+a.qty || 0);
+  if (!delta) return;
+  if (d.ctx === 'h') {
+    if (n === 0) return borrarArt(d);
+    mutStock(() => { const s = stockDeArt(a); if (s) mov(s.id, delta, 'compra', c.id); });
+    a.qty = n; recalc(c); saveCompras();
+    toast(`Stock ${delta > 0 ? '+' : ''}${delta} en ${a.codigo}`);
+  } else { a.qty = n; saveBorr(); }
+  render();
+}
+function cambiarPrecioArt(d, f, v) {
+  const { c, a } = artDe(d); if (!a || !['precioImp', 'precioReal', 'precioCompra'].includes(f)) return;
+  a[f] = Math.max(0, num(v)); recalc(c);
+  if (d.ctx === 'h') saveCompras(); else saveBorr();
+  render();
+}
+/** Cambia la descripción en la compra. Si el artículo del stock tenía el mismo nombre, también lo actualiza (así Pedidos lo ve igual). */
+function cambiarDescArt(d, v) {
+  const { c, a } = artDe(d); if (!a) return;
+  const nuevo = String(v || '').trim();
+  if (!nuevo) { toast('La descripción no puede quedar vacía'); render(); return; }
+  if (nuevo === a.descripcion) return;
+  const viejo = a.descripcion;
+  a.descripcion = nuevo;
+  if (d.ctx === 'h') {
+    saveCompras();
+    let enStock = false;
+    mutStock(() => { const s = stockDeArt(a); if (s && norm(s.descripcion) === norm(viejo)) { s.descripcion = nuevo; enStock = true; } });
+    toast(enStock ? `✓ Nombre cambiado también en el stock (${a.codigo})` : '✓ Nombre cambiado en esta compra');
+  } else saveBorr();
+  render();
+}
+async function guardarCabecera(cid) {
+  const c = compraById(cid); if (!c) return;
+  const g = k => { const el = document.getElementById('hc-' + k + '-' + cid); return el ? el.value.trim() : null; };
+  const nombre = g('nombre');
+  if (!nombre) return toast('El nombre no puede quedar vacío');
+  c.nombre = nombre;
+  if (g('fecha')) c.fecha = g('fecha');
+  if (c.tipo !== 'local') { c.blue = Math.max(0, num(g('blue'))); c.uyu = Math.max(0, num(g('uyu'))); c.costoImp = Math.max(0, num(g('costoImp'))); }
+  recalc(c); ordenarCompras(); await saveCompras();
+  UI.cabEdit = null;
+  toast('✓ Datos guardados' + (c.tipo !== 'local' ? ', costos recalculados' : ''));
+  render();
+}
+function cambiarPvArt(d, v) {
+  const { c, a } = artDe(d); if (!a) return;
+  a.precioVenta = Math.max(0, num(v)); recalc(c);
+  if (d.ctx === 'h') {
+    saveCompras();
+    if (a.precioVenta) mutStock(() => { const s = stockDeArt(a); if (s) s.precioVenta = a.precioVenta; });
+  } else saveBorr();
+  render();
+}
+function borrarArt(d) {
+  const { c, a } = artDe(d); if (!a) return;
+  if (d.ctx === 'h') {
+    if (!confirm(`¿Sacar "${a.descripcion}" de esta compra?\nTambién se descuentan ${a.qty} unidades del stock.`)) { render(); return; }
+    mutStock(() => { const s = stockDeArt(a); if (s) mov(s.id, -(+a.qty || 0), 'compra', c.id); });
+    c.articulos = c.articulos.filter(x => x !== a); recalc(c); saveCompras();
+  } else { c.articulos = c.articulos.filter(x => x !== a); saveBorr(); }
+  render();
+}
+function histAdd(cid) {
+  const c = compraById(cid); if (!c) return;
+  const g = k => { const el = document.getElementById('ha-' + k + '-' + cid); return el ? el.value.trim() : ''; };
+  const codigo = g('cod').toUpperCase(), desc = g('desc'), qty = parseInt(g('qty'), 10) || 0;
+  if (!codigo || !desc || qty < 1) return toast('Completá código, descripción y cantidad');
+  if (c.tipo !== 'local' && !num(g('preal'))) return toast('Falta el precio real');
+  const r = resolverCodigo(codigo, desc, c.articulos);
+  if (!r.ok) { if (r.msg) toast(r.msg); return; }
+  const a = { aid: uid('a'), stockId: r.stockId, codigo, descripcion: r.descripcion || desc, categoria: catDe(codigo), qty, precioVenta: r.precioVenta || 0 };
+  if (c.tipo === 'local') a.precioCompra = num(g('pcomp')); else { a.precioImp = num(g('pimp')); a.precioReal = num(g('preal')); }
+  c.articulos.push(a);
+  entrarStock(c, [a]);
+  recalc(c); saveCompras();
+  toast(`✓ ${codigo} agregado · +${qty} al stock`);
+  render();
+}
+function borrarCompra(cid) {
+  const c = compraById(cid); if (!c) return;
+  if (!confirm(`¿Eliminar "${c.nombre}" del historial?`)) return;
+  const und = c.articulos.reduce((s, a) => s + (+a.qty || 0), 0);
+  if (confirm(`¿Descontar también del stock las ${und} unidades que entraron con esta compra?\n\nAceptar = sí, descontarlas (si la cargaste por error).\nCancelar = no, el stock queda como está.`))
+    mutStock(() => c.articulos.forEach(a => { const s = stockDeArt(a); if (s) mov(s.id, -(+a.qty || 0), 'compra', c.id); }));
+  BORRADAS.add(String(c.id));
+  COMPRAS = COMPRAS.filter(x => x !== c); saveCompras();
+  UI.histSel = null; render();
+}
+// ── PDF del importador (sin librerías: funciona sin internet) ──
+/** Texto → bytes WinAnsi (lo que entiende Helvetica en un PDF). Saca emojis y escapa paréntesis. */
+function winAnsi(str) {
+  const extra = { '€': 128, '‚': 130, '„': 132, '…': 133, '‘': 145, '’': 146, '“': 147, '”': 148, '•': 149, '–': 150, '—': 151 };
+  let o = '';
+  for (const ch of String(str ?? '').normalize('NFC')) {
+    const cp = ch.codePointAt(0);
+    if (cp === 10 || cp === 13 || cp === 9) o += ' ';
+    else if ((cp >= 32 && cp < 127) || (cp >= 160 && cp < 256)) o += ch;
+    else if (extra[ch]) o += String.fromCharCode(extra[ch]);
+  }
+  return o.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+/** Ancho aproximado de un texto en Helvetica, en puntos. */
+function anchoTxt(t, size, bold) {
+  let w = 0;
+  for (const ch of String(t)) {
+    if (/[iljtfI.,:;!|' ]/.test(ch)) w += ch === ' ' ? 0.278 : 0.26;
+    else if (/[mwMW]/.test(ch)) w += 0.85;
+    else if (/[A-ZÁÉÍÓÚÑ]/.test(ch)) w += 0.68;
+    else if (/[0-9$]/.test(ch)) w += 0.556;
+    else w += 0.53;
+  }
+  return w * size * (bold ? 1.06 : 1);
+}
+function recortar(t, max, size, bold) {
+  t = String(t || '');
+  if (anchoTxt(t, size, bold) <= max) return t;
+  while (t.length > 1 && anchoTxt(t + '…', size, bold) > max) t = t.slice(0, -1);
+  return t.trimEnd() + '…';
+}
+function pdfImportador(c) {
+  const W = 595, H = 842, M = 40, R = W - M;
+  const filas = c.articulos.map(a => ({ qty: +a.qty || 0, desc: a.descripcion, pu: num(a.precioImp), sub: num(a.precioImp) * (+a.qty || 0) }));
+  const total = filas.reduce((s, f) => s + f.sub, 0), und = filas.reduce((s, f) => s + f.qty, 0);
+  const plata = n => '$ ' + Math.round(n).toLocaleString('es-UY');
+  const ROW = 21, Y0 = 690, Y0b = 770, YMIN = 110;
+  const pags = []; let i = 0;
+  while (i < filas.length || !pags.length) {
+    const desde = pags.length ? Y0b : Y0;
+    const n = Math.max(1, Math.floor((desde - YMIN) / ROW));
+    pags.push(filas.slice(i, i + n)); i += n;
+  }
+  const streams = pags.map((rows, pi) => {
+    const k = [];
+    const txt = (x, y, t, size, bold, gris) => k.push(`BT ${gris ? '0.42 0.42 0.45 rg' : '0.1 0.1 0.12 rg'} /F${bold ? 2 : 1} ${size} Tf ${x.toFixed(1)} ${y.toFixed(1)} Td (${winAnsi(t)}) Tj ET`);
+    const der = (xr, y, t, size, bold, gris) => txt(xr - anchoTxt(t, size, bold), y, t, size, bold, gris);
+    const rect = (x, y, w, h, col) => k.push(`${col} rg ${x} ${y} ${w} ${h} re f`);
+    let y;
+    if (pi === 0) {
+      rect(M, 806, R - M, 4, '0.91 0.73 0.29');
+      txt(M, 776, 'EMMA INDUMENTARIA', 20, true);
+      txt(M, 757, 'Pedido de mercadería', 12, false, true);
+      der(R, 776, fechaUY(c.fecha || hoyISO()), 12, true);
+      der(R, 760, 'Fecha', 9, false, true);
+      if (c.nombre) txt(M, 730, recortar(c.nombre, R - M, 11, true), 11, true);
+      y = Y0 + 12;
+    } else {
+      txt(M, 806, 'EMMA INDUMENTARIA · ' + recortar(c.nombre || 'Pedido', 330, 9, false), 9, false, true);
+      y = Y0b + 12;
+    }
+    // encabezado de tabla
+    rect(M, y - 6, R - M, 22, '0.13 0.13 0.15');
+    k.push('BT 1 1 1 rg /F2 9 Tf ' + (M + 8) + ' ' + (y + 1) + ' Td (CANT.) Tj ET');
+    k.push('BT 1 1 1 rg /F2 9 Tf ' + (M + 60) + ' ' + (y + 1) + ' Td (' + winAnsi('DESCRIPCIÓN') + ') Tj ET');
+    k.push('BT 1 1 1 rg /F2 9 Tf ' + (430 - anchoTxt('PRECIO U.', 9, true)).toFixed(1) + ' ' + (y + 1) + ' Td (PRECIO U.) Tj ET');
+    k.push('BT 1 1 1 rg /F2 9 Tf ' + (R - 8 - anchoTxt('SUBTOTAL', 9, true)).toFixed(1) + ' ' + (y + 1) + ' Td (SUBTOTAL) Tj ET');
+    y -= 22;
+    rows.forEach((f, j) => {
+      if (j % 2) rect(M, y - 6, R - M, ROW, '0.95 0.95 0.96');
+      der(M + 34, y + 1, String(f.qty), 10.5, true);
+      txt(M + 60, y + 1, recortar(f.desc, 430 - 90 - (M + 60), 10.5), 10.5);
+      der(430, y + 1, f.pu ? plata(f.pu) : '—', 10.5);
+      der(R - 8, y + 1, f.sub ? plata(f.sub) : '—', 10.5, true);
+      y -= ROW;
+    });
+    if (pi === pags.length - 1) {
+      k.push(`0.1 0.1 0.12 RG 1 w ${M} ${y + 12} m ${R} ${y + 12} l S`);
+      y -= 14;
+      txt(M + 8, y, `${filas.length} artículos · ${und} unidades`, 10.5, false, true);
+      der(R - 8, y - 2, 'TOTAL  ' + plata(total) + ' ARS', 15, true);
+    }
+    der(R, 40, `Página ${pi + 1} de ${pags.length}`, 8.5, false, true);
+    txt(M, 40, 'Emma Indumentaria · Montevideo, Uruguay', 8.5, false, true);
+    return k.join('\n');
+  });
+  // armado del archivo
+  const objs = [];
+  const add = s => { objs.push(s); return objs.length; };
+  add('<< /Type /Catalog /Pages 2 0 R >>');
+  add('PAGES');
+  add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const kids = [];
+  streams.forEach(st => {
+    const cid = add(`<< /Length ${st.length} >>\nstream\n${st}\nendstream`);
+    kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${cid} 0 R >>`));
+  });
+  objs[1] = `<< /Type /Pages /Kids [${kids.map(n => n + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
+  let out = '%PDF-1.4\n%\xe2\xe3\xcf\xd3\n';
+  const offs = [];
+  objs.forEach((o, n) => { offs.push(out.length); out += `${n + 1} 0 obj\n${o}\nendobj\n`; });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R /Info << /Title (${winAnsi(c.nombre || 'Pedido')}) /Producer (Emma Gestion) >> >>\nstartxref\n${xref}\n%%EOF`;
+  const bytes = new Uint8Array(out.length);
+  for (let n = 0; n < out.length; n++) bytes[n] = out.charCodeAt(n) & 255;
+  return bytes;
+}
+/** En el celu abre el menú de compartir (WhatsApp, mail…); en la compu descarga el archivo. */
+async function compartirArchivo(bytes, nombre, tipo, titulo) {
+  const movil = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  if (movil && navigator.canShare) {
+    try {
+      const file = new File([bytes], nombre, { type: tipo });
+      if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: titulo }); return; }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  descargar(bytes, nombre, tipo);
+  toast('📄 PDF descargado: ' + nombre);
+}
+function exportCSV(src, tipo) {
+  const c = src === 'borrador' ? Object.assign({ tipo: 'importacion' }, BOR.imp) : compraById(src);
+  if (!c || !c.articulos.length) return toast('No hay artículos');
+  if (c._bloqueada) return toast('🔒 Costos encriptados con otro código');
+  recalc(c);
+  const fecha = c.fecha || hoyISO(), nom = nombreArchivo(c.nombre || 'Importacion_' + fecha);
+  if (tipo === 'importador') {
+    const bytes = pdfImportador(c);
+    compartirArchivo(bytes, 'Pedido_' + nom + '.pdf', 'application/pdf', (c.nombre || 'Pedido') + ' · Emma Indumentaria');
+  } else {
+    const filas = c.tipo === 'local'
+      ? [['Código', 'Cantidad', 'Descripción', 'P. compra (UYU)', 'Mín. venta (UYU)', 'P. venta (UYU)', 'Margen %']].concat(c.articulos.map(a => [a.codigo, +a.qty, a.descripcion, num(a.precioCompra), Math.round(num(a.minVenta)), num(a.precioVenta), Math.round(num(a.margen) * 10) / 10]))
+      : [['Código', 'Cantidad', 'Descripción', 'P. importador (ARS)', 'P. real (ARS)', 'Costo (UYU)', 'Mín. venta (UYU)', 'P. venta (UYU)', 'Margen %']].concat(c.articulos.map(a => [a.codigo, +a.qty, a.descripcion, num(a.precioImp), num(a.precioReal), Math.round(num(a.costoFinal)), Math.round(num(a.minVenta)), num(a.precioVenta), Math.round(num(a.margen) * 10) / 10]));
+    descargar(csv(filas), 'Interna_' + nom + '.csv', 'text/csv;charset=utf-8');
+  }
+}
+
+// ─── 10. STOCK ────────────────────────────────────────────────
+const MOTIVO_TXT = { venta: 'Venta', devolucion: 'Devolución', liberado: 'Pedido liberado', eliminado: 'Pedido eliminado', cambio: 'Cambio', mostrador: 'Mostrador', compra: 'Compra', ajuste: 'Ajuste', 'arranque en cero': 'Arranque en cero' };
+function pedidoById(id) { for (const l of DB.lives) { const p = (l.pedidos || []).find(x => x.id === id); if (p) return { p, l }; } return null; }
+function refTxt(m) {
+  if (!m.ref) return '';
+  const pl = pedidoById(m.ref);
+  if (pl) { const c = DB.clientes.find(x => x.id === pl.p.clienteId); return `#${pl.p.num} · ${pl.l.nombre}${c ? ' · ' + c.nombre : ''}`; }
+  const v = DB.mostrador.find(x => x.id === m.ref);
+  if (v) return v.tipo === 'cambio' ? 'Cambio en mostrador' : 'Venta de mostrador';
+  const c = compraById(m.ref);
+  if (c) return c.nombre;
+  if (m.ref === 'alta') return 'Alta de artículo';
+  if (m.ref === 'manual') return 'Ajuste manual';
+  return '';
+}
+function renderStock() {
+  const S = UI.stk, q = norm(S.q), costos = mapaCostos();
+  const act = stockActivo();
+  const und = act.reduce((s, a) => s + Math.max(0, +a.stock || 0), 0);
+  const valVenta = act.reduce((s, a) => s + Math.max(0, +a.stock || 0) * num(a.precioVenta), 0);
+  let valCosto = 0, sinCosto = 0;
+  act.forEach(a => { const st = Math.max(0, +a.stock || 0); if (!st) return; const u = costos.get(a.id); if (u) valCosto += u * st; else sinCosto += st; });
+  const cero = act.filter(s => (+s.stock || 0) <= 0).length, poco = act.filter(s => s.stock > 0 && s.stock <= 2).length;
+  $('#st-tiles').innerHTML = [
+    ['Artículos activos', act.length, ''], ['Unidades', und, 'c-ok'], ['Sin stock', cero, 'c-li'], ['Poco stock (≤2)', poco, 'c-pe'],
+    ['Valor a precio de venta', fmt(valVenta), 'c-ac', ''], ['Valor a costo', valCosto ? fmt(valCosto) : '—', '', sinCosto ? `${sinCosto} u. sin costo cargado` : '']
+  ].map(([l, v, cl, s]) => `<div class="tile"><div class="l">${l}</div><div class="v ${cl}">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`).join('');
+  const lib = DB.stock.length - act.length;
+  $('#st-f').innerHTML = [['todos', 'Todos'], ['cero', `Sin stock (${cero})`], ['poco', `Poco stock (${poco})`], ['liberados', `Liberados (${lib})`]]
+    .map(([k, t]) => `<button class="b sm seg${S.f === k ? ' on' : ''}" data-act="stkF" data-f="${k}">${t}</button>`).join('');
+  let L = S.f === 'liberados' ? DB.stock.filter(s => s.activo === false) : act;
+  if (S.f === 'cero') L = L.filter(s => (+s.stock || 0) <= 0);
+  if (S.f === 'poco') L = L.filter(s => s.stock > 0 && s.stock <= 2);
+  if (S.cat) L = L.filter(s => (s.categoria || s.codigo.charAt(0)) === S.cat);
+  if (q) L = L.filter(s => norm(s.descripcion).includes(q) || norm(s.codigo).includes(q));
+  L = [...L].sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'es', { numeric: true }));
+  if (!L.length) { $('#st-lista').innerHTML = '<div class="empty">Sin artículos</div>'; return; }
+  $('#st-lista').innerHTML = `<table class="rt"><thead><tr><th>Código</th><th>Descripción</th><th>Stock</th><th class="n">P. venta</th><th></th></tr></thead><tbody>${L.map(s => {
+    const n = +s.stock || 0, off = s.activo === false, cls = n <= 0 ? 'c-li' : n <= 2 ? 'c-pe' : 'c-ok', id = esc(s.id);
+    return `<tr class="${off ? 'off' : ''}">
+      <td data-l="Código"><span class="cod">${esc(s.codigo)}</span>${off ? ' <span class="chip li">liberado</span>' : n <= 0 ? ' <span class="chip li">sin stock</span>' : ''}</td>
+      <td data-l="" class="full"><b>${esc(s.descripcion)}</b> <span class="muted small">${esc(CATS[s.categoria] || s.categoria || '')}</span></td>
+      <td data-l="Stock">${off ? `<span class="stk muted">${n}</span>` : `<span class="qty"><button class="b sm" data-act="stkAj" data-id="${id}" data-d="-1">−</button><span class="stk ${cls}">${n}</span><button class="b sm" data-act="stkAj" data-id="${id}" data-d="1">+</button></span>`}</td>
+      <td data-l="P. venta" class="n">${fmtD(s.precioVenta)}</td>
+      <td data-l="" class="fin"><button class="b sm" data-act="stkAbrir" data-id="${id}">${S.ab === s.id ? '▲' : '✏️'} ${S.ab === s.id ? 'Cerrar' : 'Editar'}</button></td>
+    </tr>${S.ab === s.id ? `<tr class="det"><td colspan="5" data-l="">${detalleStock(s)}</td></tr>` : ''}`;
+  }).join('')}</tbody></table>`;
+}
+function detalleStock(s) {
+  const id = esc(s.id), off = s.activo === false;
+  const movs = DB.movimientos.filter(m => m.stockId === s.id).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const u = mapaCostos().get(s.id);
+  return `<div style="width:100%">
+    ${off ? '<div class="alert li">Código liberado: no aparece en las sugerencias de Pedidos. El historial se conserva.</div>' : `<div class="grid3">
+      <div class="full"><label class="lb">Descripción</label><input id="sd-desc-${id}" value="${esc(s.descripcion)}"></div>
+      <div><label class="lb">Precio de venta</label><input id="sd-pv-${id}" type="number" inputmode="numeric" value="${num(s.precioVenta) || ''}"></div>
+      <div><label class="lb">Categoría</label><select id="sd-cat-${id}">${optsCat(s.categoria)}</select></div>
+      <div><label class="lb">Costo (última compra)</label><div class="mono" style="padding:10px 2px">${u ? fmt(u) + (num(s.precioVenta) ? ` · margen <span class="${margenCls((s.precioVenta - u) / s.precioVenta * 100)}">${pctTxt((s.precioVenta - u) / s.precioVenta * 100)}</span>` : '') : '—'}</div></div>
+    </div>
+    <div class="row mt"><button class="b ok sm" data-act="stkGuardar" data-id="${id}">✓ Guardar</button><span class="grow"></span><button class="b sm dan" data-act="stkLiberar" data-id="${id}">🗑️ Liberar código</button></div>`}
+    <div class="sec-t">Movimientos (${movs.length})</div>
+    ${movs.length ? `<div style="max-height:280px;overflow-y:auto">${movs.slice(0, 200).map(m => `<div class="mov"><span><span class="mono muted">${fechaHora(m.fecha)}</span> · ${esc(MOTIVO_TXT[m.motivo] || m.motivo)}${refTxt(m) ? ' <span class="muted">· ' + esc(refTxt(m)) + '</span>' : ''}</span><b class="mono ${m.cantidad > 0 ? 'c-ok' : 'c-li'}">${m.cantidad > 0 ? '+' : ''}${m.cantidad}</b></div>`).join('')}</div>` : '<div class="small muted">Sin movimientos registrados.</div>'}
+  </div>`;
+}
+function stkAlta() {
+  const g = k => $('#sa-' + k).value.trim(), err = m => { $('#sa-err').textContent = m || ''; };
+  err('');
+  const codigo = g('cod').toUpperCase(), desc = g('desc'), qty = Math.max(0, parseInt(g('qty'), 10) || 0), pv = num(g('pv'));
+  if (!codigo || !desc) return err('Completá código y descripción.');
+  const ex = stockActivo().find(s => s.codigo === codigo);
+  if (ex) { sugerir('sa'); return err(`El código ${codigo} ya es de "${ex.descripcion}". Te puse el próximo libre (para sumar unidades usá + en la lista).`); }
+  mutStock(() => {
+    const s = { id: uid('s'), codigo, descripcion: desc, categoria: catDe(codigo, g('cat')), stock: 0, precioVenta: pv, activo: true };
+    DB.stock.push(s);
+    if (qty) mov(s.id, qty, 'ajuste', 'alta');
+  });
+  ['desc', 'qty', 'pv'].forEach(k => $('#sa-' + k).value = '');
+  sugerir('sa');
+  toast(`✓ ${codigo} · ${desc} (${qty} u.) agregado al stock`);
+  render();
+  $('#sa-desc').focus();
+}
+
+// ─── 11. VENTAS ───────────────────────────────────────────────
+const esActivo = est => !['liberado', 'abandonado'].includes(est);
+const esCobrado = est => est === 'listo' || est === 'enviado';
+/** Mismo cálculo que Emma Pedidos. */
+function calcPedido(p, live) {
+  let bruto = 0, art = 0;
+  for (const pr of p.prendas || []) { const q = pr.qty || 1; bruto += pr.precio * q; art += q; }
+  const desc = (p.descuento !== null && p.descuento !== undefined && p.descuento !== '') ? +p.descuento : (+(live && live.descuento) || 0);
+  const descMonto = Math.round(bruto * desc / 100);
+  const sub = bruto - descMonto;
+  const saldo = Math.min(p.saldoAplicado || 0, sub);
+  return { bruto, art, desc, sub, total: sub - saldo };
+}
+function costoPrendas(prendas, factor, costos, acc) {
+  for (const pr of prendas || []) {
+    const q = pr.qty || 1, u = pr.stockId && costos.get(pr.stockId);
+    if (u) { acc.costo += u * q; acc.ventaConCosto += pr.precio * q * factor; } else acc.sinCosto += q;
+  }
+}
+function resumenLive(l, costos) {
+  const r = { n: 0, vendido: 0, cobrado: 0, nCob: 0, pendiente: 0, nPen: 0, guardado: 0, nGua: 0, liberado: 0, nLib: 0, prendas: 0, manU: 0, manP: 0, costo: 0, ventaConCosto: 0, sinCosto: 0 };
+  for (const p of l.pedidos || []) {
+    const t = calcPedido(p, l); r.n++;
+    if (esCobrado(p.estado)) { r.cobrado += t.total; r.nCob++; costoPrendas(p.prendas, t.bruto ? t.sub / t.bruto : 1, costos, r); }
+    else if (p.estado === 'pendiente') { r.pendiente += t.total; r.nPen++; }
+    else if (p.estado === 'guardado') { r.guardado += t.total; r.nGua++; }
+    else { r.liberado += t.total; r.nLib++; }
+    if (esActivo(p.estado)) {
+      r.vendido += t.total;
+      for (const pr of p.prendas || []) { const q = pr.qty || 1; r.prendas += q; if (!pr.stockId) { r.manU += q; r.manP += pr.precio * q; } }
+    }
+  }
+  // Lives archivados en Pedidos: el detalle de los pedidos cerrados ya no está, pero queda su resumen.
+  const z = l.resumen;
+  if (z) {
+    const en = z.enviados || { n: 0, total: 0 }, li = z.liberados || { n: 0, total: 0 }, ab = z.abandonados || { n: 0, total: 0 };
+    r.n += +z.pedidos || 0;
+    r.cobrado += +en.total || 0; r.nCob += +en.n || 0; r.vendido += +en.total || 0;
+    r.liberado += (+li.total || 0) + (+ab.total || 0); r.nLib += (+li.n || 0) + (+ab.n || 0);
+    r.archivados = +z.pedidos || 0;
+    r.prendasArch = +z.prendas || 0; r.manArch = +z.prendasManuales || 0;
+  }
+  return r;
+}
+function balanceMensual(costos) {
+  const M = new Map();
+  const g = ym => { if (!M.has(ym)) M.set(ym, { ym, lives: 0, nLives: 0, mostr: 0, cambios: 0, costo: 0, ventaConCosto: 0, sinCosto: 0, compras: 0 }); return M.get(ym); };
+  DB.lives.forEach(l => { const r = resumenLive(l, costos), row = g(mesDe(l.fecha)); row.nLives++; row.lives += r.cobrado; row.costo += r.costo; row.ventaConCosto += r.ventaConCosto; row.sinCosto += r.sinCosto; });
+  DB.mostrador.forEach(v => {
+    const row = g(mesDe(v.fecha));
+    if (v.tipo === 'venta') { row.mostr += +v.total || 0; costoPrendas(v.prendas, 1, costos, row); }
+    else if (v.tipo === 'cambio' && v.diferencia > 0) row.cambios += v.diferencia;
+  });
+  COMPRAS.forEach(c => { if (!c._bloqueada) g(mesDe(c.fecha)).compras += totales(c).costo; });
+  return [...M.values()].filter(r => r.ym).sort((a, b) => b.ym.localeCompare(a.ym));
+}
+function tile(l, v, cl, s) { return `<div class="tile"><div class="l">${l}</div><div class="v ${cl || ''}">${v}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`; }
+function renderVentas() {
+  const costos = mapaCostos();
+  if (!DB.lives.length && !DB.mostrador.length) { $('#v-cont').innerHTML = '<div class="empty">Todavía no hay ventas. Los lives y el mostrador se cargan en Emma Pedidos.</div>'; return; }
+  const lives = [...DB.lives].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  if (!UI.vt.live || !DB.lives.some(l => l.id === UI.vt.live)) UI.vt.live = (DB.lives.find(l => l.id === cfg('liveActualId')) || lives[0] || {}).id;
+  const live = DB.lives.find(l => l.id === UI.vt.live);
+  let html = '<div class="alert pe mb">⚠️ Ventas todavía cuenta como "cobrado" los pedidos en estado listo/enviado. Se rehace con los pagos y salidas de Despacho en una próxima etapa.</div>';
+  if (live) {
+    const r = resumenLive(live, costos), gan = r.ventaConCosto - r.costo;
+    html += `<div class="card"><div class="row mb"><div class="card-t grow" style="margin:0">📦 Live</div>
+      <select data-chg="vtLive" id="vt-live" style="max-width:340px">${lives.map(l => `<option value="${esc(l.id)}"${l.id === live.id ? ' selected' : ''}>${esc(l.nombre)} · ${fechaUY(l.fecha)}${l.id === cfg('liveActualId') ? ' (actual)' : ''}</option>`).join('')}</select></div>
+      <div class="tiles">
+        ${tile('Total vendido', fmt(r.vendido), 'c-ac', `${r.n - r.nLib} pedidos · ${r.prendas} prendas`)}
+        ${tile('Cobrado', fmt(r.cobrado), 'c-ok', `${r.nCob} listos / enviados`)}
+        ${tile('Pendiente', fmt(r.pendiente), 'c-pe', `${r.nPen} pedidos`)}
+        ${tile('Guardado', fmt(r.guardado), 'c-gu', `${r.nGua} pedidos`)}
+        ${tile('Liberado', fmt(r.liberado), 'c-li', `${r.nLib} pedidos`)}
+        ${tile('Ticket promedio', r.n - r.nLib ? fmt(r.vendido / (r.n - r.nLib)) : '—', '')}
+      </div>
+      ${r.archivados ? `<div class="small muted mt">📦 Incluye ${r.archivados} pedidos archivados en Pedidos (solo totales).</div>` : ''}
+      ${r.costo ? `<div class="alert ok">💰 Ganancia bruta estimada de lo cobrado: <b>${fmt(gan)}</b> (costo ${fmt(r.costo)} · margen ${pctTxt(r.ventaConCosto ? gan / r.ventaConCosto * 100 : 0)})${r.sinCosto ? ` <span style="font-weight:500">· ${r.sinCosto} prendas sin costo no entran en el cálculo</span>` : ''}</div>` : ''}
+    </div>`;
+  }
+  // Historial de lives
+  const rs = lives.map(l => ({ l, r: resumenLive(l, costos) }));
+  html += `<div class="card"><div class="card-t">📋 Historial de lives</div>
+    <table class="rt"><thead><tr><th>Live</th><th class="n">Pedidos</th><th class="n">Vendido</th><th class="n">Cobrado</th><th class="n">Pend. + guard.</th><th class="n">Liberado</th></tr></thead><tbody>
+    ${rs.map(({ l, r }) => `<tr class="cl" data-act="vtLiveSel" data-id="${esc(l.id)}"><td data-l="" class="full"><b>${esc(l.nombre)}</b> <span class="muted small mono">${fechaUY(l.fecha)}</span>${l.archivado ? ' <span class="chip">📦 archivado</span>' : ''}</td><td data-l="Pedidos" class="n">${r.n}</td><td data-l="Vendido" class="n c-ac">${fmt(r.vendido)}</td><td data-l="Cobrado" class="n c-ok">${fmt(r.cobrado)}</td><td data-l="Pend. + guard." class="n c-pe">${fmt(r.pendiente + r.guardado)}</td><td data-l="Liberado" class="n c-li">${fmt(r.liberado)}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  // Balance mensual
+  const bm = balanceMensual(costos);
+  html += `<div class="card"><div class="card-t">📅 Balance mensual</div>
+    <table class="rt"><thead><tr><th>Mes</th><th class="n">Lives (cobrado)</th><th class="n">Mostrador</th><th class="n">Total ingresos</th><th class="n">Costo vendido*</th><th class="n">Ganancia bruta*</th><th class="n">Compras del mes</th></tr></thead><tbody>
+    ${bm.map(m => { const ing = m.lives + m.mostr + m.cambios, gan = m.ventaConCosto - m.costo; return `<tr><td data-l="" class="full"><b>${mesTxt(m.ym)}</b> <span class="muted small">${m.nLives} lives</span></td><td data-l="Lives (cobrado)" class="n c-ok">${fmt(m.lives)}</td><td data-l="Mostrador" class="n">${fmt(m.mostr + m.cambios)}</td><td data-l="Total ingresos" class="n c-ac"><b>${fmt(ing)}</b></td><td data-l="Costo vendido*" class="n">${fmtD(m.costo)}</td><td data-l="Ganancia bruta*" class="n c-ok">${m.costo ? fmt(gan) : '—'}</td><td data-l="Compras del mes" class="n c-pe">${fmtD(m.compras)}</td></tr>`; }).join('')}
+    </tbody></table>
+    <p class="small muted mt">* Estimado con el costo de la última compra de cada artículo, solo sobre prendas con costo cargado (las manuales y las del stock viejo sin compra no entran). Mostrador incluye lo cobrado por diferencia en cambios.</p></div>`;
+  // Mostrador
+  const meses = [...new Set(DB.mostrador.map(v => mesDe(v.fecha)).concat([mesDe(hoyISO())]))].sort().reverse();
+  if (!UI.vt.mes || !meses.includes(UI.vt.mes)) UI.vt.mes = meses[0];
+  const vm = DB.mostrador.filter(v => mesDe(v.fecha) === UI.vt.mes);
+  const ventas = vm.filter(v => v.tipo === 'venta'), cambios = vm.filter(v => v.tipo === 'cambio');
+  const sumM = medio => ventas.filter(v => v.medio === medio).reduce((s, v) => s + (+v.total || 0), 0);
+  const cli = id => (DB.clientes.find(c => c.id === id) || {}).nombre || 'sin clienta';
+  html += `<div class="card"><div class="row mb"><div class="card-t grow" style="margin:0">🏪 Mostrador (separado de los lives)</div>
+      <select data-chg="vtMes" id="vt-mes" style="max-width:200px">${meses.map(m => `<option value="${m}"${m === UI.vt.mes ? ' selected' : ''}>${mesTxt(m)}</option>`).join('')}</select></div>
+    <div class="tiles">
+      ${tile('Ventas', fmt(ventas.reduce((s, v) => s + (+v.total || 0), 0)), 'c-ac', `${ventas.length} ventas`)}
+      ${tile('Efectivo', fmt(sumM('efectivo')), 'c-ok')}
+      ${tile('Transferencia', fmt(sumM('transferencia')), 'c-bl')}
+      ${tile('Cambios', cambios.length, '', `cobrado ${fmt(cambios.filter(v => v.diferencia > 0).reduce((s, v) => s + v.diferencia, 0))} · a favor ${fmt(-cambios.filter(v => v.diferencia < 0).reduce((s, v) => s + v.diferencia, 0))}`)}
+    </div>
+    ${vm.length ? `<div class="sec-t">Movimientos del mes</div>${[...vm].reverse().slice(0, 40).map(v => `<div class="mov"><span><span class="mono muted">${fechaUY(v.fecha, 1)}</span> · ${v.tipo === 'cambio' ? '🔄 Cambio' : '🛒 Venta'} · ${esc(cli(v.clienteId))}${v.tipo === 'venta' ? ' <span class="muted">· ' + esc(v.medio || '') + '</span>' : ''}</span><b class="mono">${v.tipo === 'cambio' ? (v.diferencia > 0 ? '+' + fmt(v.diferencia) : v.diferencia < 0 ? 'a favor ' + fmt(-v.diferencia) : '$0') : fmt(v.total)}</b></div>`).join('')}` : '<div class="small muted mt">Sin movimientos de mostrador este mes.</div>'}
+  </div>`;
+  // Prendas manuales
+  html += `<div class="card"><div class="card-t">✍️ Prendas manuales vendidas por live</div>
+    <p class="small muted mb">Prendas cargadas a mano en Pedidos (sin código de stock). La meta es llegar a 100% codificado.</p>
+    <table class="rt"><thead><tr><th>Live</th><th class="n">Prendas</th><th class="n">Manuales</th><th class="n">$ manuales</th><th class="n">Codificado</th></tr></thead><tbody>
+    ${rs.map(({ l, r }) => { const pt = r.prendas + (r.prendasArch || 0), mu = r.manU + (r.manArch || 0), p = pt ? (1 - mu / pt) * 100 : 0; return `<tr><td data-l="" class="full"><b>${esc(l.nombre)}</b> <span class="muted small mono">${fechaUY(l.fecha)}</span></td><td data-l="Prendas" class="n">${pt}</td><td data-l="Manuales" class="n ${mu ? 'c-pe' : ''}">${mu}</td><td data-l="$ manuales" class="n">${fmtD(r.manP)}</td><td data-l="Codificado" class="n ${p >= 90 ? 'c-ok' : p >= 60 ? 'c-pe' : 'c-li'}">${pt ? pctTxt(p) : '—'}</td></tr>`; }).join('')}
+    </tbody></table></div>`;
+  $('#v-cont').innerHTML = html;
+}
+
+// ─── 12. CONFIG ───────────────────────────────────────────────
+function renderConfig() { $('#cf-version').textContent = 'Versión ' + EMMA_VERSION; }
+
+// ─── 13. ACCIONES (eventos delegados: los botones pasan IDs, nunca nombres) ───
+const ACT = {
+  tab: d => setTab(d.t),
+  closeModal: () => closeModal(),
+  lkOk: () => lkOk(),
+  lkOlvide: () => olvideCodigo(),
+  bloquear: () => bloquear(false),
+  sugerir: d => sugerir(d.px),
+  addImp: () => agregarArt('imp'),
+  addLocal: () => agregarArt('local'),
+  guardarImp: () => guardarCompra('imp'),
+  guardarLocal: () => guardarCompra('local'),
+  vaciarBorrador: d => {
+    const b = BOR[d.b]; if (!b.articulos.length && !b.nombre) return;
+    if (!confirm(`¿Vaciar ${d.b === 'imp' ? 'la importación' : 'la compra local'} en curso? Se pierden los ${b.articulos.length} artículos sin guardar.`)) return;
+    BOR[d.b] = borVacio(d.b); flushBorr(); pintarForms(); render();
+  },
+  delArt: d => borrarArt(d),
+  csvImportador: d => exportCSV(d.src, 'importador'),
+  csvInterna: d => exportCSV(d.src, 'interna'),
+  histSel: d => { UI.histSel = UI.histSel === d.cid ? null : d.cid; UI.cabEdit = null; render(); },
+  histAdd: d => histAdd(d.cid),
+  cabEdit: d => { UI.cabEdit = UI.cabEdit === d.cid ? null : d.cid; render(); },
+  cabGuardar: d => guardarCabecera(d.cid),
+  delCompra: d => borrarCompra(d.cid),
+  stkF: d => { UI.stk.f = d.f; UI.stk.ab = null; render(); },
+  stkAj: d => { mutStock(() => mov(d.id, +d.d, 'ajuste', 'manual')); render(); },
+  stkAbrir: d => { UI.stk.ab = UI.stk.ab === d.id ? null : d.id; render(); },
+  stkGuardar: d => {
+    const desc = $('#sd-desc-' + d.id).value.trim(); if (!desc) return toast('La descripción no puede quedar vacía');
+    mutStock(() => { const s = stockById(d.id); if (!s) return; s.descripcion = desc; s.precioVenta = Math.max(0, num($('#sd-pv-' + d.id).value)); s.categoria = $('#sd-cat-' + d.id).value; });
+    toast('✓ Artículo guardado'); render();
+  },
+  stkLiberar: d => {
+    const s = stockById(d.id); if (!s) return;
+    if (!confirm(`¿Liberar el código ${s.codigo}?\n\n"${s.descripcion}" deja de aparecer en Pedidos y el código queda libre para un artículo nuevo. El artículo NO se borra: su historial queda.${s.stock > 0 ? `\n\n⚠️ Todavía figura con ${s.stock} unidades.` : ''}`)) return;
+    mutStock(() => { const x = stockById(d.id); if (x) x.activo = false; });
+    UI.stk.ab = null; toast('✓ Código liberado'); render();
+  },
+  stkAlta: () => stkAlta(),
+  vtLiveSel: d => { UI.vt.live = d.id; render(); window.scrollTo(0, 0); },
+  cambiarCodigo: () => cambiarCodigo()
+};
+const CHG = {
+  sugerir: d => sugerir(d.px),
+  artQty: (d, el) => cambiarQtyArt(d, el.value),
+  artPv: (d, el) => cambiarPvArt(d, el.value),
+  artPrecio: (d, el) => cambiarPrecioArt(d, d.f, el.value),
+  artDesc: (d, el) => cambiarDescArt(d, el.value),
+  stkCat: (d, el) => { UI.stk.cat = el.value; render(); },
+  vtLive: (d, el) => { UI.vt.live = el.value; render(); },
+  vtMes: (d, el) => { UI.vt.mes = el.value; render(); }
+};
+const INP = {
+  cab: el => { const b = BOR[el.dataset.b]; if (!b) return; b[el.dataset.f] = el.value; saveBorr(); render(); },
+  prev: () => { if (UI.tab === 'imp') previewImp(); else previewLocal(); },
+  stkQ: el => { UI.stk.q = el.value; renderStock(); }
+};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  const fn = ACT[el.dataset.act];
+  if (fn) fn(el.dataset, el, e);
+});
+document.addEventListener('change', e => { const el = e.target.closest('[data-chg]'); if (el && CHG[el.dataset.chg]) CHG[el.dataset.chg](el.dataset, el, e); });
+document.addEventListener('input', e => { const el = e.target; if (el.dataset && el.dataset.inp && INP[el.dataset.inp]) INP[el.dataset.inp](el); });
+document.addEventListener('keydown', e => {
+  const el = e.target;
+  if ($('#modal').classList.contains('on') && e.key === 'Escape') { closeModal(); return; }
+  if (e.key !== 'Enter') return;
+  if (el.id === 'lk-code' || el.id === 'lk-code2') { e.preventDefault(); if (el.id === 'lk-code' && !$('#lk-code2').hidden && !$('#lk-code2').value) $('#lk-code2').focus(); else lkOk(); return; }
+  if (el.dataset.enter && ACT[el.dataset.enter]) { e.preventDefault(); ACT[el.dataset.enter](el.dataset); return; }
+  if (el.dataset.chg) { e.preventDefault(); el.blur(); }
+});
+
+// ─── 14. INICIO ───────────────────────────────────────────────
+/** nube.js la llama cuando ya trajo los datos. */
+function iniciarApp() { pintarLock(); }
+iniciarNube();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+// Cuando se publica una versión nueva, se recarga sola (si no hay cambios esperando para subir)
+if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+  let _rec = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_rec) return; _rec = true;
+    const intentar = () => { if (pendientes() || _borT) return setTimeout(intentar, 2000); location.reload(); };
+    intentar();
+  });
+}
+function buscarVersionNueva() { if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {}); }
+document.addEventListener('visibilitychange', () => { if (!document.hidden) buscarVersionNueva(); });
+setInterval(buscarVersionNueva, 30 * 60 * 1000);
+</script>
+</body>
+</html>

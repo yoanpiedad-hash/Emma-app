@@ -19,8 +19,9 @@ const NUBE = {
   estado: 'ok', error: '', subiendo: false, timer: null, canal: null,
   compras: []
 };
-const ORDEN = ['clientas', 'lives', 'stock', 'pedidos', 'movimientos', 'mostrador', 'config', 'paquetes', 'pagos'];
-const TODAS = [...ORDEN, 'compras'];
+// compras: la escribe solo Gestión (parte privada encriptada en el navegador); Pedidos solo la lee
+const ORDEN = ['clientas', 'lives', 'stock', 'pedidos', 'movimientos', 'mostrador', 'config', 'paquetes', 'pagos', 'compras'];
+const TODAS = ORDEN;
 const SIN_BORRADO = new Set(['movimientos', 'config']);
 const PK = { config: 'clave' };
 const pk = c => PK[c] || 'id';
@@ -61,6 +62,10 @@ const COL = {
   pagos: {
     lista: () => DB.pagos || [],
     fila: g => ({ id: g.id, pedido_id: g.pedidoId, cuenta: g.cuenta || '', monto: g.monto == null ? null : +g.monto, fecha: g.fecha || new Date().toISOString(), comprobante: g.comprobante || null, datos: g })
+  },
+  compras: {
+    lista: () => NUBE.compras || [],
+    fila: c => ({ id: String(c.id), datos: c })
   },
   config: {
     lista: () => Object.entries(DB.config || {}).map(([clave, valor]) => ({ id: clave, clave, valor })),
@@ -136,7 +141,7 @@ function nubeDiff(col) {
     ult.delete(id); filas.delete(id); out.set(id, f);
   }
 }
-const QUE_COLS = { emma_clientes: ['clientas'], emma_lives: ['lives', 'pedidos'], emma_stock: ['stock'], emma_movimientos: ['movimientos'], emma_mostrador: ['mostrador'], emma_config: ['config'], emma_paquetes: ['paquetes'], emma_pagos: ['pagos'] };
+const QUE_COLS = { emma_compras: ['compras'], emma_clientes: ['clientas'], emma_lives: ['lives', 'pedidos'], emma_stock: ['stock'], emma_movimientos: ['movimientos'], emma_mostrador: ['mostrador'], emma_config: ['config'], emma_paquetes: ['paquetes'], emma_pagos: ['pagos'] };
 /** La app llama a esto en lugar de escribir en localStorage. */
 function nubeCambio(key) {
   const cols = QUE_COLS[key]; if (!cols || !NUBE.listo) return;
@@ -224,7 +229,7 @@ async function cargarTodo() {
   DB.config = {}; for (const r of t.config) { recordar('config', r); DB.config[r.clave] = r.valor; }
   DB.paquetes = t.paquetes.map(r => { recordar('paquetes', r); return r.datos; });
   DB.pagos = t.pagos.map(r => { recordar('pagos', r); return r.datos; });
-  NUBE.compras = t.compras.map(r => r.datos);
+  NUBE.compras = t.compras.map(r => { recordar('compras', r); return r.datos; });
   // Lo que quedó en la cola local (cambios sin subir de antes) se vuelve a aplicar encima
   const cola = await kvGet('cola').catch(() => null);
   if (cola) for (const col of ORDEN) for (const f of (cola[col] || [])) aplicarFila(col, f, true);
@@ -243,7 +248,6 @@ async function cargarCache() {
 
 /* ── Aplicar una fila (de la base o de la cola) a la memoria ── */
 function aplicarFila(col, r, propia) {
-  if (col === 'compras') { const i = NUBE.compras.findIndex(x => String(x.id) === r.id); if (r.borrado) { if (i >= 0) NUBE.compras.splice(i, 1); } else if (i >= 0) NUBE.compras[i] = r.datos; else NUBE.compras.push(r.datos); return; }
   if (!COL[col]) return;
   const id = r[pk(col)];
   if (!propia) {
@@ -258,8 +262,9 @@ function aplicarFila(col, r, propia) {
     if (r.borrado) { NUBE.ult[col].delete(id); NUBE.filas[col].delete(id); }
   }
   const borrar = !!r.borrado;
-  const reemplazar = (arr, obj) => { const i = arr.findIndex(x => x.id === id); if (borrar) { if (i >= 0) arr.splice(i, 1); } else if (i >= 0) arr[i] = obj; else arr.push(obj); };
-  if (col === 'clientas') reemplazar(DB.clientes, r.datos);
+  const reemplazar = (arr, obj) => { const i = arr.findIndex(x => String(x.id) === String(id)); if (borrar) { if (i >= 0) arr.splice(i, 1); } else if (i >= 0) arr[i] = obj; else arr.push(obj); };
+  if (col === 'compras') reemplazar(NUBE.compras, r.datos);
+  else if (col === 'clientas') reemplazar(DB.clientes, r.datos);
   else if (col === 'stock') reemplazar(DB.stock, r.datos);
   else if (col === 'mostrador') reemplazar(DB.mostrador, r.datos);
   else if (col === 'paquetes') reemplazar(DB.paquetes, r.datos);
@@ -287,7 +292,7 @@ function adoptarHuerfanos(liveId) { for (const [id, r] of HUERFANOS) if (r.live_
 
 /* ── Tiempo real y puesta al día ── */
 let _pintar = null;
-function refrescarPronto() { clearTimeout(_pintar); _pintar = setTimeout(() => { if (typeof render === 'function') render(); guardarCache(); }, 250); }
+function refrescarPronto() { clearTimeout(_pintar); _pintar = setTimeout(() => { if (typeof nubeRefresco === 'function') nubeRefresco(); else if (typeof render === 'function') render(); guardarCache(); }, 250); }
 function escuchar() {
   if (NUBE.canal) NUBE.sb.removeChannel(NUBE.canal);
   NUBE.canal = NUBE.sb.channel('emma-cambios')
