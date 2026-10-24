@@ -62,14 +62,17 @@ with sync_playwright() as p:
     ok('A: el pasaje no dejó nada para subir', A.evaluate("pendientes()") == 0)
     alias = A.evaluate("DB.modelos.find(m => m.alias.length).alias[0]")
     numAlias = A.evaluate(f"DB.modelos.find(m => m.alias[0] === '{alias}').num")
-    ok('A: números correlativos 1..N, código viejo guardado', A.evaluate("DB.modelos.map(m => m.num).sort((a,b)=>a-b).every((n,i)=>n===i+1)") and alias, f'{alias} → {numAlias}')
+    ok('Arranque de cero: los viejos quedan archivados, sin número, con su código viejo', A.evaluate("DB.modelos.every(m => m.num === 0 && m.activo === false) && DB.stock.every(s => s.activo === false && s.codigo === s.codigoViejo)") and alias)
+    ok('El próximo número es el 1', A.evaluate("proximoNum()") == 1)
     A.evaluate("() => { DB.config.gestionAcceso = null; pintarLock(); }")
     A.fill('#lk-code', '4321'); A.fill('#lk-code2', '4321'); A.click('#lk-btn')
     ok('A: entra', esperar(A, "!document.getElementById('app').hidden", 20))
     acceso = A.evaluate("JSON.stringify(cfg('gestionAcceso'))")
     ok('A: las 6 compras viejas se leen en el formato nuevo (bloqueadas)', A.evaluate("COMPRAS.length === 6 && COMPRAS.every(c => c._bloqueada && c.lineas.length && c.estado === 'recibida')"))
     A.click('[data-t=stock]'); A.fill('#st-q', alias); time.sleep(0.4)
-    ok('Stock: se encuentra por código viejo', f'antes {alias}' in A.inner_text('#st-lista'))
+    txt = A.inner_text('#st-lista')
+    ok('Stock: un archivado se encuentra por código viejo', alias in txt and 'archivado' in txt)
+    ok('Reposición de un viejo se reconoce por su código', A.evaluate(f"(buscarModelo('{alias} · x')||{{}}).id") == A.evaluate(f"DB.modelos.find(m => m.alias[0] === '{alias}').id"))
     A.fill('#st-q', ''); time.sleep(0.3)
 
     # ── 1. Pedido de importación (no toca stock) ──
@@ -207,6 +210,22 @@ with sync_playwright() as p:
     ok('A: subido', sin_pendientes(A))
     ok('B: ve todo en tiempo real', esperar(B, f"modeloByNum({nmax+4}) && variantesDe(modeloByNum({nmax}).id).find(s => s.talle === 'M').stock === 5 && modeloByNum({nmax}).precioVenta === 750", 25))
 
+    # ── 6b. Archivado automático y vuelta por reposición ──
+    top = A.evaluate(f"modeloByNum({nmax+3}).id")
+    A.evaluate(f"""() => {{ const v = variantesDe('{top}')[0]; mutStock(() => mov(v.id, -v.stock, 'ajuste', 'manual'));
+      const viejo = new Date(Date.now() - 20 * 864e5).toISOString(); DB.movimientos.filter(x => x.stockId === v.id).forEach(x => x.fecha = viejo); modeloById('{top}').creado = viejo; put('emma_movimientos'); }}""")
+    ok('Archivado automático: 20 días sin stock → archivado', A.evaluate("archivarSinStock(true)") >= 1 and A.evaluate(f"modeloById('{top}').activo === false && variantesDe('{top}').every(s => s.activo === false)"))
+    ok('Recién vendido (sin stock hoy) no se archiva', A.evaluate(f"modeloByNum({nmax}).activo !== false"))
+    A.click('[data-t=local]')
+    chg(A, '#al-nom', 'Top Prueba Claude rojo')
+    ok('Reposición de un archivado se reconoce por nombre', A.evaluate("FORM.al.mid") == top)
+    A.fill('#al-t-U', '1'); A.fill('#al-pcomp', '250'); A.click('[data-act=addLocal]'); time.sleep(0.3)
+    A.click('#al-guardar'); time.sleep(0.8)
+    ok('Vuelve a estar en uso con el mismo número', A.evaluate(f"modeloById('{top}').activo !== false && modeloById('{top}').num === {nmax+3} && variantesDe('{top}')[0].stock === 1 && variantesDe('{top}')[0].activo"))
+    A.click('[data-act=closeModal]')
+    ok('A: subido', sin_pendientes(A))
+    cloc2 = A.evaluate("COMPRAS.filter(c => c.tipo === 'local' && c.nombre.startsWith('Compra local'))[0].id")
+
     # ── 7. Celu: todas las pestañas sin scroll lateral ──
     B.click('[data-act=closeModal]') if B.is_visible('#modal') else None
     for tb in ['imp', 'local', 'hist', 'stock', 'ventas', 'config']:
@@ -221,7 +240,7 @@ with sync_playwright() as p:
 
     # ── 8. Limpieza: eliminar compras (descontando stock) y liberar modelos de prueba ──
     A.click('[data-t=hist]'); time.sleep(0.3)
-    for c in (cid, cloc):
+    for c in (cid, cloc, cloc2):
         if not A.is_visible(f"[data-act=delCompra][data-cid='{c}']"): A.click(f"[data-act=histSel][data-cid='{c}']"); time.sleep(0.3)
         A.click(f"[data-act=delCompra][data-cid='{c}']"); time.sleep(0.4)
     ok('Compras de prueba eliminadas', A.evaluate(f"!compraById('{cid}') && !compraById('{cloc}') && COMPRAS.length === 6"))

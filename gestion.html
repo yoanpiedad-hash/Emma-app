@@ -339,6 +339,11 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
     <div class="row"><button class="b" onclick="cambiarPass()">🔑 Cambiar contraseña</button><button class="b dan" onclick="salir()">Cerrar sesión</button></div>
   </div>
   <div class="card">
+    <div class="card-t">📦 Archivado automático</div>
+    <p class="small muted mb">Un artículo que queda sin stock se archiva solo pasados estos días: deja de aparecer en Pedidos y en Stock, pero su historial queda. Si lo volvés a traer, lo elegís por nombre (reposición) y vuelve.</p>
+    <div class="row"><label class="small">Archivar después de</label><input id="cf-dias" type="number" inputmode="numeric" min="1" data-chg="cfgDias" style="width:90px"><span class="small">días sin stock</span></div>
+  </div>
+  <div class="card">
     <div class="card-t">🏷️ Etiquetas de prenda (rollo chico)</div>
     <p class="small muted mb">Número grande, talle grande, nombre, precio de lista y QR. El formato se guarda en este equipo (cada equipo tiene su impresora). Mientras no llega la térmica, usá Hoja A4 y recortá.</p>
     <div class="row"><select id="cf-rollo" data-chg="etqFmt" style="width:auto"><option value="50x30">Rollo 50 × 30 mm (recomendado)</option><option value="40x30">Rollo 40 × 30 mm</option><option value="a4">Hoja A4 (para recortar)</option></select><button class="b" data-act="etqProbar">🖨️ Imprimir una de prueba</button></div>
@@ -498,18 +503,25 @@ function asegurarVariante(m, talle) {
 /** Copia nombre, precio y categoría del modelo a sus talles (es lo que ve Pedidos). Solo dentro de mutStock. */
 function sincronizarVariantes(m) {
   variantesDe(m.id).forEach(s => {
-    s.descripcion = descVar(m, s.talle); s.precioVenta = num(m.precioVenta); s.categoria = m.categoria; s.codigo = codVar(m.num, s.talle);
+    s.descripcion = descVar(m, s.talle); s.precioVenta = num(m.precioVenta); s.categoria = m.categoria; if (+m.num) s.codigo = codVar(m.num, s.talle);
     if (m.activo === false) s.activo = false;
   });
 }
 /** Busca un modelo por "142 · nombre", por número o por nombre exacto. */
 function buscarModelo(txt) {
   const t = String(txt || '').trim(); if (!t) return null;
-  const mm = t.match(/^#?(\d+)(\s*·|$)/);
-  if (mm) { const m = modeloByNum(mm[1]); if (m) return m; }
-  return modelosActivos().find(m => norm(m.nombre) === norm(t)) || null;
+  const mm = t.match(/^#?([^\s·]+)(\s*·|$)/);
+  if (mm) {
+    const tok = mm[1].toUpperCase();
+    const m = (/^\d+$/.test(tok) && +tok > 0 && modeloByNum(tok)) || DB.modelos.find(x => (x.alias || []).some(a => String(a).toUpperCase() === tok));
+    if (m) return m;
+  }
+  return modelosActivos().find(m => norm(m.nombre) === norm(t)) || DB.modelos.find(m => norm(m.nombre) === norm(t)) || null;
 }
-const etiquetaModelo = m => `${m.num} · ${m.nombre}${(m.alias || []).length ? ' (antes ' + m.alias.join(', ') + ')' : ''}`;
+const numTxt = m => +m.num ? String(m.num) : ((m.alias || [])[0] || '—');
+const etiquetaModelo = m => `${numTxt(m)} · ${m.nombre}${+m.num && (m.alias || []).length ? ' (antes ' + m.alias.join(', ') + ')' : ''}${m.activo === false ? ' [archivado]' : ''}`;
+/** Vuelve a poner en uso un modelo archivado (si venía del sistema viejo sin número, recibe el próximo). Solo dentro de mutStock. */
+function activar(m) { if (!(+m.num)) m.num = proximoNum(); m.activo = true; delete m.archivado; }
 function pintarDatalist() {
   const dl = $('#dl-modelos'); if (!dl) return;
   dl.innerHTML = modelosActivos().sort((a, b) => b.num - a.num).map(m => `<option value="${esc(etiquetaModelo(m))}"></option>`).join('');
@@ -524,18 +536,36 @@ function migrarModelos() {
   sin.sort((a, b) => pos(a) - pos(b) || String(a.codigo).localeCompare(String(b.codigo), 'es', { numeric: true }) || String(a.id).localeCompare(String(b.id)));
   let n = proximoNum();
   for (const s of sin) {
-    const id = 'md_' + s.id;
+    const id = 'md_' + s.id, conStock = (+s.stock || 0) > 0 && s.activo !== false;
     let m = modeloById(id);
     if (!m) {
-      m = { id, num: n++, nombre: s.descripcion || s.codigo || 'Sin nombre', categoria: LETRA_CAT[s.categoria] || LETRA_CAT[String(s.codigo || '').charAt(0).toUpperCase()] || (CATEGORIAS.includes(s.categoria) ? s.categoria : 'Otro'),
-        tipoTalle: 'unico', precioVenta: num(s.precioVenta), alias: s.codigo ? [String(s.codigo)] : [], activo: s.activo !== false, creado: ahoraISO() };
+      m = { id, num: conStock ? n++ : 0, nombre: s.descripcion || s.codigo || 'Sin nombre', categoria: LETRA_CAT[s.categoria] || LETRA_CAT[String(s.codigo || '').charAt(0).toUpperCase()] || (CATEGORIAS.includes(s.categoria) ? s.categoria : 'Otro'),
+        tipoTalle: 'unico', precioVenta: num(s.precioVenta), alias: s.codigo ? [String(s.codigo)] : [], activo: conStock, creado: ahoraISO() };
+      if (!conStock) m.archivado = ahoraISO();
       DB.modelos.push(m);
     }
-    s.codigoViejo = s.codigo; s.modeloId = m.id; s.talle = 'U'; s.codigo = codVar(m.num, 'U'); s.categoria = m.categoria;
+    s.codigoViejo = s.codigo; s.modeloId = m.id; s.talle = 'U'; s.categoria = m.categoria;
+    if (+m.num) s.codigo = codVar(m.num, 'U'); else s.activo = false;
   }
   put('emma_modelos'); put('emma_stock');
   saveConfig({ modelosV1: cfg('modelosV1') || ahoraISO() });
   return sin.length;
+}
+
+// ── Archivado automático: un modelo sin stock durante N días (config "archivarDias", 15) deja de verse en Pedidos y en Stock ──
+const diasArchivo = () => Math.max(1, +cfg('archivarDias', 15) || 15);
+let _archT = 0;
+function archivarSinStock(forzar) {
+  if (!forzar && Date.now() - _archT < 3600e3) return 0;
+  _archT = Date.now();
+  const lim = Date.now() - diasArchivo() * 864e5, ult = new Map();
+  const deVar = new Map(DB.stock.map(s => [s.id, s.modeloId]));
+  for (const x of DB.movimientos) { const mid = deVar.get(x.stockId); if (mid && (!ult.has(mid) || String(x.fecha) > ult.get(mid))) ult.set(mid, String(x.fecha)); }
+  const enRecepcion = new Set(COMPRAS.filter(c => c.estado === 'pedida').flatMap(c => c.lineas.flatMap(l => l.modelos.map(mo => mo.mid)).filter(Boolean)));
+  const lst = modelosActivos().filter(m => totalModelo(m) <= 0 && !enRecepcion.has(m.id) && new Date(ult.get(m.id) || m.creado || 0).getTime() < lim);
+  if (!lst.length) return 0;
+  mutStock(() => lst.forEach(m => { m.activo = false; m.archivado = ahoraISO(); sincronizarVariantes(m); }));
+  return lst.length;
 }
 
 // ── Compras: parte pública + parte encriptada (precios del importador, compra, dólar, gasto) ──
@@ -761,12 +791,14 @@ async function abrirApp() {
   if (!DB.modelos) DB.modelos = [];
   const mig = migrarModelos();
   const r = await cargarCompras();
+  const arch = archivarSinStock(true);
   await cargarBorradores();
   $('#lock').hidden = true; $('#app').hidden = false;
   tocar();
   pintarForms();
   render();
-  if (mig) showModal(`<h3>🔢 Artículos pasados a números</h3><p class="mb">Pasé <b>${mig}</b> artículos del sistema viejo (R03, J02…) a números correlativos. El código viejo queda guardado y se puede buscar (aparece como "antes R03").</p><p class="small muted mb">Desde ahora cada prenda nueva recibe el número siguiente, automático. Los talles se agregan desde Stock o al recibir mercadería.</p><div class="row"><span class="grow"></span><button class="b pri" data-act="closeModal">Listo</button></div>`);
+  if (mig) showModal(`<h3>🔢 Arrancamos de cero</h3><p class="mb">Los <b>${mig}</b> artículos del sistema viejo (R03, J02…) quedaron <b>archivados</b>: no aparecen en Pedidos ni en Stock, pero su historial y los costos de las compras se conservan (los encontrás buscando el código viejo).</p><p class="small muted mb">Desde ahora cada prenda nueva recibe un número, empezando por el 1, con sus talles. Lo que quede ${diasArchivo()} días sin stock se archiva solo.</p><div class="row"><span class="grow"></span><button class="b pri" data-act="closeModal">Listo</button></div>`);
+  else if (arch) toast(`📦 ${arch} artículo(s) sin stock hace más de ${diasArchivo()} días quedaron archivados`, 4500);
   else if (r.bloq) toast(`🔒 ${r.bloq} compra(s) tienen costos encriptados con otro código`, 4500);
 }
 async function bloquear(auto, motivo) {
@@ -826,6 +858,7 @@ async function nubeRefresco() {
   await _cadena;
   if (!DB.modelos) DB.modelos = [];
   if (necesitaMigrarModelos()) migrarModelos();   // artículo creado en Pedidos o en otro equipo sin número
+  archivarSinStock();
   const ids = new Set();
   let cambio = false;
   for (const raw of NUBE.compras || []) {
@@ -889,7 +922,7 @@ function pintarFormModelo(px, keep) {
   if (keep) $$(`[data-tq="${px}"]`).forEach(i => { if (i.value) vals[i.dataset.t] = i.value; });
   $('#' + px + '-tg').innerHTML = gridForm(px, tipo, vals);
   const m = FORM[px].mid && modeloById(FORM[px].mid);
-  $('#' + px + '-rep').innerHTML = m ? `<span class="chip ac">🔁 Reposición de <b class="mono">${m.num}</b> · quedan ${totalModelo(m)}</span> <button class="b sm gh" data-act="formSinRepos" data-px="${px}">No es reposición</button>` : '';
+  $('#' + px + '-rep').innerHTML = m ? `<span class="chip ac">🔁 Reposición de <b class="mono">${esc(numTxt(m))}</b> · quedan ${totalModelo(m)}</span> <button class="b sm gh" data-act="formSinRepos" data-px="${px}">No es reposición</button>` : '';
 }
 function leerForm(px) {
   const talles = {}; let unidades = 0;
@@ -1049,7 +1082,7 @@ function entrarModelos(c, lineas) {
       if (!m) { m = crearModelo(mo); mo.mid = m.id; mo.repos = false; }
       else {
         if (num(mo.precioVenta)) m.precioVenta = num(mo.precioVenta);
-        if (m.activo === false) m.activo = true;
+        if (m.activo === false || !(+m.num)) activar(m);
         if (mo.tipoTalle && m.tipoTalle !== mo.tipoTalle && mo.tipoTalle !== 'unico') m.tipoTalle = mo.tipoTalle;
       }
       mo.nombre = m.nombre; mo.categoria = m.categoria; if (!num(mo.precioVenta)) mo.precioVenta = num(m.precioVenta);
@@ -1171,7 +1204,7 @@ function recepcionHTML(c) {
         return `<div class="rcm">
           <div class="row"><input class="grow" list="dl-modelos" id="rn-${ix}" data-chg="rcNom" ${a} value="${esc(mo.nombre)}" placeholder="Nombre con el color (ej: ${esc(l.descripcion)} blanca)">
             <button class="b sm dan" data-act="rcDelMo" ${a} title="Quitar este color">✕</button></div>
-          ${m ? `<div class="mt"><span class="chip ac">🔁 Reposición de <b class="mono">${m.num}</b> · quedan ${totalModelo(m)}</span> <button class="b sm gh" data-act="rcSinRepos" ${a}>No es reposición</button></div>` : ''}
+          ${m ? `<div class="mt"><span class="chip ac">🔁 Reposición de <b class="mono">${esc(numTxt(m))}</b> · quedan ${totalModelo(m)}</span> <button class="b sm gh" data-act="rcSinRepos" ${a}>No es reposición</button></div>` : ''}
           <div class="grid3 mt">
             <div><label class="lb">Categoría</label><select id="rc-${ix}" data-chg="rcCat" ${a}>${optsCat(mo.categoria)}</select></div>
             <div><label class="lb">Talles</label><select id="rt-${ix}" data-chg="rcTipo" ${a}>${optsTipo(mo.tipoTalle)}</select></div>
@@ -1241,7 +1274,7 @@ async function llegoOk(d) {
   if (!mo || !q) return toast('Elegí talle y cantidad');
   const m = modeloById(mo.mid); if (!m) return toast('No encuentro el modelo');
   let sid;
-  mutStock(() => { const s = asegurarVariante(m, t); mov(s.id, q, 'compra', c.id); sincronizarVariantes(m); sid = s.id; });
+  mutStock(() => { if (m.activo === false || !(+m.num)) activar(m); const s = asegurarVariante(m, t); mov(s.id, q, 'compra', c.id); sincronizarVariantes(m); sid = s.id; });
   mo.talles[t] = (+mo.talles[t] || 0) + q;
   closeModal();
   await saveCompras(); render();
@@ -1501,17 +1534,17 @@ function renderStock() {
     ['Modelos activos', act.length, ''], ['Unidades', und, 'c-ok'], ['Sin stock', cero, 'c-li'], ['Talle agotado', agot, 'c-pe'],
     ['Valor a precio de venta', fmt(valVenta), 'c-ac', ''], ['Valor a costo', valCosto ? fmt(valCosto) : '—', '', sinCosto ? `${sinCosto} u. sin costo cargado` : '']
   ].map(([l, v, cl, s]) => tile(l, v, cl, s)).join('');
-  const lib = DB.modelos.length - act.length;
-  $('#st-f').innerHTML = [['todos', 'Todos'], ['cero', `Sin stock (${cero})`], ['poco', `Poco stock (${poco})`], ['agot', `Talle agotado (${agot})`], ['liberados', `Liberados (${lib})`]]
+  const lib = DB.modelos.length - act.length;   // archivados
+  $('#st-f').innerHTML = [['todos', 'Todos'], ['cero', `Sin stock (${cero})`], ['poco', `Poco stock (${poco})`], ['agot', `Talle agotado (${agot})`], ['liberados', `📦 Archivados (${lib})`]]
     .map(([k, t]) => `<button class="b sm seg${S.f === k ? ' on' : ''}" data-act="stkF" data-f="${k}">${t}</button>`).join('');
-  let L = S.f === 'liberados' ? DB.modelos.filter(m => m.activo === false) : act;
+  let L = S.f === 'liberados' ? DB.modelos.filter(m => m.activo === false) : q ? DB.modelos : act;   // al buscar aparecen también los archivados
   const T = m => tot.has(m.id) ? tot.get(m.id) : totalModelo(m);
   if (S.f === 'cero') L = L.filter(m => !T(m));
   if (S.f === 'poco') L = L.filter(m => T(m) > 0 && T(m) <= 2);
   if (S.f === 'agot') L = L.filter(m => agotados(m).length);
   if (S.cat) L = L.filter(m => m.categoria === S.cat);
   if (q) L = L.filter(m => String(m.num) === q || norm(m.nombre).includes(q) || (m.alias || []).some(a => norm(a) === q) || variantesDe(m.id).some(s => norm(s.codigo) === q));
-  L = [...L].sort((a, b) => b.num - a.num);
+  L = [...L].sort((a, b) => (a.activo === false) - (b.activo === false) || b.num - a.num);
   const hay = L.length;
   L = L.slice(0, UI.stk.max || 80);
   if (!hay) { $('#st-lista').innerHTML = '<div class="empty">Sin artículos</div>'; return; }
@@ -1519,8 +1552,8 @@ function renderStock() {
     const n = T(m), off = m.activo === false, id = esc(m.id), ag = agotados(m);
     const tall = variantesDe(m.id).filter(s => s.activo !== false).map(s => { const k = +s.stock || 0; return `<span class="tl${k <= 0 ? ' z' : ''}">${s.talle === 'U' ? '' : '<b>' + esc(s.talle) + '</b> '}${k}</span>`; }).join('');
     return `<tr class="${off ? 'off' : ''}">
-      <td data-l="N°"><span class="cod">${m.num}</span>${off ? ' <span class="chip li">liberado</span>' : !n ? ' <span class="chip li">sin stock</span>' : ''}</td>
-      <td data-l="" class="full"><b>${esc(m.nombre)}</b> <span class="muted small">${esc(m.categoria || '')}${(m.alias || []).length ? ' · antes ' + esc(m.alias.join(', ')) : ''}</span>${ag.length ? ` <span class="chip pe">se acabó: ${esc(ag.map(talleTxt).join(', '))}</span>` : ''}</td>
+      <td data-l="N°"><span class="cod">${esc(numTxt(m))}</span>${off ? ' <span class="chip">📦 archivado</span>' : !n ? ' <span class="chip li">sin stock</span>' : ''}</td>
+      <td data-l="" class="full"><b>${esc(m.nombre)}</b> <span class="muted small">${esc(m.categoria || '')}${+m.num && (m.alias || []).length ? ' · antes ' + esc(m.alias.join(', ')) : ''}</span>${ag.length ? ` <span class="chip pe">se acabó: ${esc(ag.map(talleTxt).join(', '))}</span>` : ''}</td>
       <td data-l="Talles"><div class="tls">${tall || '—'}</div></td>
       <td data-l="Total" class="n"><b class="${n <= 0 ? 'c-li' : n <= 2 ? 'c-pe' : 'c-ok'}">${n}</b></td>
       <td data-l="P. venta" class="n">${fmtD(m.precioVenta)}</td>
@@ -1541,13 +1574,13 @@ function detalleModelo(m, costos) {
       <span class="grow"></span><input class="in-xs" type="number" inputmode="numeric" min="1" id="eq-${sid}" value="${Math.max(1, k)}" title="Cuántas etiquetas"><button class="b sm" data-act="etqVar" data-id="${sid}">🏷️</button></div>`;
   }).join('');
   return `<div style="width:100%">
-    ${off ? '<div class="alert li">Modelo liberado: no aparece en Pedidos. El historial se conserva y el número no se vuelve a usar.</div>' : `<div class="grid3">
+    ${off ? `<div class="alert pe">📦 Archivado${m.archivado ? ' el ' + fechaUY(m.archivado) : ''}: no aparece en Pedidos ni en Stock. El historial se conserva y el número no se vuelve a usar.</div><button class="b sm mt" data-act="stkReactivar" data-id="${id}">↩️ Volver a usar${+m.num ? '' : ' (recibe número nuevo)'}</button>` : `<div class="grid3">
       <div class="full"><label class="lb">Nombre (con el color)</label><input id="sd-nom-${id}" value="${esc(m.nombre)}"></div>
       <div><label class="lb">Precio de venta</label><input id="sd-pv-${id}" type="number" inputmode="numeric" value="${num(m.precioVenta) || ''}"></div>
       <div><label class="lb">Categoría</label><select id="sd-cat-${id}">${optsCat(m.categoria)}</select></div>
       <div><label class="lb">Costo (última compra)</label><div class="mono" style="padding:10px 2px">${u ? fmt(u) + (num(m.precioVenta) ? ` · margen <span class="${margenCls((m.precioVenta - u) / m.precioVenta * 100)}">${pctTxt((m.precioVenta - u) / m.precioVenta * 100)}</span>` : '') : '—'}</div></div>
     </div>
-    <div class="row mt"><button class="b ok sm" data-act="stkGuardar" data-id="${id}">✓ Guardar</button><span class="grow"></span><button class="b sm dan" data-act="stkLiberar" data-id="${id}">🗑️ Liberar</button></div>
+    <div class="row mt"><button class="b ok sm" data-act="stkGuardar" data-id="${id}">✓ Guardar</button><span class="grow"></span><button class="b sm dan" data-act="stkLiberar" data-id="${id}">📦 Archivar</button></div>
     <div class="sec-t">Talles · stock · etiquetas</div>
     ${filasT || '<div class="small muted">Sin talles</div>'}
     <div class="row mt"><button class="b sm" data-act="etqModelo" data-id="${id}">🏷️ Etiquetas de todo el stock (${totalModelo(m)})</button>
@@ -1573,7 +1606,7 @@ function stkAlta() {
   if (!m && !f.unidades && !confirm('No cargaste cantidades: el modelo se crea con stock 0. ¿Seguir?')) return;
   const etq = [];
   mutStock(() => {
-    if (!m) m = crearModelo(f); else if (f.precioVenta) m.precioVenta = f.precioVenta;
+    if (!m) m = crearModelo(f); else { if (m.activo === false || !(+m.num)) activar(m); if (f.precioVenta) m.precioVenta = f.precioVenta; }
     if (!f.unidades) asegurarVariante(m, f.tipoTalle === 'unico' ? 'U' : TALLES[f.tipoTalle][0]);
     for (const [t, q] of Object.entries(f.talles)) { const s = asegurarVariante(m, t); mov(s.id, q, 'ajuste', 'alta'); etq.push({ sid: s.id, qty: q }); }
     sincronizarVariantes(m);
@@ -1764,7 +1797,7 @@ function renderVentas() {
 }
 
 // ─── 12. CONFIG ───────────────────────────────────────────────
-function renderConfig() { $('#cf-version').textContent = 'Versión ' + EMMA_VERSION; $('#cf-rollo').value = rolloFormato(); }
+function renderConfig() { $('#cf-version').textContent = 'Versión ' + EMMA_VERSION; $('#cf-rollo').value = rolloFormato(); if (document.activeElement !== $('#cf-dias')) $('#cf-dias').value = diasArchivo(); }
 
 // ─── 13. ACCIONES (eventos delegados: los botones pasan IDs, nunca nombres) ───
 const ACT = {
@@ -1827,9 +1860,14 @@ const ACT = {
   stkLiberar: d => {
     const m = modeloById(d.id); if (!m) return;
     const n = totalModelo(m);
-    if (!confirm(`¿Liberar ${m.num} · ${m.nombre}?\n\nDeja de aparecer en Pedidos. NO se borra: su historial queda y el número no se vuelve a usar.${n > 0 ? `\n\n⚠️ Todavía figura con ${n} unidades.` : ''}`)) return;
-    mutStock(() => { m.activo = false; sincronizarVariantes(m); });
-    UI.stk.ab = null; toast('✓ Liberado'); render(); pintarDatalist();
+    if (!confirm(`¿Archivar ${numTxt(m)} · ${m.nombre}?\n\nDeja de aparecer en Pedidos y en Stock. NO se borra: su historial queda y el número no se vuelve a usar.${n > 0 ? `\n\n⚠️ Todavía figura con ${n} unidades.` : ''}`)) return;
+    mutStock(() => { m.activo = false; m.archivado = ahoraISO(); sincronizarVariantes(m); });
+    UI.stk.ab = null; toast('📦 Archivado'); render(); pintarDatalist();
+  },
+  stkReactivar: d => {
+    const m = modeloById(d.id); if (!m) return;
+    mutStock(() => { activar(m); variantesDe(m.id).forEach(s => { s.activo = true; }); sincronizarVariantes(m); });
+    toast(`✓ ${m.num} · ${m.nombre} vuelve a estar en uso`); render(); pintarDatalist();
   },
   stkAlta: () => stkAlta(),
   vtLiveSel: d => { UI.vt.live = d.id; render(); window.scrollTo(0, 0); },
@@ -1848,6 +1886,7 @@ const CHG = {
   rcTalle: (d, el) => { const { mo } = recibirDe(d); if (!mo) return; const q = Math.max(0, parseInt(el.value, 10) || 0); if (q) mo.talles[d.t] = q; else delete mo.talles[d.t]; saveCompras(); render(); },
   llMo: (d, el) => { const c = compraById(d.cid), l = lineaDe(c, d.lid), mo = l && l.modelos.find(x => x.k === el.value); if (mo) $('#ll-t').innerHTML = optsLista(TALLES[mo.tipoTalle || 'unico'], null, talleTxt); },
   etqFmt: (d, el) => { try { localStorage.setItem(ROLLO_KEY, el.value); } catch (e) {} if ($('#cf-rollo')) $('#cf-rollo').value = el.value; if ($('#etq-fmt')) $('#etq-fmt').value = el.value; },
+  cfgDias: (d, el) => { const n = Math.max(1, parseInt(el.value, 10) || 15); saveConfig({ archivarDias: n }); el.value = n; toast(`✓ Se archivan a los ${n} días sin stock`); },
   stkCat: (d, el) => { UI.stk.cat = el.value; render(); },
   vtLive: (d, el) => { UI.vt.live = el.value; render(); },
   vtMes: (d, el) => { UI.vt.mes = el.value; render(); }
