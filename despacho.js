@@ -403,7 +403,7 @@ function verPedidoDesp(id) {
   const cuerpo = p.cambio
     ? `<div class="box small"><div>⬅️ <b>Entró:</b> ${esc(p.cambio.entra.join(', ') || '—')}</div><div style="margin-top:4px">➡️ <b>Sale:</b> ${esc(p.cambio.sale.join(', ') || '—')}</div></div>`
     : (p.prendas.length ? p.prendas.map(pr => `<div class="pr"><div class="pr-n">${esc(pr.nombre)}${pr.codigo ? '<small>' + esc(pr.codigo) + '</small>' : ''}</div><span class="mono">x${pr.qty || 1}</span><div class="pr-p">${precioHTML(pr)}</div></div>`).join('') : '<div class="small muted">Sin prendas</div>')
-      + (t.descMonto ? `<div class="tot-l" style="color:var(--ac)"><span>🎉 Descuento ${t.desc}%</span><span>−${fmt(t.descMonto)}</span></div>` : '')
+      + (typeof descLineasHTML === 'function' ? descLineasHTML(t) : t.descMonto ? `<div class="tot-l" style="color:var(--ac)"><span>🎉 Descuento ${t.desc}%</span><span>−${fmt(t.descMonto)}</span></div>` : '')
       + (t.saldo ? `<div class="tot-l" style="color:var(--ok)"><span>💰 Saldo a favor</span><span>−${fmt(t.saldo)}</span></div>` : '')
       + `<div class="tot-l big"><span>Total</span><span>${fmt(t.total)}</span></div>`;
   showModal(`<h3>#${p.num} · ${esc(c.nombre)}</h3>

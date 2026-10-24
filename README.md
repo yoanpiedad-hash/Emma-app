@@ -10,6 +10,7 @@ Emma Pedidos y Emma Gestión — Emma Indumentaria.
 5. `python3 herramientas/agregar-etiquetas.py index.html` (etiqueta al cargar prenda, versión y recarga automática)
 6. `python3 herramientas/agregar-live.py index.html` (Live simple y etiqueta general)
 7. `python3 herramientas/agregar-gestion.py index.html` (botón a Gestión y `version.js`)
+8. `python3 herramientas/agregar-etapa4.py index.html` (`promos.js` + `pedidos4.js`: talles, escáner de prenda, promos y VIP)
 
 ## Emma Gestión
 `gestion.html` es la fuente directa (ya no se genera desde `claude/emma-gestion.html`). Usa el mismo login y el mismo `nube.js`; las compras viajan con la parte privada encriptada con el código de acceso. Los borradores de importación/compra local van en config `gestionBorradores`.
@@ -18,3 +19,7 @@ Emma Pedidos y Emma Gestión — Emma Indumentaria.
 `version.js` (`EMMA_VERSION`) la muestran Pedidos y Gestión. En cada publicación: cambiarla y subir `CACHE` en `sw.js`.
 
 `nube.js` sincroniza con Supabase; `despacho.js` es la pestaña Despacho (reemplaza a Salidas); `pagos.js` es la pestaña Pagos; `escaner.js` la cámara y las etiquetas QR.
+
+## Pruebas
+- `node herramientas/prueba-promos.js` (cálculo del pedido)
+- `herramientas/prueba-etapa2.py`, `prueba-etapa3.py`, `prueba-etapa4.py` (Playwright contra la base real con blindaje; ver traspaso)

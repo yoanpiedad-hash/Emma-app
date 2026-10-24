@@ -1845,6 +1845,11 @@ const esActivo = est => !['liberado', 'abandonado'].includes(est);
 const esCobrado = est => est === 'listo' || est === 'enviado';
 /** Mismo cálculo que Emma Pedidos. */
 function calcPedido(p, live) {
+  if (typeof calcularPedido === 'function') {
+    const s = p.promoCalc || {};
+    const r = calcularPedido(p, { promos: s.promos || [], modeloDe: id => (stockById(id) || {}).modeloId, liveId: p.liveId, hoy: s.fecha || hoyISO(), livePct: live ? live.descuento : 0, vipPct: s.vipPct || 0 });
+    return { bruto: r.bruto, art: r.art, desc: r.livePct, sub: r.sub, total: r.total };
+  }
   let bruto = 0, art = 0;
   for (const pr of p.prendas || []) { const q = pr.qty || 1; bruto += pr.precio * q; art += q; }
   const desc = (p.descuento !== null && p.descuento !== undefined && p.descuento !== '') ? +p.descuento : (+(live && live.descuento) || 0);

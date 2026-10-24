@@ -92,7 +92,7 @@ cuerpoPedido = function (p, c, live, t, h) {
     <div class="sec">
       <div class="row"><span class="small muted">Descuento del pedido (%)</span><input type="number" inputmode="numeric" style="width:90px" id="dp-${id}" data-chg="descPedido" data-id="${id}" value="${p.descuento ?? ''}" placeholder="${live.descuento ? 'live ' + live.descuento : '0'}"><span class="small muted">vacío = el del live · 0 = sin descuento</span></div>
       <div class="mt">
-        ${t.descMonto ? `<div class="tot-l"><span>Subtotal</span><span>${fmt(t.bruto)}</span></div><div class="tot-l" style="color:var(--ac)"><span>🎉 Descuento ${t.desc}%</span><span>−${fmt(t.descMonto)}</span></div>` : ''}
+        ${typeof descLineasHTML === 'function' ? descLineasHTML(t) : (t.descMonto ? `<div class="tot-l"><span>Subtotal</span><span>${fmt(t.bruto)}</span></div><div class="tot-l" style="color:var(--ac)"><span>🎉 Descuento ${t.desc}%</span><span>−${fmt(t.descMonto)}</span></div>` : '')}
         ${saldoLinea}
         <div class="tot-l big"><span>Total</span><span>${fmt(t.total)}</span></div>
       </div>
