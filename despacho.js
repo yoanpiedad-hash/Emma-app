@@ -59,8 +59,13 @@ function abiertosDe(cid) {
 const principal = ps => [...ps].sort((a, b) => (b.fechas.creado || '').localeCompare(a.fechas.creado || '') || b.num - a.num)[0];
 const numsTxt = ps => ps.map(p => '#' + p.num).join(' · ');
 
+/** Medio del pago según la cuenta: Mercado Pago lleva recargo; Efectivo es al retirar; el resto, transferencia. */
+const medioDe = cuenta => /mercado\s*pago/i.test(cuenta || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(cuenta || '') ? 'efectivo' : 'transferencia';
+const recargoMP = () => { const v = DB.config.mpRecargo; return v === undefined || v === null || v === '' ? 10 : Math.max(0, +v || 0); };
+/** Lo que tiene que transferir: pedidos + envío (si lo transfiere) + recargo de Mercado Pago. */
+function esperadoDe(base, env, cuenta) { const rec = medioDe(cuenta) === 'mercadopago' ? Math.round((base + env) * recargoMP() / 100) : 0; return { base, env, rec, total: base + env + rec }; }
 function marcarPago(p, cuenta, origen) {
-  const g = { id: uid('g'), pedidoId: p.id, clienteId: p.clienteId, cuenta, monto: p.cambio ? (p.cambio.cobrar || 0) : calc(p).total, fecha: ahoraISO(), origen: origen || 'despacho', antes: p.estado };
+  const g = { id: uid('g'), pedidoId: p.id, clienteId: p.clienteId, cuenta, medio: medioDe(cuenta), monto: p.cambio ? (p.cambio.cobrar || 0) : calc(p).total, fecha: ahoraISO(), origen: origen || 'despacho', antes: p.estado };
   DB.pagos.push(g);
   p.pago = { id: g.id, cuenta, fecha: g.fecha };
   if (p.estado === 'pendiente') setEstado(p, 'listo');
@@ -220,12 +225,12 @@ function salidaHTML(c, ps) {
   let pago = '';
   if (yaPag.length) pago += `<div class="small mt" style="color:var(--ok)">✓ Ya pagó: ${yaPag.map(p => '#' + p.num + ' (' + esc(p.pago.cuenta) + (p.pago.conEnvio ? ', con envío' : '') + ')').join(' · ')}</div>`;
   if (porCob.length) {
-    const tar = +cfg('tarifaEnvio') || 0, base = porCob.reduce((s2, p) => s2 + calc(p).total, 0), env = (t === 'cadeteria' || t === 'pago') && f.conEnvio ? tar : 0, auto = base + env;
+    const tar = +cfg('tarifaEnvio') || 0, base = porCob.reduce((s2, p) => s2 + calc(p).total, 0), env = (t === 'cadeteria' || t === 'pago') && f.conEnvio ? tar : 0, esp = esperadoDe(base, env, f.cuenta), auto = esp.total;
     const ctas = cuentasPago(), extra = f.cuenta && f.cuenta !== 'sin' && !ctas.includes(f.cuenta) ? [f.cuenta] : [];
     pago += `<label class="lb mt">¿Cómo pagó${porCob.length < ps.length ? ' ' + numsTxt(porCob) : ''}? *</label>
       <div class="row">${ctas.concat(extra).map(cta => `<button class="b sm seg${f.cuenta === cta ? ' on' : ''}" data-act="despCuenta" data-c="${esc(cta)}">${esc(cta)}</button>`).join('')}<button class="b sm gh" data-act="despCuenta" data-c="">Otra…</button>${t === 'pago' ? '' : `<button class="b sm seg${f.cuenta === 'sin' ? ' on' : ''}" data-act="despCuenta" data-c="sin">Sin confirmar</button>`}</div>`;
     if (t === 'cadeteria' || t === 'pago') pago += `<div class="row mt"><button class="b sm seg${f.conEnvio ? ' on' : ''}" data-act="despConEnvio">${f.conEnvio ? '✓' : '＋'} La transferencia incluye el envío de cadetería (${fmt(tar)})</button></div>`;
-    if (f.cuenta && f.cuenta !== 'sin') pago += `<div class="row mt"><label class="small muted" for="dsf-transf">Monto transferido</label><input id="dsf-transf" type="number" inputmode="numeric" data-inp="despF" data-f="transf" value="${esc(f.transfEdit ? f.transf : String(auto))}" style="width:130px"><span class="small muted">pedido ${fmt(base)}${env ? ' + envío ' + fmt(env) : ''}</span></div>`;
+    if (f.cuenta && f.cuenta !== 'sin') pago += `<div class="row mt"><label class="small muted" for="dsf-transf">Monto transferido</label><input id="dsf-transf" type="number" inputmode="numeric" data-inp="despF" data-f="transf" value="${esc(f.transfEdit ? f.transf : String(auto))}" style="width:130px"><span class="small muted">pedido ${fmt(base)}${env ? ' + envío ' + fmt(env) : ''}${esp.rec ? ' + Mercado Pago ' + recargoMP() + '% ' + fmt(esp.rec) : ''}</span></div>`;
     if (f.cuenta === 'sin') pago += '<div class="small muted mt">Sale sin pago marcado: queda anotado en el paquete.</div>';
   }
   if (t === 'pago' && !porCob.length) pago += '<div class="small muted mt">Los pedidos tildados ya tienen el pago marcado.</div>';
@@ -290,11 +295,16 @@ function crearPaquete(c, ps, tipo, f, sinPago) {
  *  y la diferencia con lo calculado, así la suma da lo transferido. */
 function registrarPagos(ps, f, conEnvio, paquete) {
   const tar = +cfg('tarifaEnvio') || 0, env = conEnvio ? tar : 0;
-  const base = ps.reduce((s2, p) => s2 + calc(p).total, 0), transf = f.transfEdit ? num(f.transf) : base + env;
+  const base = ps.reduce((s2, p) => s2 + calc(p).total, 0), esp = esperadoDe(base, env, f.cuenta);
+  const transf = f.transfEdit || f.transf !== undefined && f.transf !== '' && f.origen === 'mabel' ? num(f.transf) : esp.total;
   const orden = [...ps].sort((a, b) => (a.fechas.creado || '').localeCompare(b.fechas.creado || '') || a.num - b.num);
-  const gs = orden.map(p => marcarPago(p, f.cuenta, paquete ? 'despacho' : 'pago'));
+  const gs = orden.map(p => marcarPago(p, f.cuenta, f.origen || (paquete ? 'despacho' : 'pago')));
   const g0 = gs[gs.length - 1];
-  g0.envio = env; g0.ajuste = transf - base - env; g0.monto = (+g0.monto || 0) + env + g0.ajuste;
+  // envio = lo que incluye de cadetería · recargo = Mercado Pago · ajuste = diferencia contra lo esperado · monto = lo realmente transferido (sumando las filas)
+  g0.envio = env; g0.recargo = esp.rec; g0.esperado = esp.total; g0.ajuste = transf - esp.total; g0.monto = (+g0.monto || 0) + env + esp.rec + g0.ajuste;
+  if (f.nota) g0.nota = String(f.nota).slice(0, 200);
+  if (f.cobroId) gs.forEach(g => { g.cobroId = f.cobroId; });
+  if (f.comprobante) g0.comprobante = f.comprobante;
   if (paquete) gs.forEach(g => { g.paqueteId = paquete.id; });
   if (conEnvio && !paquete) orden.forEach(p => { p.pago.conEnvio = true; p.entrega = 'cadeteria'; p.cobroEnvio = 'pago'; p.cobroMonto = 0; }); // pagó el envío de cadetería: sale por cadetería
   savePagos(); guardar();

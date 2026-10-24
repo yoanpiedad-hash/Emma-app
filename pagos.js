@@ -156,8 +156,7 @@ Object.assign(ACT, {
     const ps = [...P.sel].map(pedById).filter(p => p && !pagado(p));
     if (!ps.length) return;
     const c = cliById(ps[0].clienteId) || { nombre: '?' };
-    const gs = ps.map(p => marcarPago(p, cta, 'pagos'));
-    savePagos(); guardar();
+    const gs = registrarPagos(ps, { cuenta: cta, origen: 'pagos' }, false, null);   // un solo pago (con recargo si es Mercado Pago)
     P.ult = { ids: gs.map(g => g.id), nombre: c.nombre, cuenta: cta, total: gs.reduce((s, g) => s + (+g.monto || 0), 0), nums: ps.map(p => '#' + p.num).join(' · ') };
     P.elegido = null; P.sel = new Set(); P.q = '';
     const q = $('#pg-q'); if (q) q.value = '';

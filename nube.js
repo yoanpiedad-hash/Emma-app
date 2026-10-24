@@ -20,7 +20,7 @@ const NUBE = {
   compras: []
 };
 // compras: la escribe solo Gestión (parte privada encriptada en el navegador); Pedidos solo la lee
-const ORDEN = ['clientas', 'lives', 'promos', 'modelos', 'stock', 'pedidos', 'movimientos', 'mostrador', 'config', 'paquetes', 'pagos', 'compras'];
+const ORDEN = ['clientas', 'lives', 'promos', 'modelos', 'stock', 'pedidos', 'movimientos', 'mostrador', 'config', 'paquetes', 'pagos', 'compras', 'cobros', 'conversaciones'];
 const TODAS = ORDEN;
 const SIN_BORRADO = new Set(['movimientos', 'config']);
 const PK = { config: 'clave' };
@@ -75,6 +75,14 @@ const COL = {
     lista: () => NUBE.compras || [],
     fila: c => ({ id: String(c.id), datos: c })
   },
+  cobros: {
+    lista: () => DB.cobros || [],
+    fila: c => ({ id: c.id, datos: c })
+  },
+  conversaciones: {
+    lista: () => DB.conversaciones || [],
+    fila: c => ({ id: c.id, datos: c })
+  },
   config: {
     lista: () => Object.entries(DB.config || {}).map(([clave, valor]) => ({ id: clave, clave, valor })),
     fila: c => ({ clave: c.clave, valor: c.valor === undefined ? null : c.valor }),
@@ -84,7 +92,7 @@ const COL = {
 // La fila "comparable": solo las columnas que escribimos (sin actualizado, actualizado_por)
 function normal(col, r) {
   const ej = { clientas: ['id', 'nombre', 'tel_key', 'datos'], lives: ['id', 'nombre', 'fecha', 'datos'],
-    pedidos: ['id', 'live_id', 'clienta_id', 'num', 'codigo', 'estado', 'entrega', 'datos'], stock: ['id', 'codigo', 'datos'], modelos: ['id', 'num', 'datos'], promos: ['id', 'datos'],
+    pedidos: ['id', 'live_id', 'clienta_id', 'num', 'codigo', 'estado', 'entrega', 'datos'], stock: ['id', 'codigo', 'datos'], modelos: ['id', 'num', 'datos'], promos: ['id', 'datos'], cobros: ['id', 'datos'], conversaciones: ['id', 'datos'],
     movimientos: ['id', 'stock_id', 'fecha', 'cantidad', 'motivo', 'ref'], mostrador: ['id', 'fecha', 'datos'], config: ['clave', 'valor'],
     compras: ['id', 'datos'], paquetes: ['id', 'tipo', 'fecha', 'pedidos', 'grisal_orden', 'datos'],
     pagos: ['id', 'pedido_id', 'cuenta', 'monto', 'fecha', 'comprobante', 'datos'] }[col];
@@ -129,7 +137,7 @@ let _guardCache = null;
 function guardarCache() {
   clearTimeout(_guardCache);
   _guardCache = setTimeout(() => {
-    kvSet('cache', { fecha: new Date().toISOString(), datos: { promos: DB.promos, modelos: DB.modelos, clientes: DB.clientes, lives: DB.lives, stock: DB.stock, movimientos: DB.movimientos, mostrador: DB.mostrador, config: DB.config, paquetes: DB.paquetes, pagos: DB.pagos }, compras: NUBE.compras, marca: NUBE.marca }).catch(() => {});
+    kvSet('cache', { fecha: new Date().toISOString(), datos: { cobros: DB.cobros, conversaciones: DB.conversaciones, promos: DB.promos, modelos: DB.modelos, clientes: DB.clientes, lives: DB.lives, stock: DB.stock, movimientos: DB.movimientos, mostrador: DB.mostrador, config: DB.config, paquetes: DB.paquetes, pagos: DB.pagos }, compras: NUBE.compras, marca: NUBE.marca }).catch(() => {});
   }, 2000);
 }
 const pendientes = () => ORDEN.reduce((n, c) => n + (NUBE.out[c] ? NUBE.out[c].size : 0), 0);
@@ -149,7 +157,7 @@ function nubeDiff(col) {
     ult.delete(id); filas.delete(id); out.set(id, f);
   }
 }
-const QUE_COLS = { emma_promos: ['promos'], emma_modelos: ['modelos'], emma_compras: ['compras'], emma_clientes: ['clientas'], emma_lives: ['lives', 'pedidos'], emma_stock: ['stock'], emma_movimientos: ['movimientos'], emma_mostrador: ['mostrador'], emma_config: ['config'], emma_paquetes: ['paquetes'], emma_pagos: ['pagos'] };
+const QUE_COLS = { emma_cobros: ['cobros'], emma_conversaciones: ['conversaciones'], emma_promos: ['promos'], emma_modelos: ['modelos'], emma_compras: ['compras'], emma_clientes: ['clientas'], emma_lives: ['lives', 'pedidos'], emma_stock: ['stock'], emma_movimientos: ['movimientos'], emma_mostrador: ['mostrador'], emma_config: ['config'], emma_paquetes: ['paquetes'], emma_pagos: ['pagos'] };
 /** La app llama a esto en lugar de escribir en localStorage. */
 function nubeCambio(key) {
   const cols = QUE_COLS[key]; if (!cols || !NUBE.listo) return;
@@ -233,6 +241,8 @@ async function cargarTodo() {
     .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.id).localeCompare(String(b.id)));
   DB.modelos = t.modelos.map(r => { recordar('modelos', r); return r.datos; });
   DB.promos = t.promos.map(r => { recordar('promos', r); return r.datos; });
+  DB.cobros = t.cobros.map(r => { recordar('cobros', r); return r.datos; });
+  DB.conversaciones = t.conversaciones.map(r => { recordar('conversaciones', r); return r.datos; });
   DB.stock = t.stock.map(r => { recordar('stock', r); return r.datos; });
   DB.movimientos = t.movimientos.map(r => { recordar('movimientos', r); return objDe('movimientos', r); }).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
   DB.mostrador = t.mostrador.map(r => { recordar('mostrador', r); return r.datos; });
@@ -278,6 +288,8 @@ function aplicarFila(col, r, propia) {
   else if (col === 'stock') reemplazar(DB.stock, r.datos);
   else if (col === 'modelos') { if (!DB.modelos) DB.modelos = []; reemplazar(DB.modelos, r.datos); }
   else if (col === 'promos') { if (!DB.promos) DB.promos = []; reemplazar(DB.promos, r.datos); }
+  else if (col === 'cobros') { if (!DB.cobros) DB.cobros = []; reemplazar(DB.cobros, r.datos); }
+  else if (col === 'conversaciones') { if (!DB.conversaciones) DB.conversaciones = []; reemplazar(DB.conversaciones, r.datos); }
   else if (col === 'mostrador') reemplazar(DB.mostrador, r.datos);
   else if (col === 'paquetes') reemplazar(DB.paquetes, r.datos);
   else if (col === 'pagos') reemplazar(DB.pagos, r.datos);
