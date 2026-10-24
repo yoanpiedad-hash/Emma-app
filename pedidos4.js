@@ -131,9 +131,7 @@ mensajePedido = function (p) {
     const q = pr.qty || 1, x = q > 1 ? ' x' + q : '', tot = porPrenda.has(i) ? porPrenda.get(i) : pr.precio * q, lista = (pr.precioLista ?? pr.precio) * q;
     return lista > tot ? `- ${pr.nombre}${x}: ~${fmt(lista)}~ *${fmt(tot)}*` : `- ${pr.nombre}${x}: ${fmt(tot)}`;
   }).join('\n');
-  let msg = `Hola ${c.nombre}! 🛍️\n\n`;
-  if (live && live.fechaPago) msg += `📅 Fecha de pago: hasta ${live.fechaPago}\n\n`;
-  msg += `Tu pedido #${p.num}:\n${lineas}`;
+  let msg = `¡Hola ${c.nombre}! ¿Cómo estás? 😊\nTe paso el detalle de tu pedido #${p.num} 🛍️\n\n${lineas}`;
   const desc = [];
   t.promos.forEach(x => desc.push(`🎁 ${x.nombre}: -${fmt(x.monto)}`));
   if (t.descLive) desc.push(`🎉 Descuento live ${t.livePct}%: -${fmt(t.descLive)}`);
@@ -141,8 +139,10 @@ mensajePedido = function (p) {
   if (desc.length) msg += '\n\n' + desc.join('\n');
   if (t.saldo) msg += `\n💰 Saldo a favor: -${fmt(t.saldo)}`;
   msg += `\n\n*Total: ${fmt(t.total)}* ✅`;
+  if (live && live.fechaPago) msg += `\n📅 Podés pagarlo hasta ${live.fechaPago}`;
   const pago = cfg('msgPago');
   if (pago) msg += '\n\n' + pago;
+  msg += '\n\n¡Gracias por elegir Emma Indumentaria! 💕';
   return msg;
 };
 
