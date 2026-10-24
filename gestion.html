@@ -152,6 +152,9 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .tl.z{color:var(--li);text-decoration:line-through;opacity:.7}
 .vt{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd);flex-wrap:wrap}
 .vt .tt{font:800 16px var(--mono);min-width:44px}
+.gl{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13.5px;flex-wrap:wrap}
+.gl.tot{border-bottom:none;border-top:2px solid var(--bd);margin-top:8px;font-size:16px;font-weight:800}
+.gl.tot b{font-size:20px}
 .rt tr.sub td{background:transparent;font-size:12.5px;padding-left:18px}
 /* Etiqueta de prenda: solo se ve al imprimir */
 #print-area{display:none}
@@ -216,6 +219,7 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
   <button class="tab" data-act="tab" data-t="local">🛍️ Compra local</button>
   <button class="tab" data-act="tab" data-t="hist">📋 Historial</button>
   <button class="tab" data-act="tab" data-t="stock">📦 Stock</button>
+  <button class="tab" data-act="tab" data-t="promos">🎁 Promos y VIP</button>
   <button class="tab" data-act="tab" data-t="ventas">📈 Ventas</button>
   <button class="tab" data-act="tab" data-t="config">⚙️ Config</button>
 </nav>
@@ -317,6 +321,24 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
   </div>
 </section>
 
+<!-- ═════════ PROMOS Y VIP ═════════ -->
+<section class="panel" id="p-promos">
+  <div class="row mb"><button class="b pri" data-act="promoNueva">+ Nueva promoción</button><span class="small muted grow">Precio especial, combos "2 por $X" y 3x2. Se recalculan solas en cada pedido; las prendas con precio a mano quedan afuera.</span></div>
+  <div id="pr-lista"></div>
+  <details class="card mt" id="vp-card">
+    <summary>⭐ Comunidad VIP <span class="muted small" style="font-weight:500">(descuento y mensaje de bienvenida)</span></summary>
+    <p class="small muted mb">Las clientas se marcan ⭐ VIP en su ficha de Pedidos. El descuento VIP se suma al del live, solo sobre las prendas sin promo.</p>
+    <div class="grid2">
+      <div><label class="lb">Descuento VIP (%)</label><input id="vp-pct" type="number" inputmode="numeric" min="0" max="50" data-chg="vipPct"></div>
+      <div><label class="lb">Link del grupo de WhatsApp</label><input id="vp-link" data-chg="vipGrupo" placeholder="https://chat.whatsapp.com/…"></div>
+      <div class="full"><label class="lb">Mensaje de bienvenida (usá {nombre} y {descuento})</label><textarea id="vp-msg" rows="7" data-chg="vipMsg"></textarea></div>
+    </div>
+    <div class="row mt"><button class="b sm gh" data-act="vipReset">↺ Volver al mensaje original</button></div>
+    <div class="sec-t">Así le llega</div>
+    <div id="vp-prev" class="prev" style="white-space:pre-wrap;display:block;font-size:13px"></div>
+  </details>
+</section>
+
 <!-- ═════════ VENTAS ═════════ -->
 <section class="panel" id="p-ventas"><div id="v-cont"></div></section>
 
@@ -361,6 +383,7 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 <script src="vendor/supabase-2.45.4.js"></script>
 <script src="vendor/qrcode-generator-1.4.4.js"></script>
 <script src="version.js"></script>
+<script src="promos.js"></script>
 <script src="nube.js"></script>
 <script>
 'use strict';
@@ -417,8 +440,8 @@ const nombreArchivo = s => String(s || 'archivo').replace(/[^\w\-áéíóúñÁ�
 
 // ─── 2. DATOS (en la nube, compartidos con Emma Pedidos) ──────
 // nube.js llena DB al entrar y sube cada cambio. put(clave) avisa qué colección cambió.
-const DB = { clientes: [], lives: [], modelos: [], stock: [], movimientos: [], mostrador: [], config: {}, paquetes: [], pagos: [] };
-const CLAVES_NUBE = new Set(['emma_modelos', 'emma_stock', 'emma_movimientos', 'emma_config', 'emma_compras']);
+const DB = { clientes: [], lives: [], promos: [], modelos: [], stock: [], movimientos: [], mostrador: [], config: {}, paquetes: [], pagos: [] };
+const CLAVES_NUBE = new Set(['emma_promos', 'emma_modelos', 'emma_stock', 'emma_movimientos', 'emma_config', 'emma_compras']);
 function put(k) { if (CLAVES_NUBE.has(k)) nubeCambio(k); return true; }
 const cfg = (k, def) => (DB.config[k] ?? def);
 /** Config se comparte con Pedidos: cada clave es una fila aparte en la nube, así no se pisan. */
@@ -904,6 +927,7 @@ function render() {
     else if (UI.tab === 'hist') renderHist();
     else if (UI.tab === 'stock') renderStock();
     else if (UI.tab === 'ventas') renderVentas();
+    else if (UI.tab === 'promos') renderPromos();
     else if (UI.tab === 'config') renderConfig();
   });
 }
@@ -1677,6 +1701,133 @@ function ofrecerReimpresion(m, motivo) {
   if (confirm(`${motivo}: ¿reimprimir las etiquetas de ${m.num} · ${m.nombre}? (${items.reduce((n, e) => n + e.qty, 0)} en stock)`)) abrirEtiquetas(items);
 }
 
+// ─── PROMOCIONES Y VIP ────────────────────────────────────────
+const VIP_MSG = '{nombre}, ¿cómo estás? 😊\nTe escribimos para contarte que desde hoy sos *clienta VIP* y parte de la *Comunidad VIP de Emma* ⭐\nEs un grupito de clientas que nos acompañan hace tiempo, que compran seguido y con las que da gusto trabajar. Y vos sos una de ellas.\nTu beneficio: *{descuento}% de descuento VIP* en todos tus pedidos, de forma automática. Además, vas a ser de las primeras en enterarte de novedades y promos.\n¡Bienvenida a la comunidad! 💕';
+const vipPct = () => Math.max(0, +cfg('vipPct', 5) || 0);
+const vipMsg = () => cfg('vipMensaje', null) || VIP_MSG;
+function vipTexto(nombre) {
+  const link = String(cfg('vipGrupo', '') || '').trim();
+  return vipMsg().replace(/\{nombre\}/g, nombre).replace(/\{descuento\}/g, vipPct()) + (link ? '\n\nSumate al grupo: ' + link : '');
+}
+const liveActual = () => DB.lives.find(l => l.id === cfg('liveActualId')) || null;
+function estadoPromo(p) {
+  const hoy = hoyISO();
+  if (p.activa === false) return ['Pausada', ''];
+  if (p.hasta && hoy > p.hasta) return ['Vencida', 'li'];
+  if (p.desde && hoy < p.desde) return ['Desde el ' + fechaUY(p.desde, 1), 'pe'];
+  if (p.liveId) { const l = DB.lives.find(x => x.id === p.liveId); return [p.liveId === cfg('liveActualId') ? 'Activa en este live' : 'Era de otro live', p.liveId === cfg('liveActualId') ? 'ok' : 'li']; }
+  return ['Activa', 'ok'];
+}
+/** modeloId → { costo, min } de la última compra recibida que lo trajo. */
+function mapaMinimos() {
+  const r = new Map();
+  [...COMPRAS].reverse().forEach(c => {
+    if (c._bloqueada || c.estado === 'pedida') return;
+    calcCompra(c);
+    c.lineas.forEach(l => { if (l._costo > 0) (l.modelos || []).forEach(mo => { if (mo.mid) r.set(mo.mid, { costo: l._costo, min: l._min }); }); });
+  });
+  return r;
+}
+function renderPromos() {
+  $('#vp-pct').value = vipPct();
+  if (document.activeElement !== $('#vp-link')) $('#vp-link').value = cfg('vipGrupo', '') || '';
+  if (document.activeElement !== $('#vp-msg')) $('#vp-msg').value = vipMsg();
+  $('#vp-prev').textContent = vipTexto('María');
+  const L = [...(DB.promos || [])].sort((a, b) => (estadoPromo(a)[1] === 'ok' ? 0 : 1) - (estadoPromo(b)[1] === 'ok' ? 0 : 1) || String(b.creado || '').localeCompare(String(a.creado || '')));
+  $('#pr-lista').innerHTML = L.length ? L.map(p => {
+    const [est, cl] = estadoPromo(p), id = esc(p.id);
+    const mods = (p.modelos || []).map(mid => { const m = modeloById(mid); return `<span class="chip">${m ? esc(numTxt(m)) + ' · ' + esc(m.nombre) : '?'}</span>`; }).join(' ');
+    return `<div class="ic" style="cursor:default">
+      <div class="row"><span class="t grow">🎁 ${esc(p.nombre)}</span><span class="chip ${cl}">${esc(est)}</span></div>
+      <div class="s"><b class="c-ac">${esc(PROMO_TIPOS[p.tipo])}: ${esc(promoTxt(p))}</b>${p.desde || p.hasta ? `<span>${p.desde ? 'desde ' + fechaUY(p.desde, 1) : ''}${p.hasta ? ' hasta ' + fechaUY(p.hasta, 1) : ''}</span>` : ''}</div>
+      <div class="mt" style="display:flex;flex-wrap:wrap;gap:4px">${mods || '<span class="small muted">Sin prendas</span>'}</div>
+      <div class="row mt"><button class="b sm" data-act="promoAct" data-id="${id}">${p.activa === false ? '▶️ Activar' : '⏸️ Pausar'}</button><button class="b sm" data-act="promoEdit" data-id="${id}">✏️ Editar</button><span class="grow"></span><button class="b sm dan" data-act="promoDel" data-id="${id}">🗑️</button></div>
+    </div>`;
+  }).join('') : '<div class="empty">Todavía no hay promociones. Las que crees acá se aplican solas en los pedidos (Pedidos las usa desde la próxima etapa).</div>';
+}
+let PF = null;   // promo en edición
+function promoForm(p) {
+  PF = p ? JSON.parse(JSON.stringify(p)) : { id: null, nombre: '', tipo: 'especial', modo: 'pct', valor: '', n: 2, x: '', m: 1, modelos: [], activa: true, desde: '', hasta: '', liveId: null };
+  pintarPromoForm();
+}
+function pintarPromoForm() {
+  const p = PF, la = liveActual();
+  const campos = p.tipo === 'especial'
+    ? `<div><label class="lb">Cómo</label><select data-chg="pf" data-f="modo"><option value="pct"${p.modo === 'pct' ? ' selected' : ''}>% de descuento</option><option value="precio"${p.modo === 'precio' ? ' selected' : ''}>Precio nuevo</option></select></div>
+       <div><label class="lb">${p.modo === 'pct' ? 'Porcentaje' : 'Precio nuevo ($)'}</label><input type="number" inputmode="numeric" data-chg="pf" data-f="valor" value="${esc(p.valor)}" placeholder="${p.modo === 'pct' ? 'ej: 20' : 'ej: 590'}"></div>`
+    : p.tipo === 'combo'
+      ? `<div><label class="lb">Llevando</label><input type="number" inputmode="numeric" data-chg="pf" data-f="n" value="${esc(p.n)}" placeholder="2"></div><div><label class="lb">Por ($)</label><input type="number" inputmode="numeric" data-chg="pf" data-f="x" value="${esc(p.x)}" placeholder="ej: 1200"></div>`
+      : `<div><label class="lb">Lleva</label><input type="number" inputmode="numeric" data-chg="pf" data-f="n" value="${esc(p.n)}" placeholder="3"></div><div><label class="lb">Paga</label><input type="number" inputmode="numeric" data-chg="pf" data-f="m" value="${esc(p.m)}" placeholder="2"></div>`;
+  showModal(`<h3>🎁 ${p.id ? 'Editar' : 'Nueva'} promoción</h3>
+    <div class="grid2">
+      <div class="full"><label class="lb">Nombre (lo ve la clienta en el WhatsApp)</label><input data-chg="pf" data-f="nombre" value="${esc(p.nombre)}" placeholder="ej: Shorts 2 por $1.200"></div>
+      <div class="full"><label class="lb">Tipo</label><select data-chg="pf" data-f="tipo">${Object.entries(PROMO_TIPOS).map(([k, v]) => `<option value="${k}"${k === p.tipo ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+      ${campos}
+    </div>
+    <div class="sec-t">Prendas de la promo</div>
+    <div class="row"><input id="pf-mod" class="grow" list="dl-modelos" placeholder="Número o nombre…" autocomplete="off" data-enter="pfAddMod"><button class="b" data-act="pfAddMod">+ Agregar</button></div>
+    <div class="row mt">${p.tipo !== 'especial' ? '<button class="b sm gh" data-act="pfCat">+ Toda una categoría</button><select id="pf-cat" style="width:auto">' + optsCat('Short') + '</select>' : ''}</div>
+    <div class="mt" style="display:flex;flex-wrap:wrap;gap:4px">${p.modelos.map(mid => { const m = modeloById(mid); return `<span class="chip ac">${m ? esc(numTxt(m)) + ' · ' + esc(m.nombre) + ' · ' + fmtD(m.precioVenta) : '?'} <a href="#" data-act="pfDelMod" data-id="${esc(mid)}" style="color:inherit;text-decoration:none">✕</a></span>`; }).join('') || '<span class="small muted">Agregá al menos una prenda</span>'}</div>
+    <div class="sec-t">Cuándo vale</div>
+    <div class="grid2">
+      <div><label class="lb">Desde (opcional)</label><input type="date" data-chg="pf" data-f="desde" value="${esc(p.desde || '')}"></div>
+      <div><label class="lb">Hasta (opcional)</label><input type="date" data-chg="pf" data-f="hasta" value="${esc(p.hasta || '')}"></div>
+    </div>
+    ${la ? `<label class="row small mt"><input type="checkbox" data-chg="pfLive"${p.liveId ? ' checked' : ''}> Solo en este live (${esc(la.nombre)})</label>` : ''}
+    <label class="row small mt"><input type="checkbox" data-chg="pf" data-f="activa"${p.activa !== false ? ' checked' : ''}> Activa</label>
+    <div class="err" id="pf-err"></div>
+    <div class="row mt"><button class="b pri" data-act="pfGuardar">✓ Guardar promoción</button><button class="b gh" data-act="closeModal">Cancelar</button></div>`);
+  $('#mbox').dataset.tipo = 'promo';
+}
+function pfGuardar() {
+  const p = PF, err = m => { $('#pf-err').textContent = m; };
+  if (!p.modelos.length) return err('Agregá al menos una prenda.');
+  if (p.tipo === 'especial') { const v = num(p.valor); if (!(v > 0) || (p.modo === 'pct' && v >= 100)) return err('Poné el porcentaje (1 a 99) o el precio nuevo.'); }
+  if (p.tipo === 'combo' && (!(+p.n >= 2) || !(num(p.x) > 0))) return err('Combo: llevando 2 o más, por un precio.');
+  if (p.tipo === 'nxm' && (!(+p.n >= 2) || !(+p.m >= 1) || +p.m >= +p.n)) return err('Lleva N, paga M: M tiene que ser menor que N (ej: 3x2).');
+  if (p.desde && p.hasta && p.hasta < p.desde) return err('La fecha "hasta" es anterior a "desde".');
+  p.nombre = String(p.nombre || '').trim() || `${PROMO_TIPOS[p.tipo]} ${promoTxt(p)}`;
+  // Superposición: una prenda en una sola promo activa
+  const otras = (DB.promos || []).filter(o => o.id !== p.id && o.activa !== false && !(o.hasta && hoyISO() > o.hasta));
+  const sup = [];
+  for (const o of otras) for (const mid of p.modelos) if ((o.modelos || []).includes(mid)) { const m = modeloById(mid); sup.push(`• ${m ? numTxt(m) + ' ' + m.nombre : mid} ya está en "${o.nombre}"`); }
+  if (sup.length && !confirm(`Una prenda puede estar en una sola promo activa:\n\n${sup.slice(0, 8).join('\n')}\n\nSi seguís, en el pedido se aplica la primera que corresponda. ¿Guardar igual?`)) return;
+  // Bajo el costo o el mínimo
+  const mins = mapaMinimos(), bajo = [];
+  for (const mid of p.modelos) {
+    const m = modeloById(mid), x = mins.get(mid); if (!m || !x) continue;
+    const pv = num(m.precioVenta);
+    const ef = p.tipo === 'especial' ? (p.modo === 'pct' ? pv * (1 - num(p.valor) / 100) : num(p.valor)) : p.tipo === 'combo' ? num(p.x) / (+p.n || 1) : pv * (+p.m || 0) / (+p.n || 1);
+    if (ef < x.costo) bajo.push(`• 🔴 ${numTxt(m)} ${m.nombre}: queda en ${fmt(ef)} y cuesta ${fmt(x.costo)} (PERDÉS plata)`);
+    else if (ef < x.min) bajo.push(`• 🟠 ${numTxt(m)} ${m.nombre}: queda en ${fmt(ef)}, debajo del mínimo ${fmt(x.min)}`);
+  }
+  if (bajo.length && !confirm(`Ojo con el margen (precio por unidad con la promo):\n\n${bajo.slice(0, 10).join('\n')}\n\n¿Guardar igual?`)) return;
+  if (!DB.promos) DB.promos = [];
+  const o = Object.assign({}, p, { valor: num(p.valor), n: +p.n || 0, x: num(p.x), m: +p.m || 0, desde: p.desde || null, hasta: p.hasta || null, actualizada: ahoraISO() });
+  if (!o.id) { o.id = uid('pr'); o.creado = ahoraISO(); DB.promos.push(o); } else { const i = DB.promos.findIndex(x => x.id === o.id); if (i >= 0) DB.promos[i] = o; else DB.promos.push(o); }
+  put('emma_promos');
+  closeModal(); toast('✓ Promoción guardada'); render();
+}
+// ── Ganancia real del live: prendas − packaging − gastos extras ──
+const packPedido = () => Math.max(0, num(cfg('packagingPedido', 30)));
+const gastosDe = liveId => ((cfg('gastosLive', null) || {})[liveId]) || [];
+function guardarGastos(liveId, arr) { const g = Object.assign({}, cfg('gastosLive', null) || {}); if (arr.length) g[liveId] = arr; else delete g[liveId]; saveConfig({ gastosLive: g }); }
+function gananciaLiveHTML(live, r) {
+  const gan = r.ventaConCosto - r.costo, pk = packPedido(), packTot = r.nCob * pk, gs = gastosDe(live.id), extras = gs.reduce((s, x) => s + num(x.monto), 0);
+  const real = gan - packTot - extras, id = esc(live.id);
+  return `<div class="card"><div class="card-t">💰 Ganancia real del live</div>
+    <div class="gl"><span>Venta cobrada de prendas con costo</span><b class="mono">${fmt(r.ventaConCosto)}</b></div>
+    <div class="gl"><span>− Costo de esas prendas</span><b class="mono c-li">−${fmt(r.costo).replace('$', '$')}</b></div>
+    <div class="gl"><span><b>= Ganancia por prendas</b> <span class="muted small">(margen ${pctTxt(r.ventaConCosto ? gan / r.ventaConCosto * 100 : 0)})</span></span><b class="mono">${fmt(gan)}</b></div>
+    <div class="gl"><span>− Packaging: ${r.nCob} pedidos × $<input class="in-xs" type="number" inputmode="numeric" id="vt-pack" data-chg="vtPack" value="${pk}"></span><b class="mono c-li">−${fmt(packTot)}</b></div>
+    ${gs.map(x => `<div class="gl"><span>− ${esc(x.desc)} <button class="b sm gh" data-act="gastoDel" data-live="${id}" data-id="${esc(x.id)}" title="Quitar">✕</button></span><b class="mono c-li">−${fmt(x.monto)}</b></div>`).join('')}
+    <div class="row mt"><input id="vg-desc" class="grow" placeholder="Gasto extra (ej: Ayudante, Uber, flete)" data-enter="gastoAdd" data-live="${id}" style="min-width:160px"><input id="vg-monto" type="number" inputmode="numeric" placeholder="$" style="width:110px" data-enter="gastoAdd" data-live="${id}"><button class="b" data-act="gastoAdd" data-live="${id}">+ Sumar gasto</button></div>
+    <div class="gl tot"><span>= Ganancia real</span><b class="mono ${real >= 0 ? 'c-ok' : 'c-li'}">${fmt(real)}</b></div>
+    ${r.sinCosto ? `<div class="small muted mt">⚠️ ${r.sinCosto} prendas sin costo cargado (manuales o del stock viejo) no entran: la ganancia real puede ser un poco mayor.</div>` : ''}
+    <div class="small muted mt">Packaging y gastos se cuentan sobre los pedidos cobrados (listos / enviados). El costo por pedido vale para todos los lives.</div>
+  </div>`;
+}
+
 // ─── 11. VENTAS ───────────────────────────────────────────────
 const esActivo = est => !['liberado', 'abandonado'].includes(est);
 const esCobrado = est => est === 'listo' || est === 'enviado';
@@ -1723,8 +1874,9 @@ function resumenLive(l, costos) {
 }
 function balanceMensual(costos) {
   const M = new Map();
-  const g = ym => { if (!M.has(ym)) M.set(ym, { ym, lives: 0, nLives: 0, mostr: 0, cambios: 0, costo: 0, ventaConCosto: 0, sinCosto: 0, compras: 0 }); return M.get(ym); };
-  DB.lives.forEach(l => { const r = resumenLive(l, costos), row = g(mesDe(l.fecha)); row.nLives++; row.lives += r.cobrado; row.costo += r.costo; row.ventaConCosto += r.ventaConCosto; row.sinCosto += r.sinCosto; });
+  const g = ym => { if (!M.has(ym)) M.set(ym, { ym, lives: 0, nLives: 0, mostr: 0, cambios: 0, costo: 0, ventaConCosto: 0, sinCosto: 0, compras: 0, gastos: 0 }); return M.get(ym); };
+  const pk = packPedido();
+  DB.lives.forEach(l => { const r = resumenLive(l, costos), row = g(mesDe(l.fecha)); row.nLives++; row.lives += r.cobrado; row.costo += r.costo; row.ventaConCosto += r.ventaConCosto; row.sinCosto += r.sinCosto; row.gastos += r.nCob * pk + gastosDe(l.id).reduce((s, x) => s + num(x.monto), 0); });
   DB.mostrador.forEach(v => {
     const row = g(mesDe(v.fecha));
     if (v.tipo === 'venta') { row.mostr += +v.total || 0; costoPrendas(v.prendas, 1, costos, row); }
@@ -1754,8 +1906,7 @@ function renderVentas() {
         ${tile('Ticket promedio', r.n - r.nLib ? fmt(r.vendido / (r.n - r.nLib)) : '—', '')}
       </div>
       ${r.archivados ? `<div class="small muted mt">📦 Incluye ${r.archivados} pedidos archivados en Pedidos (solo totales).</div>` : ''}
-      ${r.costo ? `<div class="alert ok">💰 Ganancia bruta estimada de lo cobrado: <b>${fmt(gan)}</b> (costo ${fmt(r.costo)} · margen ${pctTxt(r.ventaConCosto ? gan / r.ventaConCosto * 100 : 0)})${r.sinCosto ? ` <span style="font-weight:500">· ${r.sinCosto} prendas sin costo no entran en el cálculo</span>` : ''}</div>` : ''}
-    </div>`;
+    </div>` + gananciaLiveHTML(live, r);
   }
   // Historial de lives
   const rs = lives.map(l => ({ l, r: resumenLive(l, costos) }));
@@ -1766,8 +1917,8 @@ function renderVentas() {
   // Balance mensual
   const bm = balanceMensual(costos);
   html += `<div class="card"><div class="card-t">📅 Balance mensual</div>
-    <table class="rt"><thead><tr><th>Mes</th><th class="n">Lives (cobrado)</th><th class="n">Mostrador</th><th class="n">Total ingresos</th><th class="n">Costo vendido*</th><th class="n">Ganancia bruta*</th><th class="n">Compras del mes</th></tr></thead><tbody>
-    ${bm.map(m => { const ing = m.lives + m.mostr + m.cambios, gan = m.ventaConCosto - m.costo; return `<tr><td data-l="" class="full"><b>${mesTxt(m.ym)}</b> <span class="muted small">${m.nLives} lives</span></td><td data-l="Lives (cobrado)" class="n c-ok">${fmt(m.lives)}</td><td data-l="Mostrador" class="n">${fmt(m.mostr + m.cambios)}</td><td data-l="Total ingresos" class="n c-ac"><b>${fmt(ing)}</b></td><td data-l="Costo vendido*" class="n">${fmtD(m.costo)}</td><td data-l="Ganancia bruta*" class="n c-ok">${m.costo ? fmt(gan) : '—'}</td><td data-l="Compras del mes" class="n c-pe">${fmtD(m.compras)}</td></tr>`; }).join('')}
+    <table class="rt"><thead><tr><th>Mes</th><th class="n">Lives (cobrado)</th><th class="n">Mostrador</th><th class="n">Total ingresos</th><th class="n">Costo vendido*</th><th class="n">Ganancia bruta*</th><th class="n">Packaging + gastos</th><th class="n">Ganancia real*</th><th class="n">Compras del mes</th></tr></thead><tbody>
+    ${bm.map(m => { const ing = m.lives + m.mostr + m.cambios, gan = m.ventaConCosto - m.costo; return `<tr><td data-l="" class="full"><b>${mesTxt(m.ym)}</b> <span class="muted small">${m.nLives} lives</span></td><td data-l="Lives (cobrado)" class="n c-ok">${fmt(m.lives)}</td><td data-l="Mostrador" class="n">${fmt(m.mostr + m.cambios)}</td><td data-l="Total ingresos" class="n c-ac"><b>${fmt(ing)}</b></td><td data-l="Costo vendido*" class="n">${fmtD(m.costo)}</td><td data-l="Ganancia bruta*" class="n c-ok">${m.costo ? fmt(gan) : '—'}</td><td data-l="Packaging + gastos" class="n c-li">${fmtD(m.gastos)}</td><td data-l="Ganancia real*" class="n ${gan - m.gastos >= 0 ? 'c-ok' : 'c-li'}"><b>${m.costo ? fmt(gan - m.gastos) : '—'}</b></td><td data-l="Compras del mes" class="n c-pe">${fmtD(m.compras)}</td></tr>`; }).join('')}
     </tbody></table>
     <p class="small muted mt">* Estimado con el costo de la última compra de cada artículo, solo sobre prendas con costo cargado (las manuales y las del stock viejo sin compra no entran). Mostrador incluye lo cobrado por diferencia en cambios.</p></div>`;
   // Mostrador
@@ -1871,7 +2022,23 @@ const ACT = {
   },
   stkAlta: () => stkAlta(),
   vtLiveSel: d => { UI.vt.live = d.id; render(); window.scrollTo(0, 0); },
-  cambiarCodigo: () => cambiarCodigo()
+  cambiarCodigo: () => cambiarCodigo(),
+  promoNueva: () => promoForm(null),
+  promoEdit: d => promoForm((DB.promos || []).find(p => p.id === d.id)),
+  promoAct: d => { const p = (DB.promos || []).find(x => x.id === d.id); if (!p) return; p.activa = p.activa === false; put('emma_promos'); render(); },
+  promoDel: d => { const p = (DB.promos || []).find(x => x.id === d.id); if (!p || !confirm(`¿Borrar la promoción "${p.nombre}"?\n\nLos pedidos que ya la usaron conservan su descuento.`)) return; DB.promos = DB.promos.filter(x => x !== p); put('emma_promos'); render(); },
+  pfAddMod: () => { const el = $('#pf-mod'), m = buscarModelo(el.value); if (!m) return toast('No encuentro esa prenda'); if (!PF.modelos.includes(m.id)) PF.modelos.push(m.id); pintarPromoForm(); setTimeout(() => $('#pf-mod').focus(), 30); },
+  pfDelMod: (d, el, e) => { if (e) e.preventDefault(); PF.modelos = PF.modelos.filter(x => x !== d.id); pintarPromoForm(); },
+  pfCat: () => { const cat = $('#pf-cat').value; modelosActivos().filter(m => m.categoria === cat && totalModelo(m) > 0).forEach(m => { if (!PF.modelos.includes(m.id)) PF.modelos.push(m.id); }); pintarPromoForm(); },
+  pfGuardar: () => pfGuardar(),
+  vipReset: () => { saveConfig({ vipMensaje: null }); render(); },
+  gastoAdd: d => {
+    const desc = $('#vg-desc').value.trim(), monto = num($('#vg-monto').value);
+    if (!desc || !(monto > 0)) return toast('Poné qué fue y cuánto');
+    guardarGastos(d.live, gastosDe(d.live).concat([{ id: uid('g'), desc, monto, fecha: ahoraISO() }]));
+    render(); setTimeout(() => $('#vg-desc') && $('#vg-desc').focus(), 30);
+  },
+  gastoDel: d => { const g = gastosDe(d.live).find(x => x.id === d.id); if (!g || !confirm(`¿Quitar "${g.desc}" (${fmt(g.monto)})?`)) return; guardarGastos(d.live, gastosDe(d.live).filter(x => x.id !== d.id)); render(); }
 };
 const CHG = {
   formNom: (d, el) => formNombre(d.px),
@@ -1886,6 +2053,12 @@ const CHG = {
   rcTalle: (d, el) => { const { mo } = recibirDe(d); if (!mo) return; const q = Math.max(0, parseInt(el.value, 10) || 0); if (q) mo.talles[d.t] = q; else delete mo.talles[d.t]; saveCompras(); render(); },
   llMo: (d, el) => { const c = compraById(d.cid), l = lineaDe(c, d.lid), mo = l && l.modelos.find(x => x.k === el.value); if (mo) $('#ll-t').innerHTML = optsLista(TALLES[mo.tipoTalle || 'unico'], null, talleTxt); },
   etqFmt: (d, el) => { try { localStorage.setItem(ROLLO_KEY, el.value); } catch (e) {} if ($('#cf-rollo')) $('#cf-rollo').value = el.value; if ($('#etq-fmt')) $('#etq-fmt').value = el.value; },
+  pf: (d, el) => { PF[d.f] = el.type === 'checkbox' ? el.checked : el.value; if (d.f === 'tipo' || d.f === 'modo') pintarPromoForm(); },
+  pfLive: (d, el) => { PF.liveId = el.checked ? cfg('liveActualId') : null; },
+  vipPct: (d, el) => { const n = Math.max(0, Math.min(50, num(el.value))); saveConfig({ vipPct: n }); toast(`✓ Descuento VIP: ${n}%`); render(); },
+  vipGrupo: (d, el) => { saveConfig({ vipGrupo: el.value.trim() }); render(); },
+  vipMsg: (d, el) => { saveConfig({ vipMensaje: el.value.trim() || null }); render(); },
+  vtPack: (d, el) => { saveConfig({ packagingPedido: Math.max(0, num(el.value)) }); toast('✓ Packaging por pedido actualizado'); render(); },
   cfgDias: (d, el) => { const n = Math.max(1, parseInt(el.value, 10) || 15); saveConfig({ archivarDias: n }); el.value = n; toast(`✓ Se archivan a los ${n} días sin stock`); },
   stkCat: (d, el) => { UI.stk.cat = el.value; render(); },
   vtLive: (d, el) => { UI.vt.live = el.value; render(); },
@@ -1910,7 +2083,7 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   if (el.id === 'lk-code' || el.id === 'lk-code2') { e.preventDefault(); if (el.id === 'lk-code' && !$('#lk-code2').hidden && !$('#lk-code2').value) $('#lk-code2').focus(); else lkOk(); return; }
   if (el.dataset.enter && ACT[el.dataset.enter]) { e.preventDefault(); if (el.dataset.chg && CHG[el.dataset.chg]) CHG[el.dataset.chg](el.dataset, el, e); ACT[el.dataset.enter](el.dataset); return; }
-  if (el.dataset.chg) { e.preventDefault(); el.blur(); }
+  if (el.dataset.chg && el.tagName !== 'TEXTAREA') { e.preventDefault(); el.blur(); }
 });
 
 // ─── 14. INICIO ───────────────────────────────────────────────
