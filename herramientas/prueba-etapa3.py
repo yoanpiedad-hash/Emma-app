@@ -60,6 +60,7 @@ with sync_playwright() as p:
     A.fill('#pf-mod', '1 · Short Prueba Claude azul'); A.click('[data-act=pfAddMod]'); time.sleep(0.2)
     A.fill('#pf-mod', 'Short Prueba Claude rosa'); A.press('#pf-mod', 'Enter'); time.sleep(0.2)
     ok('Promo: 2 prendas elegidas (por número y por nombre)', A.evaluate("PF.modelos.length") == 2)
+    ok('Código de etiqueta P1-S encuentra la prenda 1', A.evaluate("(buscarModelo('P1-S')||{}).num") == 1)
     A.screenshot(path=f'{SHOTS}/A_promo_form.png')
     DLG.clear(); A.click('[data-act=pfGuardar]'); time.sleep(0.4)
     ok('Aviso: queda debajo del mínimo', any('mínimo' in d for d in DLG), DLG[-1:] )
@@ -96,6 +97,12 @@ with sync_playwright() as p:
     ok('VIP: mensaje editable', A.inner_text('#vp-prev').startswith('Hola María\nTenés 7%'))
     A.click('[data-act=vipReset]'); time.sleep(0.3)
     ok('VIP: volver al original', A.inner_text('#vp-prev').startswith('María, ¿cómo estás?'))
+    # Otros colores: modelos de la misma línea
+    A.evaluate("""(() => { const c = { id: 'kPRUEBAcol', tipo: 'local', estado: 'recibida', nombre: 'x', fecha: hoyISO(), lineas: [{ lid: 'l1', descripcion: 'x', qty: 2, modelos: [{ k: 'a', mid: modeloByNum(1).id, talles: {} }, { k: 'b', mid: modeloByNum(2).id, talles: {} }] }] }; COMPRAS.push(c); })()""")
+    A.click('[data-t=promos]'); A.click('[data-act=promoNueva]'); time.sleep(0.3)
+    A.fill('#pf-mod', 'P1-M'); DLG.clear(); A.click('[data-act=pfAddMod]'); time.sleep(0.3)
+    ok('Al sumar el 1 pregunta por los otros colores y los suma', any('otros colores' in d for d in DLG) and A.evaluate("PF.modelos.length") == 2)
+    A.evaluate("COMPRAS = COMPRAS.filter(c => c.id !== 'kPRUEBAcol')"); A.click('#mbox [data-act=closeModal]')
     # Ganancia real del live
     html = A.evaluate("gananciaLiveHTML({ id: 'Lx' }, { ventaConCosto: 10000, costo: 6000, nCob: 10, sinCosto: 0 })")
     ok('Ganancia: 4.000 − packaging 10×30 = 3.700', '$4.000' in html and '−$300' in html and '$3.700' in html)

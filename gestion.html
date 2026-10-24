@@ -533,6 +533,8 @@ function sincronizarVariantes(m) {
 /** Busca un modelo por "142 · nombre", por número o por nombre exacto. */
 function buscarModelo(txt) {
   const t = String(txt || '').trim(); if (!t) return null;
+  const pq = t.match(/^P(\d+)(-[^\s]*)?$/i);   // QR de la etiqueta de prenda
+  if (pq) { const m = modeloByNum(pq[1]); if (m) return m; }
   const mm = t.match(/^#?([^\s·]+)(\s*·|$)/);
   if (mm) {
     const tok = mm[1].toUpperCase();
@@ -1718,6 +1720,15 @@ function estadoPromo(p) {
   if (p.liveId) { const l = DB.lives.find(x => x.id === p.liveId); return [p.liveId === cfg('liveActualId') ? 'Activa en este live' : 'Era de otro live', p.liveId === cfg('liveActualId') ? 'ok' : 'li']; }
   return ['Activa', 'ok'];
 }
+/** Otros colores de la misma prenda: modelos activos que vinieron en la misma línea de alguna compra. */
+function otrosColores(mid) {
+  const r = new Set();
+  for (const c of COMPRAS) for (const l of c.lineas || []) {
+    const ids = (l.modelos || []).map(mo => mo.mid).filter(Boolean);
+    if (ids.includes(mid)) ids.forEach(x => { if (x !== mid) r.add(x); });
+  }
+  return [...r].map(modeloById).filter(m => m && m.activo !== false);
+}
 /** modeloId → { costo, min } de la última compra recibida que lo trajo. */
 function mapaMinimos() {
   const r = new Map();
@@ -1765,7 +1776,8 @@ function pintarPromoForm() {
       ${campos}
     </div>
     <div class="sec-t">Prendas de la promo</div>
-    <div class="row"><input id="pf-mod" class="grow" list="dl-modelos" placeholder="Número o nombre…" autocomplete="off" data-enter="pfAddMod"><button class="b" data-act="pfAddMod">+ Agregar</button></div>
+    <p class="small muted mb">Cada prenda entra con todos sus talles. Si vino en otros colores, te pregunta si los sumás.</p>
+    <div class="row"><input id="pf-mod" class="grow" list="dl-modelos" placeholder="Número, nombre o código de la etiqueta (P142-M)…" autocomplete="off" data-enter="pfAddMod"><button class="b" data-act="pfAddMod">+ Agregar</button></div>
     <div class="row mt">${p.tipo !== 'especial' ? '<button class="b sm gh" data-act="pfCat">+ Toda una categoría</button><select id="pf-cat" style="width:auto">' + optsCat('Short') + '</select>' : ''}</div>
     <div class="mt" style="display:flex;flex-wrap:wrap;gap:4px">${p.modelos.map(mid => { const m = modeloById(mid); return `<span class="chip ac">${m ? esc(numTxt(m)) + ' · ' + esc(m.nombre) + ' · ' + fmtD(m.precioVenta) : '?'} <a href="#" data-act="pfDelMod" data-id="${esc(mid)}" style="color:inherit;text-decoration:none">✕</a></span>`; }).join('') || '<span class="small muted">Agregá al menos una prenda</span>'}</div>
     <div class="sec-t">Cuándo vale</div>
@@ -2027,7 +2039,13 @@ const ACT = {
   promoEdit: d => promoForm((DB.promos || []).find(p => p.id === d.id)),
   promoAct: d => { const p = (DB.promos || []).find(x => x.id === d.id); if (!p) return; p.activa = p.activa === false; put('emma_promos'); render(); },
   promoDel: d => { const p = (DB.promos || []).find(x => x.id === d.id); if (!p || !confirm(`¿Borrar la promoción "${p.nombre}"?\n\nLos pedidos que ya la usaron conservan su descuento.`)) return; DB.promos = DB.promos.filter(x => x !== p); put('emma_promos'); render(); },
-  pfAddMod: () => { const el = $('#pf-mod'), m = buscarModelo(el.value); if (!m) return toast('No encuentro esa prenda'); if (!PF.modelos.includes(m.id)) PF.modelos.push(m.id); pintarPromoForm(); setTimeout(() => $('#pf-mod').focus(), 30); },
+  pfAddMod: () => {
+    const el = $('#pf-mod'), m = buscarModelo(el.value); if (!m) return toast('No encuentro esa prenda');
+    if (!PF.modelos.includes(m.id)) PF.modelos.push(m.id);
+    const otros = otrosColores(m.id).filter(x => !PF.modelos.includes(x.id));
+    if (otros.length && confirm(`${m.num} · ${m.nombre} vino también en otros colores:\n\n${otros.map(x => '• ' + x.num + ' · ' + x.nombre).join('\n')}\n\n¿Sumarlos también a la promo?\nAceptar = todos los colores. Cancelar = solo este.`)) otros.forEach(x => PF.modelos.push(x.id));
+    pintarPromoForm(); setTimeout(() => $('#pf-mod').focus(), 30);
+  },
   pfDelMod: (d, el, e) => { if (e) e.preventDefault(); PF.modelos = PF.modelos.filter(x => x !== d.id); pintarPromoForm(); },
   pfCat: () => { const cat = $('#pf-cat').value; modelosActivos().filter(m => m.categoria === cat && totalModelo(m) > 0).forEach(m => { if (!PF.modelos.includes(m.id)) PF.modelos.push(m.id); }); pintarPromoForm(); },
   pfGuardar: () => pfGuardar(),
