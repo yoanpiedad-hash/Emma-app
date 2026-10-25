@@ -12,6 +12,9 @@
   st.textContent = `
 .lv .te{font-size:8pt;font-weight:700;font-family:Arial,Helvetica,sans-serif}
 .lv.m50 .te{font-size:9pt}
+.lv .ar{font-size:8pt;font-weight:900;border:.35mm solid #000;border-radius:1mm;padding:0 .8mm;white-space:nowrap;letter-spacing:0}
+.lv.m50 .ar{font-size:9pt}.lv.a4 .nu .ar{font-size:15pt;padding:0 2mm;vertical-align:middle}
+.lv .em{align-items:center}
 .lv.a4{padding:4mm;gap:4mm}
 .lv.a4 .em{font-size:9pt}.lv.a4 .nu{font-size:44pt}.lv.a4 .no{font-size:17pt}.lv.a4 .te{font-size:13pt}
 .sheet-a4>.lbl.gen{padding:0;border:1.4px dashed #999}
@@ -118,8 +121,12 @@ function etqGeneralHTML(p, medida) {
   const tam = medida === 'a4' ? '30mm' : medida === '50x30' ? '20mm' : '17mm';
   const svg = barcodeSVG(p.codigo).replace('<svg ', `<svg style="width:${tam};height:${tam}" `);
   return `<div class="lv${medida === '50x30' ? ' m50' : medida === 'a4' ? ' a4' : ''}"><div class="qr">${svg}</div><div class="tx">
-    <div class="em"><span>EMMA</span><span>${fechaUY(l.fecha || hoyISO(), 1)}</span></div>
-    <div class="nu">#${p.num}</div><div class="no">${esc(c.nombre)}</div>
+    ${(() => { const ar = p.cambio ? '' : `<span class="ar">${calc(p).art} art.</span>`;
+      // Rollo chico: la cantidad va arriba, así no le saca lugar al nombre. Hoja A4: al lado del número.
+      return medida === 'a4'
+        ? `<div class="em"><span>EMMA</span><span>${fechaUY(l.fecha || hoyISO(), 1)}</span></div><div class="nu">#${p.num} ${ar}</div>`
+        : `<div class="em"><span>EMMA ${fechaUY(l.fecha || hoyISO(), 1)}</span>${ar}</div><div class="nu">#${p.num}</div>`; })()}
+    <div class="no">${esc(c.nombre)}</div>
     <div class="te">${esc(c.tel || '')}</div></div></div>`;
 }
 /** Formato de las etiquetas generales en este equipo: A4 (10 por hoja) o rollo chico. */
