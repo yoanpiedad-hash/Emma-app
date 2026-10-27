@@ -40,6 +40,8 @@
 .ag2-nom{font-size:1.65em;font-weight:900;line-height:1.1;margin:.3mm 0 .8mm}
 .ag2-box{margin-top:auto;border:3px solid #000;border-radius:1.5mm;padding:1mm 2mm;text-align:center;font-size:1.6em;font-weight:900;letter-spacing:.3px}
 .ag2-rem-d{white-space:nowrap}
+.sheet-t.a4ag{margin:0 auto;page-break-after:auto;break-after:auto}
+.sheet-t.a4ag+.sheet-t.a4ag{page-break-before:always;break-before:page}
 .sheet-t .ag2-emma{font-size:1.45em}.sheet-t .ag2-rem-d{font-size:.82em}
 .sheet-t .ag2-dest{font-size:1.2em;margin-top:5mm;line-height:1.5}
 .sheet-t .ag2-nom{font-size:1.85em;margin:1mm 0 3mm}
@@ -426,6 +428,13 @@ function etqAgenciaHTML(d) {
     <div class="ag2-box">AGENCIA: ${esc((d.agencia || '________').toUpperCase())}</div>
   </div>`;
 }
+// En hoja A4, cada etiqueta de agencia sale sola en su hoja, con el mismo tamaño y diseño que la térmica 10×15
+const _hojasHTMLbase = hojasHTML;
+hojasHTML = function (etiquetas) {
+  if (cfg('formatoImpresion') === 'termica') return _hojasHTMLbase(etiquetas);
+  const ag = etiquetas.filter(e => e.includes('lbl ag2')), resto = etiquetas.filter(e => !e.includes('lbl ag2'));
+  return (resto.length ? _hojasHTMLbase(resto) : '') + ag.map(e => `<div class="sheet-t a4ag">${e}</div>`).join('');
+};
 // Etiqueta de pedido con agencia (desde Pedidos): el mismo diseño nuevo
 const _etqHTMLbase = etqHTML;
 etqHTML = function (p) {
