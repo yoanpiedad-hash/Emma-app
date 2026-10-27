@@ -26,12 +26,30 @@
 .dsp-a .nm{font-weight:700;font-size:15px}
 .dsp-k{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd);flex-wrap:wrap}
 .dsp-k:last-child{border-bottom:none}
+.dsp-fil{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+.dsp-fil .b{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;font-size:13px;white-space:normal;text-align:center}
+.dsp-fil .b b{font-size:22px;line-height:1}
+.dsp-fil .b.on{border-color:var(--ac);background:var(--ac2);color:var(--ac)}
+.dsp-ag-h{font-weight:800;font-size:13px;letter-spacing:.5px;color:var(--ac);padding:10px 2px 2px;text-transform:uppercase}
+.lbl.ag2{border:2.5px solid #000}
+.ag2-rem{border-bottom:2px solid #000;padding-bottom:1mm}
+.ag2-emma{font-size:1.5em;font-weight:900;letter-spacing:.4px;line-height:1.05}
+.ag2-rem-d{font-size:.95em;font-weight:700;margin-top:.4mm}
+.ag2-dest{margin-top:1.5mm;font-size:1.05em;line-height:1.3}
+.ag2-dest small{display:block;font-size:.7em;font-weight:800;letter-spacing:1px;color:#444}
+.ag2-nom{font-size:1.65em;font-weight:900;line-height:1.1;margin:.3mm 0 .8mm}
+.ag2-box{margin-top:auto;border:3px solid #000;border-radius:1.5mm;padding:1mm 2mm;text-align:center;font-size:1.6em;font-weight:900;letter-spacing:.3px}
+.ag2-rem-d{white-space:nowrap}
+.sheet-t .ag2-emma{font-size:1.45em}.sheet-t .ag2-rem-d{font-size:.82em}
+.sheet-t .ag2-dest{font-size:1.2em;margin-top:5mm;line-height:1.5}
+.sheet-t .ag2-nom{font-size:1.85em;margin:1mm 0 3mm}
+.sheet-t .ag2-box{font-size:1.7em;padding:4mm 2mm}
 @media (max-width:520px){.dsp-segs{grid-template-columns:repeat(3,1fr)}.dsp-p{gap:8px;padding:10px}}
 `;
   document.head.appendChild(st);
 })();
 
-UI.desp = { q: '', idx: 0, items: [], cid: null, sel: new Set(), salida: null, f: {}, sinPago: false, aviso: '', res: null };
+UI.desp = { filtro: 'todos', q: '', idx: 0, items: [], cid: null, sel: new Set(), salida: null, f: {}, sinPago: false, aviso: '', res: null };
 
 const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo'];
 const cuentasPago = () => { const c = cfg('cuentasPago'); return Array.isArray(c) && c.length ? c : CUENTAS_DEF; };
@@ -84,7 +102,7 @@ function anularPago(id) {
 
 /** Pagados que esperan salir, por tipo de entrega (sin retiro: esos se entregan cuando vienen). */
 function paraArmar() {
-  const G = { cadeteria: new Map(), agencia: new Map(), sin_definir: new Map() };
+  const G = { cadeteria: new Map(), agencia: new Map(), retiro: new Map(), sin_definir: new Map() };
   for (const p of todosPedidos()) {
     if (!sinSalir(p) || p.estado === 'guardado' || !pagado(p)) continue;
     const t = entregaEf(p); if (!G[t]) continue;
@@ -93,7 +111,7 @@ function paraArmar() {
   }
   const orden = m => [...m.entries()].map(([cid, ps]) => ({ cid, ps: ps.sort((a, b) => (a.fechas.creado || '').localeCompare(b.fechas.creado || '') || a.num - b.num) }))
     .sort((a, b) => (a.ps[0].fechas.creado || '').localeCompare(b.ps[0].fechas.creado || ''));
-  return { cadeteria: orden(G.cadeteria), agencia: orden(G.agencia), sin_definir: orden(G.sin_definir) };
+  return { cadeteria: orden(G.cadeteria), agencia: orden(G.agencia), retiro: orden(G.retiro), sin_definir: orden(G.sin_definir) };
 }
 function despBadge() {
   const el = document.getElementById('bdg-desp'); if (!el) return;
@@ -128,7 +146,10 @@ function resHTML() {
 function inicioHTML() {
   const a = paraArmar(), m = stats();
   const grupo = (tipo, titulo, ayuda) => {
-    const gs = a[tipo]; if (!gs.length) return '';
+    let gs = a[tipo]; if (!gs.length) return '';
+    const agKey = cid => ((cliById(cid) || {}).agencia || '').trim().toUpperCase();
+    if (tipo === 'agencia') gs = [...gs].sort((x, y) => (!agKey(x.cid)) - (!agKey(y.cid)) || agKey(x.cid).localeCompare(agKey(y.cid)));
+    let agAnt = null;
     return `<div class="card"><div class="card-t">${titulo} <span class="bdg">${gs.length}</span></div>${ayuda ? `<div class="small muted mb">${ayuda}</div>` : ''}
       ${gs.map(({ cid, ps }) => {
         const c = cliById(cid) || { nombre: '?' }, art = ps.reduce((s, p) => s + (p.cambio ? p.cambio.art : calc(p).art), 0);
@@ -137,16 +158,21 @@ function inicioHTML() {
         if (tipo === 'agencia' && !(c.agencia || '').trim()) marcas.push('<span class="chip li">⚠️ sin agencia</span>');
         if ((m[cid] || ST0).guardados.length) marcas.push('<span class="chip gu">⏸️ tiene guardado</span>');
         if (ps.some(p => p.cambio)) marcas.push('<span class="chip ac">🔄 cambio</span>');
-        return `<div class="dsp-a" data-act="despArmar" data-cid="${cid}" data-t="${tipo}">
+        const k = tipo === 'agencia' ? agKey(cid) || 'SIN AGENCIA' : null, cab = k && k !== agAnt ? `<div class="dsp-ag-h">${esc(k)} · ${gs.filter(x => (agKey(x.cid) || 'SIN AGENCIA') === k).length}</div>` : '';
+        if (k) agAnt = k;
+        return cab + `<div class="dsp-a" data-act="despArmar" data-cid="${cid}" data-t="${tipo}">
           <div style="flex:1;min-width:0"><div class="nm">${esc(c.nombre)}</div><div class="small muted">${numsTxt(ps)} · ${art} art. · ${fechaUY(ps[0].fechas.creado, 1)}${tipo === 'agencia' && c.agencia ? ' · ' + esc(c.agencia) : ''}${tipo === 'cadeteria' && c.barrio ? ' · ' + esc(c.barrio) : ''}</div>${marcas.length ? `<div class="pc-sub">${marcas.join(' ')}</div>` : ''}</div>
           <span class="muted">›</span></div>`;
       }).join('')}</div>`;
   };
-  const sinPagar = todosPedidos().filter(p => p.estado === 'pendiente' && !p.cambio).length;
-  let h = grupo('cadeteria', '🚴 Pagados para armar · Cadetería') + grupo('agencia', '📦 Pagados para armar · Agencia')
-    + grupo('sin_definir', '❓ Pagados sin entrega definida', 'Tocá la clienta y elegí cómo sale.');
+  const sinPagar = todosPedidos().filter(p => p.estado === 'pendiente' && !p.cambio).length, F = UI.desp.filtro || 'todos', ver = t => F === 'todos' || F === t;
+  const fil = [['todos', 'Todos', a.cadeteria.length + a.agencia.length + a.retiro.length + a.sin_definir.length], ['cadeteria', '🚴 Cadetería', a.cadeteria.length], ['agencia', '📦 Agencias', a.agencia.length], ['retiro', '🏠 Retiros', a.retiro.length]]
+    .map(([t, txt, n]) => `<button class="b${F === t ? ' on' : ''}" data-act="despFiltro" data-t="${t}"><b>${n}</b>${txt}</button>`).join('');
+  let h = (ver('cadeteria') ? grupo('cadeteria', '🚴 Pagados para armar · Cadetería') : '') + (ver('agencia') ? grupo('agencia', '📦 Pagados para armar · Agencias') : '')
+    + (ver('retiro') ? grupo('retiro', '🏠 Pagados para retirar') : '')
+    + (F === 'todos' ? grupo('sin_definir', '❓ Pagados sin entrega definida', 'Tocá la clienta y elegí cómo sale.') : '');
   if (!h) h = '<div class="empty">No hay pedidos pagados esperando salir 🎉</div>';
-  h = `<div class="row mb" style="justify-content:flex-end"><button class="b sm" data-act="tab" data-t="pagos">📊 Pagos del día</button></div>` + h;
+  h = `<div class="row mb" style="justify-content:flex-end"><button class="b sm" data-act="tab" data-t="pagos">📊 Pagos del día</button></div><div class="dsp-fil">${fil}</div>` + h;
   if (sinPagar) h += `<div class="small muted" style="margin:-4px 2px 12px">⏳ ${sinPagar} pedido${sinPagar > 1 ? 's' : ''} todavía sin pagar.</div>`;
   return h + hoyHTML();
 }
@@ -155,7 +181,7 @@ function paquetesDeHoy() {
   return (DB.paquetes || []).filter(k => localISO(new Date(k.fecha)) === hoy).sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 function hoyHTML() {
-  const ks = paquetesDeHoy(); if (!ks.length) return '';
+  const F = UI.desp.filtro || 'todos', ks = paquetesDeHoy().filter(k => F === 'todos' || k.tipo === F); if (!ks.length) return '';
   const n = t => ks.filter(k => k.tipo === t).length, cad = n('cadeteria');
   const hora = iso => { const d = new Date(iso); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
   const ico = { retiro: '🏠', agencia: '📦', cadeteria: '🚴' };
@@ -191,11 +217,16 @@ function clientaHTML() {
   const ultimos = !ab.length ? (DB.paquetes || []).filter(k => k.clienteId === c.id).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 3) : [];
   return `<div class="card">
       <div class="row" style="align-items:flex-start"><div class="grow" style="flex:1;min-width:0"><div class="pc-nom" style="white-space:normal">${nomAlias(c)}</div><div class="pc-sub">${histHTML(h)} ${c.tel ? '<span class="mono">' + esc(c.tel) + '</span>' : '<span class="chip pe">⚠️ sin tel</span>'}</div></div><button class="b sm gh" data-act="despCerrar" title="Volver (Esc)">✕</button></div>
+      <div class="row mt"><button class="b sm" data-act="verFicha" data-cid="${c.id}">👤 Ficha</button>${(() => { const u = ultimoPedidoDe(c.id); return u ? `<button class="b sm" data-act="irPedido" data-id="${u.id}">🛍️ Último pedido #${u.num} · ${esc((liveById(u.liveId) || {}).nombre || '')}</button>` : ''; })()}</div>
       ${alertas.join('')}
     </div>
     <div class="list-h"><span class="t">Sin salida <span class="bdg">${ab.length}</span></span>${todos}</div>
     ${filas || `<div class="empty">No tiene pedidos sin salida${ultimos.length ? '' : ''}</div>${ultimos.map(k => `<div class="small muted" style="text-align:center">Último: ${{ retiro: '🏠 Retiro', agencia: '📦 Agencia', cadeteria: '🚴 Cadetería' }[k.tipo]} el ${fechaUY(localISO(new Date(k.fecha)))} · ${esc(k.nums.map(x => '#' + x).join(' · '))}</div>`).join('')}`}
     ${D.sel.size ? salidaHTML(c, ab.filter(p => D.sel.has(p.id))) : (ab.length ? '<div class="small muted" style="text-align:center;margin:6px 0 14px">Tildá los pedidos que salen</div>' : '')}`;
+}
+/** Último pedido de la clienta (cualquier estado), por fecha y número. */
+function ultimoPedidoDe(cid) {
+  return todosPedidos().filter(p => p.clienteId === cid).sort((a, b) => (b.fechas.creado || '').localeCompare(a.fechas.creado || '') || b.num - a.num)[0] || null;
 }
 function campoD(k, label, ph, extra) {
   const v = esc(UI.desp.f[k] || '');
@@ -377,8 +408,30 @@ function etqPaqueteHTML(k) {
   const v = Object.assign({}, m, { num: ps.length > 1 ? ps.map(p => p.num).join('+') : m.num, prendas: ps.flatMap(p => p.prendas || []) });
   if (!ps.every(p => p.cambio)) v.cambio = null;
   if (k.tipo === 'cadeteria') { v.cobroEnvio = k.cobro ? 'monto' : 'pago'; v.cobroMonto = k.cobro || 0; v.tipoEnvio = k.tipoEnvio || 'comun'; return etqCadeteHTML(v); }
+  if (k.tipo === 'agencia') return etqAgenciaHTML(Object.assign({}, cliById(k.clienteId) || {}, k.envio || {}));
   return etqHTML(v);
 }
+/** Etiqueta 10×15 de agencia: remitente arriba, destinatario grande al centro, agencia abajo. Sin QR, sin número ni artículos. */
+function etqAgenciaHTML(d) {
+  const lugar = [d.ciudad, d.depto].filter(Boolean).join(', ');
+  return `<div class="lbl ag2">
+    <div class="ag2-rem"><div class="ag2-emma">EMMA INDUMENTARIA</div><div class="ag2-rem-d">RUT 219683210010 · Tel 097 088 511</div></div>
+    <div class="ag2-dest"><small>DESTINATARIO</small>
+      <div class="ag2-nom">${esc(d.nombre || d.nombreEnvio || '')}</div>
+      <div>C.I. <b>${esc(d.ci || '________')}</b></div>
+      <div>Tel <b>${esc(d.tel || '________')}</b></div>
+      ${d.direccion ? `<div>${esc(d.direccion)}</div>` : ''}
+      <div><b>${esc(lugar || '________')}</b></div>
+    </div>
+    <div class="ag2-box">AGENCIA: ${esc((d.agencia || '________').toUpperCase())}</div>
+  </div>`;
+}
+// Etiqueta de pedido con agencia (desde Pedidos): el mismo diseño nuevo
+const _etqHTMLbase = etqHTML;
+etqHTML = function (p) {
+  const c = cliById(p.clienteId);
+  return c && c.agencia ? etqAgenciaHTML(Object.assign({}, c, { nombre: c.nombreEnvio || c.nombre })) : _etqHTMLbase(p);
+};
 function imprimirPaquete(id) {
   const k = paqById(id); if (!k) return;
   imprimir(hojasHTML([etqPaqueteHTML(k)]), 'etiquetas');
@@ -531,6 +584,7 @@ Object.assign(ACT, {
     if (f.conEnvio) { f._cobroAntes = f.cobro; f.cobro = 'pago'; } else if (f.cobro === 'pago') f.cobro = f._cobroAntes === 'pago' ? 'pago' : (f._cobroAntes || null);
     f.transfEdit = false; render();
   },
+  despFiltro: d => { UI.desp.filtro = UI.desp.filtro === d.t ? 'todos' : d.t; render(); },
   despGo: () => despGo(),
   despPrint: d => imprimirPaquete(d.k),
   despDeshacer: d => deshacerPaquete(d.k),
