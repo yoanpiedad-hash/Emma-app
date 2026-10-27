@@ -51,7 +51,7 @@
 
 UI.desp = { filtro: 'todos', q: '', idx: 0, items: [], cid: null, sel: new Set(), salida: null, f: {}, sinPago: false, aviso: '', res: null };
 
-const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo'];
+const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo', 'POS Mercado Pago', 'POS Scantech'];
 const cuentasPago = () => { const c = cfg('cuentasPago'); return Array.isArray(c) && c.length ? c : CUENTAS_DEF; };
 const SALIDAS = [['retiro', '🏠 Retiro'], ['agencia', '📦 Agencia'], ['cadeteria', '🚴 Cadetería'], ['guardado', '⏸️ Guardado'], ['liberado', '❌ Liberado'], ['pago', '💸 Solo pago']];
 const conPago = t => ENVIOS.has(t) || t === 'pago';
@@ -77,8 +77,8 @@ function abiertosDe(cid) {
 const principal = ps => [...ps].sort((a, b) => (b.fechas.creado || '').localeCompare(a.fechas.creado || '') || b.num - a.num)[0];
 const numsTxt = ps => ps.map(p => '#' + p.num).join(' · ');
 
-/** Medio del pago según la cuenta: Mercado Pago lleva recargo; Efectivo es al retirar; el resto, transferencia. */
-const medioDe = cuenta => /mercado\s*pago/i.test(cuenta || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(cuenta || '') ? 'efectivo' : 'transferencia';
+/** Medio del pago según la cuenta: Mercado Pago (transferencia/link) lleva recargo; Efectivo y los POS (Mercado Pago, Scantech) son al retirar, sin recargo; el resto, transferencia. */
+const medioDe = cuenta => /^pos\b/i.test((cuenta || '').trim()) ? 'efectivo' : /mercado\s*pago/i.test(cuenta || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(cuenta || '') ? 'efectivo' : 'transferencia';
 const recargoMP = () => { const v = DB.config.mpRecargo; return v === undefined || v === null || v === '' ? 10 : Math.max(0, +v || 0); };
 /** Lo que tiene que transferir: pedidos + envío (si lo transfiere) + recargo de Mercado Pago. */
 function esperadoDe(base, env, cuenta) { const rec = medioDe(cuenta) === 'mercadopago' ? Math.round((base + env) * recargoMP() / 100) : 0; return { base, env, rec, total: base + env + rec }; }
