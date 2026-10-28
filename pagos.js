@@ -44,7 +44,7 @@ function buscarSinPagar(q) {
   if (/^\d{5}$/.test(t)) ps.filter(p => p.codigo === t).forEach(p => out.add(p));
   if (!/^#/.test(t)) {
     const qn = norm(t), tk = dig.length >= 3 ? (telKey(dig) || dig) : '';
-    const cs = new Set(DB.clientes.filter(c => (qn && !/^\d+$/.test(t) && (norm(c.nombre).includes(qn) || (c.alias || []).some(a => norm(a).includes(qn)))) || (tk && (c.telKey || '').includes(tk))).map(c => c.id));
+    const cs = new Set(DB.clientes.filter(c => (qn && !/^\d+$/.test(t) && (norm(c.nombre + ' ' + (c.ref || '')).includes(qn) || (c.alias || []).some(a => norm(a).includes(qn)))) || (tk && (c.telKey || '').includes(tk))).map(c => c.id));
     ps.filter(p => cs.has(p.clienteId)).forEach(p => out.add(p));
   }
   return [...out].sort((a, b) => (b.fechas.creado || '').localeCompare(a.fechas.creado || '') || a.num - b.num).slice(0, 40);

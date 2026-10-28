@@ -83,7 +83,7 @@ cuerpoPedido = function (p, c, live, t, h) {
   let saldoLinea = '';
   if (p.saldoAplicado > 0) saldoLinea = `<div class="tot-l" style="color:var(--ok)"><span>💰 Saldo a favor <button class="b sm gh" data-act="quitarSaldo" data-id="${id}">quitar</button></span><span>−${fmt(t.saldo)}</span></div>`;
   else if (saldoDisp > 0 && p.estado === 'pendiente') saldoLinea = `<div class="tot-l"><span class="muted">💰 Tiene ${fmt(saldoDisp)} a favor</span><button class="b sm" data-act="aplicarSaldo" data-id="${id}">Aplicar</button></div>`;
-  const editNom = UI.editNom.has(id) ? `<div class="box mt"><div class="grid2"><input id="en-${id}" value="${esc(c.nombre)}" placeholder="Nombre"><input id="et-${id}" value="${esc(c.tel)}" placeholder="Teléfono" inputmode="tel"></div>
+  const editNom = UI.editNom.has(id) ? `<div class="box mt"><div class="grid2"><input id="en-${id}" value="${esc(c.nombre)}" placeholder="Nombre"><input id="er-${id}" value="${esc(c.ref || '')}" placeholder="Referencia (apellido, emoji…)"><input id="et-${id}" value="${esc(c.tel)}" placeholder="Teléfono" inputmode="tel"></div>
       <div class="small muted mt">Si cambia el usuario de TikTok, el nombre anterior queda como alias. Si el teléfono es de otra ficha, se fusionan.</div>
       <div class="row mt"><button class="b sm ok" data-act="guardarNomTel" data-id="${id}">✓ Guardar</button><button class="b sm gh" data-act="editNom" data-id="${id}">Cancelar</button></div></div>` : '';
   const salida = p.estado === 'enviado' ? `🚚 Salió el ${fechaUY(p.fechas.enviado)}` : p.estado === 'guardado' ? `⏸️ Guardado desde el ${fechaUY(p.fechas.guardado)}` : p.estado === 'liberado' ? '❌ Liberado (la ropa volvió al stock)' : p.estado === 'abandonado' ? 'Abandonado' : 'Pago, entrega y salida: en 🚚 Despacho';

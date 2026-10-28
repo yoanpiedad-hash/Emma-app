@@ -734,8 +734,8 @@ const ESTADO_TXT = { pendiente: 'Pendiente', listo: 'Listo', guardado: 'Guardado
 const ESTADO_CHIP = { pendiente: 'pe', listo: 'ok', enviado: 'ok', guardado: 'gu', liberado: 'li', abandonado: 'li' };
 const ENTREGA_TXT = { sin_definir: 'Sin definir', retiro: '🏠 Retiro', agencia: '📦 Agencia', cadeteria: '🚴 Cadetería' };
 
-function nuevaClienta(nombre, tel) {
-  return { id: uid('c'), nombre: String(nombre || '').trim(), alias: [], tel: String(tel || '').trim(), telKey: telKey(tel),
+function nuevaClienta(nombre, tel, ref) {
+  return { id: uid('c'), nombre: String(nombre || '').trim(), ref: String(ref || '').trim(), alias: [], tel: String(tel || '').trim(), telKey: telKey(tel),
     nombreEnvio: '', ci: '', agencia: '', depto: '', ciudad: '', direccion: '', barrio: '', notaCadete: '',
     saldoFavor: 0, historialViejo: [], ultimoUso: '', creado: ahoraISO() };
 }
@@ -745,7 +745,7 @@ function agregarAlias(c, nombre) {
   if (!nombre || norm(nombre) === norm(c.nombre)) return;
   if (!c.alias.some(a => norm(a) === norm(nombre))) c.alias.push(nombre);
 }
-function nomAlias(c) { return esc(c.nombre) + (c.alias && c.alias.length ? ` <span class="alias">(antes: ${esc(c.alias.join(', '))})</span>` : ''); }
+function nomAlias(c) { return esc(c.nombre) + (c.ref ? ` <span class="alias">(${esc(c.ref)})</span>` : '') + (c.alias && c.alias.length ? ` <span class="alias">(antes: ${esc(c.alias.join(', '))})</span>` : ''); }
 
 function entregaEf(p) {
   if (p.entrega && p.entrega !== 'sin_definir') return p.entrega;
@@ -1015,7 +1015,7 @@ function editarClienta(c, cambios) {
       fusionada = otras.map(o => o.nombre);
     }
   }
-  for (const f of ['nombreEnvio', 'ci', 'agencia', 'depto', 'ciudad', 'direccion', 'barrio', 'notaCadete']) if (cambios[f] !== undefined) c[f] = f === 'barrio' ? barrioCanon(cambios[f]) : String(cambios[f]).trim();
+  for (const f of ['ref', 'nombreEnvio', 'ci', 'agencia', 'depto', 'ciudad', 'direccion', 'barrio', 'notaCadete']) if (cambios[f] !== undefined) c[f] = f === 'barrio' ? barrioCanon(cambios[f]) : String(cambios[f]).trim();
   guardar();
   if (fusionada) toast('🔗 Mismo teléfono: se fusionó con ' + fusionada.join(', '));
   return fusionada;
@@ -1246,7 +1246,7 @@ function cpHTML(px, ph) {
   return `<div class="sw"><input id="${px}-in" data-cp="${px}" placeholder="${ph || 'Nombre, alias o teléfono…'}" autocomplete="off"><div class="sug" id="${px}-sug"></div></div>
     <div id="${px}-new" class="mt" hidden>
       <div class="small muted mb">🆕 Clienta nueva: <b id="${px}-newnom"></b>. Poné el teléfono (o dejalo vacío: queda "sin tel").</div>
-      <div class="row"><input id="${px}-tel" data-cptel="${px}" inputmode="tel" placeholder="Teléfono" class="grow" style="flex:1"><button class="b pri" data-act="cpCrear" data-px="${px}">Crear</button><button class="b gh" data-act="cpCancelar" data-px="${px}">✕</button></div>
+      <div class="row" style="flex-wrap:wrap"><input id="${px}-tel" data-cptel="${px}" inputmode="tel" placeholder="Teléfono" class="grow" style="flex:1;min-width:140px"><input id="${px}-ref" data-cptel="${px}" placeholder="Referencia (apellido, emoji…)" class="grow" style="flex:1;min-width:160px" autocomplete="off"><button class="b pri" data-act="cpCrear" data-px="${px}">Crear</button><button class="b gh" data-act="cpCancelar" data-px="${px}">✕</button></div>
     </div>`;
 }
 function cpMontar(px, slot, opts) {
@@ -1256,7 +1256,7 @@ function cpMontar(px, slot, opts) {
 function buscarClientas(q) {
   const qn = norm(q), dig = q.replace(/\D/g, '');
   const tk = dig.length >= 3 ? (telKey(dig) || dig) : '';
-  const r = DB.clientes.filter(c => norm(c.nombre).includes(qn) || (c.alias || []).some(a => norm(a).includes(qn)) || (tk && c.telKey.includes(tk)));
+  const r = DB.clientes.filter(c => norm(c.nombre + ' ' + (c.ref || '')).includes(qn) || (c.alias || []).some(a => norm(a).includes(qn)) || (tk && c.telKey.includes(tk)));
   r.sort((a, b) => (norm(b.nombre).startsWith(qn) - norm(a.nombre).startsWith(qn)) || (b.ultimoUso || '').localeCompare(a.ultimoUso || ''));
   return r.slice(0, 8);
 }
@@ -1285,14 +1285,14 @@ function cpPick(px, i) {
   $('#' + px + '-tel').focus();
 }
 function cpCrear(px) {
-  const st = CP[px], nombre = st.nuevoNombre, tel = $('#' + px + '-tel').value.trim();
+  const st = CP[px], nombre = st.nuevoNombre, tel = $('#' + px + '-tel').value.trim(), ref = ($('#' + px + '-ref') || { value: '' }).value.trim();
   if (!nombre || !puedoAgregar()) return;
   let c = clientaPorTel(tel);
   if (c) {
     if (norm(c.nombre) !== norm(nombre) && confirm(`El ${tel} ya está registrado como "${c.nombre}".\n\nAceptar = usar su ficha y cambiar el nombre a "${nombre}" ("${c.nombre}" queda como alias).\nCancelar = usar su ficha sin cambiar el nombre.`)) editarClienta(c, { nombre });
     toast('📱 Ese teléfono ya existía: se usó la ficha de ' + c.nombre);
   } else {
-    c = nuevaClienta(nombre, tel);
+    c = nuevaClienta(nombre, tel, ref);
     DB.clientes.push(c);
     saveClientes();
     if (!tel) toast('⚠️ Clienta creada sin teléfono');
@@ -1454,7 +1454,7 @@ function renderPedidos() {
   live.pedidos.forEach(p => { const k = pestanaDe(p); UI.pedTabDe[p.id] = k;
     if (prev[p.id] && prev[p.id] !== k && UI.pedTab !== 'todos' && prev[p.id] === UI.pedTab && !q) toast(`#${p.num} pasó a ${(PED_TABS.find(t => t[0] === k) || ['', k])[1]}`); });
   if (!q && UI.pedTab !== 'todos') ps = ps.filter(p => pestanaDe(p) === UI.pedTab);
-  if (q) ps = ps.filter(p => { const c = cliById(p.clienteId) || {}; return norm(c.nombre).includes(q) || (c.alias || []).some(a => norm(a).includes(q)) || String(p.num) === q.replace('#', '') || p.codigo.includes(q); });
+  if (q) ps = ps.filter(p => { const c = cliById(p.clienteId) || {}; return norm(c.nombre + ' ' + (c.ref || '')).includes(q) || (c.alias || []).some(a => norm(a).includes(q)) || String(p.num) === q.replace('#', '') || p.codigo.includes(q); });
   const pend = live.pedidos.filter(p => p.estado === 'pendiente').length;
   $('#bdg-ped').textContent = live.pedidos.length + (pend && pend < live.pedidos.length ? ' · ' + pend + ' pend.' : '');
   $('#lista-pedidos').innerHTML = (q && UI.pedTab !== 'todos' && ps.length ? '<div class="small muted mb">🔎 Buscando en todas las pestañas</div>' : '') + (ps.length ? ps.map(p => cardPedido(p, live, m)).join('') : `<div class="empty">${q ? 'Sin resultados' : UI.pedTab !== 'todos' && live.pedidos.length ? 'No hay pedidos en esta pestaña' : live.archivado ? `📦 Live archivado: ${live.resumen.pedidos} pedidos cerrados (detalle en el backup descargado ese día)` : 'Todavía no hay pedidos en este live'}</div>`);
@@ -1508,7 +1508,7 @@ function cuerpoPedido(p, c, live, t, h) {
       <div class="mt">${campoCli(c, 'notaCadete', 'Nota para el cadete (horario, referencia…)')}</div>
       <div class="row mt">${tipoBtnsHTML(p)}</div>
       <div class="row mt">${cobroBtnsHTML(p)}</div></div>`;
-  const editNom = UI.editNom.has(id) ? `<div class="box mt"><div class="grid2"><input id="en-${id}" value="${esc(c.nombre)}" placeholder="Nombre"><input id="et-${id}" value="${esc(c.tel)}" placeholder="Teléfono" inputmode="tel"></div>
+  const editNom = UI.editNom.has(id) ? `<div class="box mt"><div class="grid2"><input id="en-${id}" value="${esc(c.nombre)}" placeholder="Nombre"><input id="er-${id}" value="${esc(c.ref || '')}" placeholder="Referencia (apellido, emoji…)"><input id="et-${id}" value="${esc(c.tel)}" placeholder="Teléfono" inputmode="tel"></div>
       <div class="small muted mt">Si cambia el usuario de TikTok, el nombre anterior queda como alias. Si el teléfono es de otra ficha, se fusionan.</div>
       <div class="row mt"><button class="b sm ok" data-act="guardarNomTel" data-id="${id}">✓ Guardar</button><button class="b sm gh" data-act="editNom" data-id="${id}">Cancelar</button></div></div>` : '';
   return `<div class="pc-b">
@@ -1738,7 +1738,7 @@ function exportarCSVLive() {
 function renderClientes() {
   const m = stats(), q = norm(UI.filtroCl), dig = UI.filtroCl.replace(/\D/g, ''), tk = dig.length >= 3 ? telKey(dig) || dig : '';
   let cs = DB.clientes;
-  if (q) cs = cs.filter(c => norm(c.nombre).includes(q) || (c.alias || []).some(a => norm(a).includes(q)) || (tk && c.telKey.includes(tk)) || norm(c.nombreEnvio).includes(q));
+  if (q) cs = cs.filter(c => norm(c.nombre + ' ' + (c.ref || '')).includes(q) || (c.alias || []).some(a => norm(a).includes(q)) || (tk && c.telKey.includes(tk)) || norm(c.nombreEnvio).includes(q));
   cs = [...cs].sort((a, b) => (b.ultimoUso || '').localeCompare(a.ultimoUso || '') || a.nombre.localeCompare(b.nombre));
   const LIM = 80;
   $('#cl-count').textContent = `${DB.clientes.length} clientas` + (cs.length > LIM ? ` · mostrando ${LIM} de ${cs.length}, buscá para filtrar` : q ? ` · ${cs.length} encontradas` : '');
@@ -1782,7 +1782,7 @@ function fichaEditHTML(c) {
     : `<div><label class="lb">${ph}</label><input id="fe-${k}-${c.id}" value="${esc(c[k])}" ${im ? 'inputmode="' + im + '"' : ''}></div>`;
   const sep = UI.clSep && UI.clSep.cid === c.id ? separarHTML(c) : '';
   return `<div class="box mt">
-    <div class="grid2">${f('nombre', 'Nombre / usuario TikTok')}${f('tel', 'Teléfono', 'tel')}${f('nombreEnvio', 'Nombre real (envíos)')}${f('ci', 'C.I.')}${f('agencia', 'Agencia')}${f('depto', 'Departamento')}${f('ciudad', 'Ciudad')}${f('direccion', 'Dirección')}${f('barrio', 'Barrio (cadetería)')}</div>
+    <div class="grid2">${f('nombre', 'Nombre / usuario TikTok')}${f('ref', 'Referencia (apellido, emoji…)')}${f('tel', 'Teléfono', 'tel')}${f('nombreEnvio', 'Nombre real (envíos)')}${f('ci', 'C.I.')}${f('agencia', 'Agencia')}${f('depto', 'Departamento')}${f('ciudad', 'Ciudad')}${f('direccion', 'Dirección')}${f('barrio', 'Barrio (cadetería)')}</div>
     <div class="mt">${f('notaCadete', 'Nota para el cadete')}</div>
     <div class="mt"><label class="lb">💰 Saldo a favor ($)</label><input id="fe-saldoFavor-${c.id}" type="number" inputmode="numeric" value="${+c.saldoFavor || 0}" style="max-width:160px"></div>
     ${c.alias.length ? `<div class="mt"><div class="sec-t">Alias (nombres anteriores)</div>${c.alias.map((a, i) => `<div class="row" style="padding:3px 0"><span class="grow" style="flex:1">${esc(a)}</span><button class="b sm" data-act="sepIni" data-cid="${c.id}" data-i="${i}" title="Es otra persona con el mismo número">✂️ Separar</button><button class="b sm gh" data-act="delAlias" data-cid="${c.id}" data-i="${i}">✕</button></div>`).join('')}</div>` : ''}
@@ -2609,7 +2609,7 @@ const ACT = {
   etqCadete: d => imprimir(hojasHTML([etqCadeteHTML(pedById(d.id))]), 'etiquetas'),
   verFicha: d => verFicha(d.cid),
   editNom: d => { UI.editNom.has(d.id) ? UI.editNom.delete(d.id) : UI.editNom.add(d.id); render(); setTimeout(() => $('#en-' + d.id) && $('#en-' + d.id).focus(), 20); },
-  guardarNomTel: d => { const p = pedById(d.id), c = cliById(p.clienteId); const nombre = $('#en-' + d.id).value.trim(); if (!nombre) return toast('El nombre no puede quedar vacío'); editarClienta(c, { nombre, tel: $('#et-' + d.id).value }); UI.editNom.delete(d.id); render(); },
+  guardarNomTel: d => { const p = pedById(d.id), c = cliById(p.clienteId); const nombre = $('#en-' + d.id).value.trim(); if (!nombre) return toast('El nombre no puede quedar vacío'); const er = $('#er-' + d.id); editarClienta(c, { nombre, tel: $('#et-' + d.id).value, ref: er ? er.value : undefined }); UI.editNom.delete(d.id); render(); },
   delPedido: d => { const p = pedById(d.id); if (!confirm(`¿Eliminar el pedido #${p.num}? La ropa vuelve al stock.`)) return; eliminarPedido(p); UI.abiertos.delete(d.id); if (UI.cargaId === d.id) UI.cargaId = null; render(); },
   irPedido: (d, el, e) => { e.preventDefault(); irPedido(d.id); },
   todosListos: () => { const l = liveActual(); const ps = l.pedidos.filter(p => p.estado === 'pendiente'); if (!ps.length) return toast('No hay pendientes'); if (!confirm(`¿Marcar los ${ps.length} pendientes de "${l.nombre}" como listos (fecha ${fechaUY(l.fecha)})?`)) return; ps.forEach(p => setEstado(p, 'listo', l.fecha)); guardar(); render(); },
@@ -2629,7 +2629,7 @@ const ACT = {
     const c = cliById(d.cid), g = k => $('#fe-' + k + '-' + c.id).value;
     if (!g('nombre').trim()) return toast('El nombre no puede quedar vacío');
     c.saldoFavor = Math.max(0, num(g('saldoFavor')));
-    editarClienta(c, { nombre: g('nombre'), tel: g('tel'), nombreEnvio: g('nombreEnvio'), ci: g('ci'), agencia: g('agencia'), depto: g('depto'), ciudad: g('ciudad'), direccion: g('direccion'), barrio: g('barrio'), notaCadete: g('notaCadete') });
+    editarClienta(c, { nombre: g('nombre'), ref: g('ref'), tel: g('tel'), nombreEnvio: g('nombreEnvio'), ci: g('ci'), agencia: g('agencia'), depto: g('depto'), ciudad: g('ciudad'), direccion: g('direccion'), barrio: g('barrio'), notaCadete: g('notaCadete') });
     recalcSaldosClienta(c.id); guardar();
     UI.clEdit.delete(d.cid); toast('✓ Ficha guardada'); render();
   },
