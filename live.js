@@ -168,3 +168,51 @@ pintarCfgEtq();
 
 // La barra de Live: sin "Todos listos" (el pago se marca en Despacho)
 (() => { const b = document.querySelector('[data-act=todosListos]'); if (b) b.remove(); })();
+
+// ── Live que se mira: por equipo, no compartido (27/10) ──
+// config.liveActualId = el "live de hoy", compartido por todos (lo cambian "+ Nuevo live" y "Traer un live").
+// Cambiar el selector o abrir un pedido de otro live ya NO lo toca: se guarda solo en este navegador.
+// Así mirar un live viejo en el celu no mueve la compu, y los pedidos nuevos de la compu no caen en un live viejo.
+// Solo vale en la pestaña Live (Mostrador, cambios y respaldos siempre usan el de hoy) y se descarta cuando cambia el de hoy.
+const LIVE_VER_KEY = 'emma_live_ver';
+function leerLiveVer() { try { return JSON.parse(localStorage.getItem(LIVE_VER_KEY) || 'null'); } catch (e) { return null; } }
+function guardarLiveVer(id) {
+  try {
+    if (!id || id === (DB.config.liveActualId || null)) localStorage.removeItem(LIVE_VER_KEY);
+    else localStorage.setItem(LIVE_VER_KEY, JSON.stringify({ id, base: DB.config.liveActualId || null }));
+  } catch (e) { /* sin espacio o bloqueado: se queda en el de hoy */ }
+}
+const liveDeHoy = () => liveById(cfg('liveActualId')) || DB.lives[DB.lives.length - 1];
+liveActual = function () {
+  if (UI.tab === 'live') {
+    const v = leerLiveVer();
+    if (v && v.base === (DB.config.liveActualId || null)) { const l = liveById(v.id); if (l) return l; }
+  }
+  return liveDeHoy();
+};
+CHG.cambiarLive = (d, el) => { guardarLiveVer(el.value); UI.cargaId = null; UI.abiertos.clear(); render(); };
+ACT.volverLiveHoy = () => { guardarLiveVer(null); UI.cargaId = null; UI.abiertos.clear(); render(); };
+irPedido = function (id) {
+  const p = pedById(id); if (!p) return;
+  closeModal();
+  const h = liveDeHoy();
+  guardarLiveVer(h && p.liveId === h.id ? null : p.liveId);
+  UI.abiertos.add(id); UI.filtroLive = ''; $('#live-filtro').value = '';
+  if (UI.pedTab !== 'todos' && UI.pedTab !== pestanaDe(p)) UI.pedTab = pestanaDe(p);
+  setTab('live');
+  setTimeout(() => { const el = $('#pc-' + id); if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1800); } }, 40);
+};
+const _renderLiveBase = renderLive;
+renderLive = function () {
+  _renderLiveBase();
+  const sel = $('#live-sel'); if (!sel) return;
+  const v = liveActual(), h = liveDeHoy();
+  const op = h && sel.querySelector(`option[value="${CSS.escape(h.id)}"]`);
+  if (op && !op.textContent.startsWith('⭐')) op.textContent = '⭐ ' + op.textContent + ' · de hoy';
+  let el = document.getElementById('live-ver-aviso');
+  if (!el) { el = document.createElement('div'); el.id = 'live-ver-aviso'; sel.closest('.row').after(el); }
+  const html = v && h && v.id !== h.id
+    ? `<div class="av am mt"><span class="grow">👀 Estás mirando <b>${esc(v.nombre)}</b> solo en este equipo; los demás siguen en <b>${esc(h.nombre)}</b>. Ojo: lo que cargues acá va a este live.</span><button class="b sm pri" data-act="volverLiveHoy">Volver al de hoy</button></div>`
+    : '';
+  if (el.innerHTML !== html) el.innerHTML = html;
+};
