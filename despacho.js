@@ -282,28 +282,30 @@ function salidaHTML(c, ps) {
       <label class="lb mt">Tipo de envío</label><div class="row">${b('tipo', 'comun', '📦 Común')}${b('tipo', 'cambio', '🔄 Cambio')}</div>
       <label class="lb mt">Cobro del envío *</label><div class="row">${b('cobro', 'cobrar', 'Cobrar ' + fmt(cfg('tarifaEnvio')))}${b('cobro', 'pago', '✓ Envío pago')}${b('cobro', 'monto', '✏️ Otro monto')}${f.cobro === 'monto' ? `<input id="dsf-monto" type="number" inputmode="numeric" data-inp="despF" data-f="monto" value="${esc(f.monto || '')}" placeholder="$ total" style="width:110px">` : ''}</div>`;
   }
-  if (t === 'guardado') form = '<div class="small muted mt">Quedan guardados: el plazo de 30 días corre desde hoy (pestaña Guardados).</div>';
+  if (t === 'guardado') form = '<div class="small muted mt">Si no elegís nada abajo, quedan guardados con el plazo normal de 30 días (pestaña Guardados). Si ya pagó, marcá el pago; si todavía no, elegí "Sin pagar · con plazo".</div>';
   if (t === 'liberado') form = '<div class="alert li">La ropa vuelve al stock y el pedido cuenta como ❌ (queda como deuda en la ficha).</div>';
   if (t === 'pago') form = '<div class="small muted mt">Marca el pago sin despachar (para hacerlo desde el celular cuando llega el comprobante). Al despachar en la compu ya figura pagado.</div>';
   // Pago: se marca acá mismo, junto con la salida
-  const porCob = conPago(t) ? ps.filter(porCobrar) : [];
-  const yaPag = conPago(t) ? ps.filter(p => p.pago) : [];
+  const conP = conPago(t) || t === 'guardado';
+  const porCob = conP ? ps.filter(porCobrar) : [];
+  const yaPag = conP ? ps.filter(p => p.pago) : [];
   let pago = '';
   if (yaPag.length) pago += `<div class="small mt" style="color:var(--ok)">✓ Ya pagó: ${yaPag.map(p => '#' + p.num + ' (' + esc(p.pago.cuenta) + (p.pago.conEnvio ? ', con envío' : '') + ')').join(' · ')}</div>`;
   if (porCob.length) {
     const tar = +cfg('tarifaEnvio') || 0, base = porCob.reduce((s2, p) => s2 + calc(p).total, 0), env = (t === 'cadeteria' || t === 'pago') && f.conEnvio ? tar : 0, esp = esperadoDe(base, env, f.cuenta), dosV = f.dos && f.cuenta2 ? esperadoDos(base, env, f.cuenta, f.cuenta2, f.monto2) : null, auto = dosV && dosV.ok ? dosV.tot1 : esp.total;
     const ctas = cuentasPago(), extra = f.cuenta && f.cuenta !== 'sin' && !ctas.includes(f.cuenta) ? [f.cuenta] : [];
     pago += `<label class="lb mt">¿Cómo pagó${porCob.length < ps.length ? ' ' + numsTxt(porCob) : ''}? *</label>
-      <div class="row">${ctas.concat(extra).map(cta => `<button class="b sm seg${f.cuenta === cta ? ' on' : ''}" data-act="despCuenta" data-c="${esc(cta)}">${esc(cta)}</button>`).join('')}<button class="b sm gh" data-act="despCuenta" data-c="">Otra…</button>${t === 'pago' ? '' : `<button class="b sm seg${f.cuenta === 'sin' ? ' on' : ''}" data-act="despCuenta" data-c="sin">Sin confirmar</button>`}</div>`;
+      <div class="row">${ctas.concat(extra).map(cta => `<button class="b sm seg${f.cuenta === cta ? ' on' : ''}" data-act="despCuenta" data-c="${esc(cta)}">${esc(cta)}</button>`).join('')}<button class="b sm gh" data-act="despCuenta" data-c="">Otra…</button>${t === 'pago' ? '' : `<button class="b sm seg${f.cuenta === 'sin' ? ' on' : ''}" data-act="despCuenta" data-c="sin">${t === 'guardado' ? '⏳ Sin pagar · con plazo' : 'Sin confirmar'}</button>`}</div>`;
     if (t === 'cadeteria' || t === 'pago') pago += `<div class="row mt"><button class="b sm seg${f.conEnvio ? ' on' : ''}" data-act="despConEnvio">${f.conEnvio ? '✓' : '＋'} La transferencia incluye el envío de cadetería (${fmt(tar)})</button></div>`;
     if (f.cuenta && f.cuenta !== 'sin') pago += `<div class="row mt"><label class="small muted" for="dsf-transf">${f.dos ? 'Entró por ' + esc(f.cuenta) : 'Monto transferido'}</label><input id="dsf-transf" type="number" inputmode="numeric" data-inp="despF" data-f="transf" value="${esc(f.transfEdit ? f.transf : String(auto))}" style="width:130px"><span class="small muted">${dosV && dosV.ok ? 'su parte ' + fmt(dosV.part1) : 'pedido ' + fmt(base)}${env ? ' + envío ' + fmt(env) : ''}${(dosV && dosV.ok ? dosV.rec1 : esp.rec) ? ' + Mercado Pago ' + recargoMP() + '% ' + fmt(dosV && dosV.ok ? dosV.rec1 : esp.rec) : ''}</span></div>`;
     if (f.cuenta && f.cuenta !== 'sin') pago += dosHTML(f, ctas, dosV);
-    if (f.cuenta === 'sin') pago += '<div class="small muted mt">Sale sin pago marcado: queda anotado en el paquete.</div>';
+    if (f.cuenta === 'sin' && t === 'guardado') { const plz = f.plazo || sumarDias(hoyISO(), 3); pago += `<div class="row mt"><label class="small muted" for="dsf-plazo">Guardado sin pagar hasta</label><input type="date" id="dsf-plazo" min="${hoyISO()}" data-inp="despF" data-f="plazo" value="${esc(plz)}" style="width:auto"><button class="b sm" data-act="despPlazo" data-d="3">+3 días</button><button class="b sm" data-act="despPlazo" data-d="7">+7 días</button></div><div class="small muted mt">No recibe recordatorios. Al vencer aparece en "Para liberar" para que decidas vos.</div>`; }
+    else if (f.cuenta === 'sin') pago += '<div class="small muted mt">Sale sin pago marcado: queda anotado en el paquete.</div>';
   }
   if (t === 'pago' && !porCob.length) pago += '<div class="small muted mt">Los pedidos tildados ya tienen el pago marcado.</div>';
-  const bloqueado = !t || (porCob.length && !f.cuenta) || (porCob.length && f.cuenta !== 'sin' && f.dos && !(f.cuenta2 && (dosV0(porCob, t, f) || {}).ok)) || (t === 'pago' && (!porCob.length || f.cuenta === 'sin'));
+  const bloqueado = !t || (porCob.length && !f.cuenta && t !== 'guardado') || (porCob.length && f.cuenta !== 'sin' && f.dos && !(f.cuenta2 && (dosV0(porCob, t, f) || {}).ok)) || (t === 'pago' && (!porCob.length || f.cuenta === 'sin'));
   const cobro = t === 'cadeteria' ? (f.cobro === 'pago' ? ' · envío pago' : f.cobro === 'monto' ? (num(f.monto) > 0 ? ' · cobra ' + fmt(num(f.monto)) : '') : f.cobro === 'cobrar' ? ' · cobra ' + fmt(cfg('tarifaEnvio')) : '') : '';
-  const txt = !t ? 'Elegí cómo sale' : { retiro: `✓ Entregar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, agencia: `📦 Despachar por agencia${n > 1 ? ' · ' + n + ' pedidos, 1 etiqueta' : ''}`, cadeteria: `🚴 Despachar por cadetería${cobro}`, guardado: `⏸️ Guardar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, liberado: `❌ Liberar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, pago: '💸 Marcar pago' }[t];
+  const txt = !t ? 'Elegí cómo sale' : { retiro: `✓ Entregar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, agencia: `📦 Despachar por agencia${n > 1 ? ' · ' + n + ' pedidos, 1 etiqueta' : ''}`, cadeteria: `🚴 Despachar por cadetería${cobro}`, guardado: porCob.length && f.cuenta === 'sin' ? `⏸️ Guardar sin pagar hasta el ${fechaUY(f.plazo || sumarDias(hoyISO(), 3), 1)}` : porCob.length && f.cuenta ? `⏸️ Guardar y marcar pago · ${esc(f.cuenta)}` : `⏸️ Guardar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, liberado: `❌ Liberar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, pago: '💸 Marcar pago' }[t];
   return `<div class="card dsp-sal"><div class="card-t">${t === 'pago' ? 'Pago' : '¿Cómo sale' + (n > 1 ? 'n' : '') + '?'} · ${numsTxt(ps)}</div>
     <div class="dsp-segs">${segs}</div>${form}${pago}
     <button class="b ${t === 'liberado' ? 'dan' : 'ok'} lg blk mt" id="dsp-go" data-act="despGo"${bloqueado ? ' disabled' : ''}>${txt}</button></div>`;
@@ -331,7 +333,7 @@ function elegirSalida(t) {
   D.f = { agencia: c.agencia || '', nombreEnvio: c.nombreEnvio || '', ci: c.ci || '', ciudad: c.ciudad || '', depto: c.depto || '', direccion: c.direccion || '', barrio: c.barrio || '', notaCadete: c.notaCadete || '',
     tipo: ps.some(p => tipoEnvioDe(p) === 'cambio') ? 'cambio' : 'comun',
     cobro: m && m.cobroEnvio && m.entrega === 'cadeteria' ? m.cobroEnvio : null, monto: m && m.cobroMonto ? String(m.cobroMonto) : '',
-    cuenta: (D.f && D.f.cuenta) || null, dos: !!(D.f && D.f.dos), cuenta2: (D.f && D.f.cuenta2) || null, monto2: (D.f && D.f.monto2) || '', conEnvio: false, transf: '', transfEdit: false };
+    cuenta: (D.f && D.f.cuenta) || null, plazo: '', dos: !!(D.f && D.f.dos), cuenta2: (D.f && D.f.cuenta2) || null, monto2: (D.f && D.f.monto2) || '', conEnvio: false, transf: '', transfEdit: false };
 }
 function cerrarClientaDesp() { const D = UI.desp; D.cid = null; D.sel = new Set(); D.salida = null; D.f = {}; D.aviso = ''; D.sinPago = false; }
 function focoBuscar() { setTimeout(() => { const q = $('#dsp-q'); if (q && UI.tab === 'despacho') q.focus(); }, 30); }
@@ -405,9 +407,15 @@ function despGo() {
   if (!c || !ps.length || !t) return;
   if (t === 'guardado' || t === 'liberado') {
     if (t === 'liberado' && !confirm(`¿Liberar ${numsTxt(ps)} de ${c.nombre}?\n\nLa ropa vuelve al stock y queda como deuda en la ficha.`)) return;
-    ps.forEach(p => setEstado(p, t));
+    let extra = '', gsId = [];
+    if (t === 'guardado') {
+      const pc = ps.filter(porCobrar);
+      if (pc.length && f.cuenta && f.cuenta !== 'sin') { gsId = registrarPagos(pc, f, false, null).map(g => g.id); extra = ' · pagó por ' + esc(f.cuenta) + (f.dos && f.cuenta2 ? ' + ' + esc(f.cuenta2) : ''); }
+      if (pc.length && f.cuenta === 'sin') { const hasta = f.plazo || sumarDias(hoyISO(), 3); if (hasta < hoyISO()) return toast('La fecha ya pasó'); aplicarPlazo(pc.map(p => p.id), hasta); extra = ' · sin pagar hasta el ' + fechaUY(hasta, 1); }
+    }
+    ps.filter(p => p.estado !== t).forEach(p => setEstado(p, t));
     guardar();
-    D.res = t === 'guardado' ? { cls: 'mu', html: `⏸️ Guardado${ps.length > 1 ? 's' : ''} ${numsTxt(ps)} · ${esc(c.nombre)}`, cid: c.id } : { cls: 'li', html: `❌ Liberado${ps.length > 1 ? 's' : ''} ${numsTxt(ps)} · ${esc(c.nombre)}`, cid: c.id };
+    D.res = t === 'guardado' ? { cls: 'mu', html: `⏸️ Guardado${ps.length > 1 ? 's' : ''} ${numsTxt(ps)} · ${esc(c.nombre)}${extra}`, cid: c.id, pagos: gsId } : { cls: 'li', html: `❌ Liberado${ps.length > 1 ? 's' : ''} ${numsTxt(ps)} · ${esc(c.nombre)}`, cid: c.id };
     cerrarClientaDesp(); render(); focoBuscar(); return;
   }
   const porCob = ps.filter(porCobrar);
@@ -636,6 +644,7 @@ Object.assign(ACT, {
     if (!cta) { cta = (prompt('¿En qué cuenta entró la transferencia?') || '').trim(); if (!cta) return; }
     const f = UI.desp.f; f.cuenta = f.cuenta === cta ? null : cta; if (f.cuenta2 === f.cuenta) f.cuenta2 = null; f.transfEdit = false; render();
   },
+  despPlazo: d => { UI.desp.f.plazo = sumarDias(hoyISO(), +d.d); render(); },
   despDos: () => { const f = UI.desp.f; f.dos = !f.dos; if (!f.dos) { f.cuenta2 = null; f.monto2 = ''; } f.transfEdit = false; render(); },
   despCuenta2: d => { const f = UI.desp.f; f.cuenta2 = f.cuenta2 === d.c ? null : d.c; f.transfEdit = false; render(); setTimeout(() => { const el = $('#dsf-monto2'); if (el) el.focus(); }, 20); },
   despDeshacerPago: () => {
@@ -665,6 +674,7 @@ Object.assign(INP, {
   despF: el => {
     UI.desp.f[el.dataset.f] = el.value;
     if (el.dataset.f === 'transf') UI.desp.f.transfEdit = true;
+    if (el.dataset.f === 'plazo') { const b = $('#dsp-go'); if (b && el.value) b.textContent = '⏸️ Guardar sin pagar hasta el ' + fechaUY(el.value, 1); }
     if (el.dataset.f === 'monto2') {
       const D = UI.desp, f = D.f, porCob = [...D.sel].map(pedById).filter(p => p && sinSalir(p) && porCobrar(p)), v = dosV0(porCob, D.salida, f);
       const r = $('#dsf-dos-res'); if (r) r.innerHTML = dosResTxt(f, v);
