@@ -235,4 +235,87 @@ Object.assign(CHG, {
   mbNov: () => { const t = $('#mb-nov').value.trim(); saveConfig({ novedadesHoy: t ? { texto: t, vence: $('#mb-vence').value || hoyISO() } : null }); toast('✓ Novedades guardadas'); pintarCfgMabel(); },
   mbCfg: (d, el) => { const v = d.k === 'diaOtrasAgencias' ? el.value : Math.max(0, num(el.value)); saveConfig({ [d.k]: v }); toast('✓ Guardado'); pintarCfgMabel(); }
 });
+// ─── Plazos: "Más plazo" y "Para liberar" (28/10) ─────────────
+// Más plazo = pasar el pedido a Guardado sin pagar con fecha límite (sirve también para clientas NO autorizadas: excepción puntual).
+// Para liberar = pedidos sin pagar con el plazo vencido. La app solo los marca: liberar es siempre con un toque de Yoan o Yanaina.
+const HORA_LIBERAR = 16;
+const plazoPagoDias = () => Math.max(1, +cfgN('plazoPagoDias', 2) || 2);   // el pago es el día siguiente al live; se libera a las 16:00 del día después
+const limiteDe = p => p.estado === 'guardado' ? (p.guardadoSinPagar && p.guardadoSinPagar.hasta) : sumarDias(p.fechas.creado || hoyISO(), plazoPagoDias());
+const limiteVencido = f => !!f && (f < hoyISO() || (f === hoyISO() && new Date().getHours() >= HORA_LIBERAR));
+function paraLiberar() {
+  return todosPedidos().filter(p => !p.cambio && !pagado(p) && !pagoAlRetirar(p)
+    && (p.estado === 'pendiente' || (p.estado === 'guardado' && p.guardadoSinPagar)) && limiteVencido(limiteDe(p)));
+}
+function liberadosRecientes() {
+  const desde = sumarDias(hoyISO(), -7);
+  return todosPedidos().filter(p => !p.cambio && p.estado === 'liberado' && (p.fechas.liberado || '') >= desde)
+    .sort((a, b) => (b.fechas.liberado || '').localeCompare(a.fechas.liberado || '') || b.num - a.num);
+}
+function aplicarPlazo(ids, hasta) {
+  const ps = ids.map(pedById).filter(Boolean);
+  ps.forEach(p => {
+    const c = cliById(p.clienteId) || {}, desde = (p.guardadoSinPagar && p.guardadoSinPagar.desde) || hoyISO();
+    if (p.estado !== 'guardado') setEstado(p, 'guardado');
+    p.guardadoSinPagar = { desde, hasta, ...(c.puedeGuardarSinPagar ? {} : { excepcion: true }) };
+  });
+  guardar();
+  return ps;
+}
+function plazoBtnHTML(p) {
+  if (p.cambio || pagado(p) || !['pendiente', 'guardado'].includes(p.estado)) return '';
+  if (p.estado === 'guardado' && !p.guardadoSinPagar) return '';
+  return `<button class="b" data-act="masPlazo" data-ids="${p.id}" title="Pasa el pedido a Guardado sin pagar con fecha límite">📅 ${p.guardadoSinPagar ? 'Cambiar plazo' : 'Más plazo'}</button>`;
+}
+function plazoModal(ids) {
+  const ps = ids.map(pedById).filter(Boolean); if (!ps.length) return;
+  UI.plazoIds = ids;
+  const c = cliById(ps[0].clienteId) || { nombre: '?' }, act = ps.map(p => p.guardadoSinPagar && p.guardadoSinPagar.hasta).filter(Boolean).sort()[0];
+  showModal(`<h3>📅 Más plazo · ${esc(c.nombre)}</h3>
+    <p class="small muted mb">${ps.map(p => '#' + p.num).join(' · ')} pasa a <b>Guardado sin pagar</b> hasta la fecha que elijas. No recibe recordatorios y, al vencer, aparece en "Para liberar".${c.puedeGuardarSinPagar ? '' : ' Es una excepción: la clienta no queda autorizada para siempre.'}${act ? '<br>Ahora vence el ' + fechaUY(act) + '.' : ''}</p>
+    <div class="row"><button class="b" data-act="plazoDias" data-d="3">+3 días</button><button class="b" data-act="plazoDias" data-d="7">+7 días</button></div>
+    <div class="row mt"><input type="date" id="plazo-f" min="${hoyISO()}" style="flex:1"><button class="b ok" data-act="plazoFecha">✓ Guardar fecha</button></div>
+    <div class="row mt"><span class="grow"></span><button class="b gh" data-act="closeModal">Cancelar</button></div>`);
+}
+function plazoListo(hasta) {
+  const ps = aplicarPlazo(UI.plazoIds || [], hasta); closeModal();
+  toast('✓ ' + ps.map(p => '#' + p.num).join(' · ') + ' guardado hasta el ' + fechaUY(hasta)); render();
+}
+function liberarHTML() {
+  const ps = paraLiberar(), lib = liberadosRecientes();
+  if (!ps.length && !lib.length) return '';
+  const porCli = new Map(); ps.forEach(p => { if (!porCli.has(p.clienteId)) porCli.set(p.clienteId, []); porCli.get(p.clienteId).push(p); });
+  const abierto = UI.libAbierto !== false && ps.length > 0;
+  let h = `<div class="card mb"><div class="row" data-act="libTog" style="cursor:pointer"><span class="card-t" style="margin:0">⏳ Para liberar <span class="bdg">${ps.length}</span></span><span class="grow"></span><span class="muted">${abierto ? '▲' : '▼'}</span></div>`;
+  if (!ps.length) h += '<div class="small muted mt">No hay pedidos vencidos 🎉</div>';
+  else if (abierto) {
+    h += `<p class="small muted mt">Sin pagar y con el plazo vencido (después de las ${HORA_LIBERAR}:00). La app no libera sola: confirmás vos.</p>`;
+    h += [...porCli].map(([cid, gp]) => { const c = cliById(cid) || { nombre: '?' }, ids = gp.map(p => p.id).join(','), tot = gp.reduce((s2, p) => s2 + calc(p).total, 0);
+      return `<div class="mb-k rojo"><div class="row"><b class="grow" style="flex:1">${nomAlias(c)}</b><b class="mono">${fmt(tot)}</b></div>
+        <div class="small muted">${gp.map(p => '#' + p.num + ' (venció el ' + fechaUY(limiteDe(p), 1) + (p.guardadoSinPagar ? ', con plazo extra' : '') + ')').join(' · ')}</div>
+        <div class="row mt">${c.tel ? `<button class="b sm" data-act="waCli" data-cid="${cid}">💬 Chat</button>` : ''}<button class="b sm" data-act="masPlazo" data-ids="${ids}">📅 Aplazar</button><button class="b sm dan" data-act="liberarPeds" data-ids="${ids}">❌ Liberar</button></div></div>`; }).join('');
+  }
+  if (lib.length) h += `<div class="row mt" data-act="libRecTog" style="cursor:pointer"><span class="small muted">Liberados en los últimos 7 días (${lib.length})</span><span class="grow"></span><span class="muted">${UI.libRec ? '▲' : '▼'}</span></div>`
+    + (UI.libRec ? lib.map(p => { const c = cliById(p.clienteId) || { nombre: '?' }; return `<div class="small" style="padding:3px 0">${fechaUY(p.fechas.liberado, 1)} · #${p.num} · ${nomAlias(c)} · ${fmt(calc(p).total)}</div>`; }).join('') : '');
+  return h + '</div>';
+}
+Object.assign(ACT, {
+  masPlazo: d => plazoModal(String(d.ids || '').split(',').filter(Boolean)),
+  plazoDias: d => { const ps = (UI.plazoIds || []).map(pedById).filter(Boolean), act = ps.map(p => p.guardadoSinPagar && p.guardadoSinPagar.hasta).filter(Boolean).sort().pop(); plazoListo(sumarDias(act && act > hoyISO() ? act : hoyISO(), +d.d)); },
+  plazoFecha: () => { const f = ($('#plazo-f') || {}).value; if (!f) return toast('Elegí una fecha'); if (f < hoyISO()) return toast('La fecha ya pasó'); plazoListo(f); },
+  libTog: () => { UI.libAbierto = UI.libAbierto === false; render(); },
+  libRecTog: () => { UI.libRec = !UI.libRec; render(); },
+  liberarPeds: d => {
+    const ps = String(d.ids || '').split(',').map(pedById).filter(p => p && !pagado(p)); if (!ps.length) return;
+    const c = cliById(ps[0].clienteId) || { nombre: '?' };
+    if (!confirm(`¿Liberar ${ps.map(p => '#' + p.num).join(' · ')} de ${c.nombre}?\n\nLa ropa vuelve al stock y queda como deuda en la ficha.`)) return;
+    ps.forEach(p => setEstado(p, 'liberado')); guardar(); toast('❌ Liberado' + (ps.length > 1 ? 's ' : ' ') + ps.map(p => '#' + p.num).join(' · ')); render();
+  }
+});
+// Aviso al equipo cuando hay pedidos para liberar
+const _avisosMabelHTML = avisosMabelHTML;
+avisosMabelHTML = function () {
+  let h = _avisosMabelHTML(); const n = paraLiberar().length;
+  if (n) h += `<div class="mb-av"><span class="grow">⏳ ${n} pedido${n > 1 ? 's' : ''} sin pagar con el plazo vencido: para liberar o aplazar</span><button class="b sm" data-act="tab" data-t="despacho">Ver</button></div>`;
+  return h;
+};
 pintarAvisosMabel();

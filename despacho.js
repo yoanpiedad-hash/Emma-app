@@ -186,7 +186,7 @@ function inicioHTML() {
   if (!h) h = '<div class="empty">No hay pedidos pagados esperando salir 🎉</div>';
   h = `<div class="row mb" style="justify-content:flex-end"><button class="b sm" data-act="tab" data-t="pagos">📊 Pagos del día</button></div><div class="dsp-fil">${fil}</div>` + h;
   if (sinPagar) h += `<div class="small muted" style="margin:-4px 2px 12px">⏳ ${sinPagar} pedido${sinPagar > 1 ? 's' : ''} todavía sin pagar.</div>`;
-  return h + hoyHTML();
+  return h + (typeof liberarHTML === 'function' ? liberarHTML() : '') + hoyHTML();
 }
 function paquetesDeHoy() {
   const hoy = hoyISO();

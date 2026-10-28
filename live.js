@@ -105,6 +105,7 @@ cuerpoPedido = function (p, c, live, t, h) {
       <button class="b wa" data-act="waPedido" data-id="${id}">💬 WhatsApp</button>
       <button class="b" data-act="waCli" data-cid="${c.id}" title="Abrir el chat vacío, sin mensaje">💬 Chat</button>
       ${typeof confBtnHTML === 'function' ? confBtnHTML(p) : ''}
+      ${typeof plazoBtnHTML === 'function' ? plazoBtnHTML(p) : ''}
       <button class="b" data-act="previewMsg" data-id="${id}" title="Ver el mensaje">👁️</button>
       <button class="b" data-act="etqPedido" data-id="${id}">🏷️ Etiqueta</button>
       <button class="b" data-act="verFicha" data-cid="${c.id}">👤 Ficha</button>
