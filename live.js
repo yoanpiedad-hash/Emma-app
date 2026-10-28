@@ -104,6 +104,7 @@ cuerpoPedido = function (p, c, live, t, h) {
     <div class="sec row">
       <button class="b wa" data-act="waPedido" data-id="${id}">💬 WhatsApp</button>
       <button class="b" data-act="waCli" data-cid="${c.id}" title="Abrir el chat vacío, sin mensaje">💬 Chat</button>
+      ${typeof confBtnHTML === 'function' ? confBtnHTML(p) : ''}
       <button class="b" data-act="previewMsg" data-id="${id}" title="Ver el mensaje">👁️</button>
       <button class="b" data-act="etqPedido" data-id="${id}">🏷️ Etiqueta</button>
       <button class="b" data-act="verFicha" data-cid="${c.id}">👤 Ficha</button>
@@ -217,3 +218,26 @@ renderLive = function () {
     : '';
   if (el.innerHTML !== html) el.innerHTML = html;
 };
+
+
+// ─── Confirmación durante el live (28/10) ─────────────────────
+// Se manda cuando la clienta compra su primera prenda: SIN número de pedido ni total (puede seguir sumando). Una sola vez por clienta en el live.
+const CONF_MSG_DEF = 'Hola {nombre}! De Emma Indumentaria 💛 Te anotamos en el live, ¿me confirmás con un SÍ?';
+function primerNombreConf(n) { const w = String(n || '').trim().split(/\s+/)[0] || ''; return w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''; }
+function textoConfirmacion(c) { return (cfg('msgConfirmacion') || CONF_MSG_DEF).replace(/\{nombre\}/g, primerNombreConf(c.nombre)); }
+/** ¿Ya se le mandó la confirmación en este live? (cualquier pedido de la clienta en el mismo live) */
+function confirmacionEnviada(p) { return todosPedidos().some(x => x.clienteId === p.clienteId && x.liveId === p.liveId && x.confirmWA); }
+function confBtnHTML(p) {
+  if (!p.prendas || !p.prendas.length || p.cambio) return '';
+  return confirmacionEnviada(p) ? '<span class="chip ok" title="Ya se le mandó el mensaje de confirmación en este live">✓ Confirmación enviada</span>'
+    : `<button class="b" data-act="waConfirm" data-id="${p.id}" title="Manda: ${esc(textoConfirmacion(cliById(p.clienteId) || { nombre: '' }))}">✅ Enviar confirmación</button>`;
+}
+Object.assign(ACT, {
+  waConfirm: d => {
+    const p = pedById(d.id), c = p && cliById(p.clienteId); if (!p || !c) return;
+    if (!p.prendas.length) return toast('Agregá la primera prenda primero');
+    if (confirmacionEnviada(p) && !confirm('Ya le mandaste la confirmación en este live. ¿Mandarla de nuevo?')) return;
+    if (!c.tel && !pedirTel(c)) return;
+    if (abrirWA(c.tel, textoConfirmacion(c))) { p.confirmWA = ahoraISO(); guardar(); render(); }
+  }
+});

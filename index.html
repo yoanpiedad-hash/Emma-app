@@ -1529,6 +1529,7 @@ function cuerpoPedido(p, c, live, t, h) {
     <div class="sec row">
       <button class="b wa" data-act="waPedido" data-id="${id}">💬 WhatsApp</button>
       <button class="b" data-act="waCli" data-cid="${c.id}" title="Abrir el chat vacío, sin mensaje">💬 Chat</button>
+      ${typeof confBtnHTML === 'function' ? confBtnHTML(p) : ''}
       <button class="b" data-act="previewMsg" data-id="${id}" title="Ver el mensaje">👁️</button>
       <button class="b" data-act="etqPedido" data-id="${id}">🏷️ Etiqueta</button>
       ${ent === 'cadeteria' ? `<button class="b" data-act="etqCadete" data-id="${id}">🚴 Etiq. cadete</button>` : ''}
