@@ -183,11 +183,16 @@ function paquetesDeHoy() {
   return (DB.paquetes || []).filter(k => localISO(new Date(k.fecha)) === hoy).sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 function hoyHTML() {
-  const F = UI.desp.filtro || 'todos', ks = paquetesDeHoy().filter(k => F === 'todos' || k.tipo === F); if (!ks.length) return '';
-  const n = t => ks.filter(k => k.tipo === t).length, cad = n('cadeteria');
+  // Pestañas propias de "Salió hoy" (27/10): tocar Cadetería / Agencias / Retiros muestra solo eso. Si no se eligió, sigue el filtro de arriba.
+  const todos = paquetesDeHoy(); if (!todos.length) return '';
+  const F = UI.desp.filtroHoy || UI.desp.filtro || 'todos', ks = todos.filter(k => F === 'todos' || k.tipo === F);
+  const n = t => todos.filter(k => k.tipo === t).length, cad = ks.filter(k => k.tipo === 'cadeteria').length;
   const hora = iso => { const d = new Date(iso); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
   const ico = { retiro: '🏠', agencia: '📦', cadeteria: '🚴' };
-  return `<div class="card"><div class="card-t">Salió hoy · ${cad} cadetería · ${n('agencia')} agencia · ${n('retiro')} retiro</div>
+  const pes = [['todos', 'Todo', todos.length], ['cadeteria', '🚴 Cadetería', n('cadeteria')], ['agencia', '📦 Agencias', n('agencia')], ['retiro', '🏠 Retiros', n('retiro')]]
+    .map(([t, txt, c]) => `<button class="b${F === t ? ' on' : ''}" data-act="despFiltroHoy" data-t="${t}"${c || t === 'todos' ? '' : ' disabled'}><b>${c}</b>${txt}</button>`).join('');
+  return `<div class="card"><div class="card-t">Salió hoy</div><div class="dsp-fil">${pes}</div>
+    ${ks.length ? '' : '<div class="empty">Nada de esto salió hoy</div>'}
     ${cad ? `<div class="row mb"><button class="b sm" data-act="despGrisal">📋 Copiar para GrisalExpress</button><button class="b sm" data-act="despHoja">🖨️ Hoja del cadete</button></div>` : ''}
     ${ks.map(k => { const c = cliById(k.clienteId) || { nombre: '?' }; return `<div class="dsp-k"><span class="mono small muted">${hora(k.fecha)}</span><span>${ico[k.tipo]}</span><span style="flex:1;min-width:120px"><b>${esc(c.nombre)}</b> <span class="small muted">${esc(k.nums.map(x => '#' + x).join(' · '))}</span>${k.grisalCopiado ? ' <span class="chip ac">📋 copiada</span>' : ''}</span>${k.tipo !== 'retiro' ? `<button class="b sm" data-act="despPrint" data-k="${k.id}" title="Reimprimir etiqueta">🖨️</button>` : ''}<button class="b sm gh" data-act="despDeshacer" data-k="${k.id}" title="Deshacer">↩️</button></div>`; }).join('')}
   </div>`;
@@ -593,7 +598,8 @@ Object.assign(ACT, {
     if (f.conEnvio) { f._cobroAntes = f.cobro; f.cobro = 'pago'; } else if (f.cobro === 'pago') f.cobro = f._cobroAntes === 'pago' ? 'pago' : (f._cobroAntes || null);
     f.transfEdit = false; render();
   },
-  despFiltro: d => { UI.desp.filtro = UI.desp.filtro === d.t ? 'todos' : d.t; render(); },
+  despFiltro: d => { UI.desp.filtro = UI.desp.filtro === d.t ? 'todos' : d.t; UI.desp.filtroHoy = null; render(); },
+  despFiltroHoy: d => { UI.desp.filtroHoy = d.t; render(); },
   despGo: () => despGo(),
   despPrint: d => imprimirPaquete(d.k),
   despDeshacer: d => deshacerPaquete(d.k),
