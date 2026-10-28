@@ -84,6 +84,14 @@ const medioDe = cuenta => /^pos\b/i.test((cuenta || '').trim()) ? 'efectivo' : /
 const recargoMP = () => { const v = DB.config.mpRecargo; return v === undefined || v === null || v === '' ? 10 : Math.max(0, +v || 0); };
 /** Lo que tiene que transferir: pedidos + envío (si lo transfiere) + recargo de Mercado Pago. */
 function esperadoDe(base, env, cuenta) { const rec = medioDe(cuenta) === 'mercadopago' ? Math.round((base + env) * recargoMP() / 100) : 0; return { base, env, rec, total: base + env + rec }; }
+/** Pago con 2 medios. x = lo que entró por el 2º medio (ya con el recargo si ese medio es Mercado Pago). El recargo va solo sobre la parte que pagó por Mercado Pago. */
+function esperadoDos(base, env, c1, c2, x) {
+  const T = base + env, r = recargoMP() / 100, mp1 = medioDe(c1) === 'mercadopago', mp2 = medioDe(c2) === 'mercadopago';
+  x = Math.max(0, Math.round(+x || 0));
+  const part2 = Math.min(T, mp2 ? Math.round(x / (1 + r)) : x), part1 = T - part2;
+  const rec1 = mp1 ? Math.round(part1 * r) : 0, rec2 = mp2 ? Math.max(0, x - part2) : 0;
+  return { T, part1, part2, rec1, rec2, tot1: part1 + rec1, tot2: part2 + rec2, rec: rec1 + rec2, total: T + rec1 + rec2, ok: part1 > 0 && part2 > 0 && !!c2 && c2 !== c1 };
+}
 function marcarPago(p, cuenta, origen) {
   const g = { id: uid('g'), pedidoId: p.id, clienteId: p.clienteId, cuenta, medio: medioDe(cuenta), monto: p.cambio ? (p.cambio.cobrar || 0) : calc(p).total, fecha: ahoraISO(), origen: origen || 'despacho', antes: p.estado };
   DB.pagos.push(g);
@@ -95,8 +103,10 @@ function marcarPago(p, cuenta, origen) {
 function anularPago(id) {
   const g = DB.pagos.find(x => x.id === id); if (!g) return;
   const p = pedById(g.pedidoId);
-  DB.pagos = DB.pagos.filter(x => x.id !== id);
-  if (p && p.pago && p.pago.id === id) {
+  // Pago con 2 medios: las dos filas de ese pedido se anulan juntas
+  const ids = g.splitId ? DB.pagos.filter(x => x.splitId === g.splitId && x.pedidoId === g.pedidoId).map(x => x.id) : [id];
+  DB.pagos = DB.pagos.filter(x => !ids.includes(x.id));
+  if (p && p.pago && ids.includes(p.pago.id)) {
     delete p.pago;
     if (g.antes === 'pendiente' && p.estado === 'listo') setEstado(p, 'pendiente');
   }
@@ -240,6 +250,24 @@ function campoD(k, label, ph, extra) {
   if (k === 'barrio') return `<div class="sw"><label class="lb">${label}</label><input id="dsf-${k}" data-inp="despF" data-f="${k}" data-barrio="1" autocomplete="off" value="${v}" placeholder="${esc(ph || '')}"><div class="sug"></div></div>`;
   return `<div><label class="lb">${label}</label><input id="dsf-${k}" data-inp="despF" data-f="${k}" value="${v}" placeholder="${esc(ph || '')}" ${extra || ''}></div>`;
 }
+/** Bloque "Pagó con 2 medios": 2º medio + cuánto entró por ese medio. */
+function dosHTML(f, ctas, v) {
+  if (!f.dos) return '<div class="row mt"><button class="b sm gh" data-act="despDos">＋ Pagó con 2 medios</button></div>';
+  const bs = ctas.filter(c => c !== f.cuenta).map(cta => `<button class="b sm seg${f.cuenta2 === cta ? ' on' : ''}" data-act="despCuenta2" data-c="${esc(cta)}">${esc(cta)}</button>`).join('');
+  let h = `<div class="mt"><label class="lb">2º medio *</label><div class="row">${bs}<button class="b sm gh" data-act="despDos">✕ Quitar</button></div></div>`;
+  if (f.cuenta2) h += `<div class="row mt"><label class="small muted" for="dsf-monto2">Entró por ${esc(f.cuenta2)}</label><input id="dsf-monto2" type="number" inputmode="numeric" data-inp="despF" data-f="monto2" value="${esc(f.monto2 || '')}" placeholder="$" style="width:130px"><span class="small muted" id="dsf-dos-res">${dosResTxt(f, v)}</span></div>`;
+  return h;
+}
+function dosResTxt(f, v) {
+  if (!v || !(num(f.monto2) > 0)) return 'Poné cuánto pagó por este medio';
+  if (!v.ok) return '⚠️ Ese monto no cierra con el total';
+  return `✓ ${esc(f.cuenta)} ${fmt(v.tot1)} + ${esc(f.cuenta2)} ${fmt(v.tot2)}`;
+}
+/** Cálculo del 2º medio desde el estado del formulario (para validar sin redibujar). */
+function dosV0(porCob, t, f) {
+  const tar = +cfg('tarifaEnvio') || 0, base = porCob.reduce((s2, p) => s2 + calc(p).total, 0), env = (t === 'cadeteria' || t === 'pago') && f.conEnvio ? tar : 0;
+  return f.dos && f.cuenta && f.cuenta2 ? esperadoDos(base, env, f.cuenta, f.cuenta2, f.monto2) : null;
+}
 function salidaHTML(c, ps) {
   const D = UI.desp, f = D.f, t = D.salida, n = ps.length;
   const segs = SALIDAS.map(([k, txt]) => `<button class="b seg${t === k ? ' on' : ''}" data-act="despSal" data-k="${k}">${txt}</button>`).join('');
@@ -263,16 +291,17 @@ function salidaHTML(c, ps) {
   let pago = '';
   if (yaPag.length) pago += `<div class="small mt" style="color:var(--ok)">✓ Ya pagó: ${yaPag.map(p => '#' + p.num + ' (' + esc(p.pago.cuenta) + (p.pago.conEnvio ? ', con envío' : '') + ')').join(' · ')}</div>`;
   if (porCob.length) {
-    const tar = +cfg('tarifaEnvio') || 0, base = porCob.reduce((s2, p) => s2 + calc(p).total, 0), env = (t === 'cadeteria' || t === 'pago') && f.conEnvio ? tar : 0, esp = esperadoDe(base, env, f.cuenta), auto = esp.total;
+    const tar = +cfg('tarifaEnvio') || 0, base = porCob.reduce((s2, p) => s2 + calc(p).total, 0), env = (t === 'cadeteria' || t === 'pago') && f.conEnvio ? tar : 0, esp = esperadoDe(base, env, f.cuenta), dosV = f.dos && f.cuenta2 ? esperadoDos(base, env, f.cuenta, f.cuenta2, f.monto2) : null, auto = dosV && dosV.ok ? dosV.tot1 : esp.total;
     const ctas = cuentasPago(), extra = f.cuenta && f.cuenta !== 'sin' && !ctas.includes(f.cuenta) ? [f.cuenta] : [];
     pago += `<label class="lb mt">¿Cómo pagó${porCob.length < ps.length ? ' ' + numsTxt(porCob) : ''}? *</label>
       <div class="row">${ctas.concat(extra).map(cta => `<button class="b sm seg${f.cuenta === cta ? ' on' : ''}" data-act="despCuenta" data-c="${esc(cta)}">${esc(cta)}</button>`).join('')}<button class="b sm gh" data-act="despCuenta" data-c="">Otra…</button>${t === 'pago' ? '' : `<button class="b sm seg${f.cuenta === 'sin' ? ' on' : ''}" data-act="despCuenta" data-c="sin">Sin confirmar</button>`}</div>`;
     if (t === 'cadeteria' || t === 'pago') pago += `<div class="row mt"><button class="b sm seg${f.conEnvio ? ' on' : ''}" data-act="despConEnvio">${f.conEnvio ? '✓' : '＋'} La transferencia incluye el envío de cadetería (${fmt(tar)})</button></div>`;
-    if (f.cuenta && f.cuenta !== 'sin') pago += `<div class="row mt"><label class="small muted" for="dsf-transf">Monto transferido</label><input id="dsf-transf" type="number" inputmode="numeric" data-inp="despF" data-f="transf" value="${esc(f.transfEdit ? f.transf : String(auto))}" style="width:130px"><span class="small muted">pedido ${fmt(base)}${env ? ' + envío ' + fmt(env) : ''}${esp.rec ? ' + Mercado Pago ' + recargoMP() + '% ' + fmt(esp.rec) : ''}</span></div>`;
+    if (f.cuenta && f.cuenta !== 'sin') pago += `<div class="row mt"><label class="small muted" for="dsf-transf">${f.dos ? 'Entró por ' + esc(f.cuenta) : 'Monto transferido'}</label><input id="dsf-transf" type="number" inputmode="numeric" data-inp="despF" data-f="transf" value="${esc(f.transfEdit ? f.transf : String(auto))}" style="width:130px"><span class="small muted">${dosV && dosV.ok ? 'su parte ' + fmt(dosV.part1) : 'pedido ' + fmt(base)}${env ? ' + envío ' + fmt(env) : ''}${(dosV && dosV.ok ? dosV.rec1 : esp.rec) ? ' + Mercado Pago ' + recargoMP() + '% ' + fmt(dosV && dosV.ok ? dosV.rec1 : esp.rec) : ''}</span></div>`;
+    if (f.cuenta && f.cuenta !== 'sin') pago += dosHTML(f, ctas, dosV);
     if (f.cuenta === 'sin') pago += '<div class="small muted mt">Sale sin pago marcado: queda anotado en el paquete.</div>';
   }
   if (t === 'pago' && !porCob.length) pago += '<div class="small muted mt">Los pedidos tildados ya tienen el pago marcado.</div>';
-  const bloqueado = !t || (porCob.length && !f.cuenta) || (t === 'pago' && (!porCob.length || f.cuenta === 'sin'));
+  const bloqueado = !t || (porCob.length && !f.cuenta) || (porCob.length && f.cuenta !== 'sin' && f.dos && !(f.cuenta2 && (dosV0(porCob, t, f) || {}).ok)) || (t === 'pago' && (!porCob.length || f.cuenta === 'sin'));
   const cobro = t === 'cadeteria' ? (f.cobro === 'pago' ? ' · envío pago' : f.cobro === 'monto' ? (num(f.monto) > 0 ? ' · cobra ' + fmt(num(f.monto)) : '') : f.cobro === 'cobrar' ? ' · cobra ' + fmt(cfg('tarifaEnvio')) : '') : '';
   const txt = !t ? 'Elegí cómo sale' : { retiro: `✓ Entregar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, agencia: `📦 Despachar por agencia${n > 1 ? ' · ' + n + ' pedidos, 1 etiqueta' : ''}`, cadeteria: `🚴 Despachar por cadetería${cobro}`, guardado: `⏸️ Guardar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, liberado: `❌ Liberar ${n > 1 ? n + ' pedidos' : 'el pedido'}`, pago: '💸 Marcar pago' }[t];
   return `<div class="card dsp-sal"><div class="card-t">${t === 'pago' ? 'Pago' : '¿Cómo sale' + (n > 1 ? 'n' : '') + '?'} · ${numsTxt(ps)}</div>
@@ -302,7 +331,7 @@ function elegirSalida(t) {
   D.f = { agencia: c.agencia || '', nombreEnvio: c.nombreEnvio || '', ci: c.ci || '', ciudad: c.ciudad || '', depto: c.depto || '', direccion: c.direccion || '', barrio: c.barrio || '', notaCadete: c.notaCadete || '',
     tipo: ps.some(p => tipoEnvioDe(p) === 'cambio') ? 'cambio' : 'comun',
     cobro: m && m.cobroEnvio && m.entrega === 'cadeteria' ? m.cobroEnvio : null, monto: m && m.cobroMonto ? String(m.cobroMonto) : '',
-    cuenta: (D.f && D.f.cuenta) || null, conEnvio: false, transf: '', transfEdit: false };
+    cuenta: (D.f && D.f.cuenta) || null, dos: !!(D.f && D.f.dos), cuenta2: (D.f && D.f.cuenta2) || null, monto2: (D.f && D.f.monto2) || '', conEnvio: false, transf: '', transfEdit: false };
 }
 function cerrarClientaDesp() { const D = UI.desp; D.cid = null; D.sel = new Set(); D.salida = null; D.f = {}; D.aviso = ''; D.sinPago = false; }
 function focoBuscar() { setTimeout(() => { const q = $('#dsp-q'); if (q && UI.tab === 'despacho') q.focus(); }, 30); }
@@ -333,14 +362,36 @@ function crearPaquete(c, ps, tipo, f, sinPago) {
  *  y la diferencia con lo calculado, así la suma da lo transferido. */
 function registrarPagos(ps, f, conEnvio, paquete) {
   const tar = +cfg('tarifaEnvio') || 0, env = conEnvio ? tar : 0;
-  const base = ps.reduce((s2, p) => s2 + calc(p).total, 0), esp = esperadoDe(base, env, f.cuenta);
+  const base = ps.reduce((s2, p) => s2 + calc(p).total, 0);
+  let dos = f.cuenta2 && f.cuenta2 !== f.cuenta && num(f.monto2) > 0 ? esperadoDos(base, env, f.cuenta, f.cuenta2, f.monto2) : null;
+  if (dos && !dos.ok) dos = null;
+  const esp = dos ? { rec: dos.rec1, total: dos.tot1 } : esperadoDe(base, env, f.cuenta);
   const transf = f.transfEdit || f.transf !== undefined && f.transf !== '' && f.origen === 'mabel' ? num(f.transf) : esp.total;
   const orden = [...ps].sort((a, b) => (a.fechas.creado || '').localeCompare(b.fechas.creado || '') || a.num - b.num);
   const gs = orden.map(p => marcarPago(p, f.cuenta, f.origen || (paquete ? 'despacho' : 'pago')));
   const g0 = gs[gs.length - 1];
-  // envio = lo que incluye de cadetería · recargo = Mercado Pago · ajuste = diferencia contra lo esperado · monto = lo realmente transferido (sumando las filas)
-  g0.envio = env; g0.recargo = esp.rec; g0.esperado = esp.total; g0.ajuste = transf - esp.total; g0.monto = (+g0.monto || 0) + env + esp.rec + g0.ajuste;
+  const extra = [];
+  if (dos) {
+    // Reparte: lo que pagó por el 2º medio se saca de las filas, de la última hacia atrás (el envío entra en la última fila)
+    const splitId = uid('s');
+    g0.monto = (+g0.monto || 0) + env;
+    let falta = dos.part2;
+    for (const g of [...gs].reverse()) {
+      if (falta <= 0) break;
+      const m = Math.min(falta, +g.monto || 0); if (m <= 0) continue;
+      const h = { id: uid('g'), pedidoId: g.pedidoId, clienteId: g.clienteId, cuenta: f.cuenta2, medio: medioDe(f.cuenta2), monto: m, fecha: g.fecha, origen: g.origen, antes: g.antes, splitId };
+      g.monto -= m; falta -= m; DB.pagos.push(h); extra.push(h);
+    }
+    if (extra[0]) extra[0].monto += dos.rec2;
+    gs.forEach(g => { g.splitId = splitId; });
+    orden.forEach(p => { p.pago.cuenta = f.cuenta + ' + ' + f.cuenta2; });
+    g0.envio = env; g0.recargo = dos.rec; g0.esperado = dos.total; g0.ajuste = transf - dos.tot1; g0.monto = (+g0.monto || 0) + dos.rec1 + g0.ajuste;
+  } else {
+    // envio = lo que incluye de cadetería · recargo = Mercado Pago · ajuste = diferencia contra lo esperado · monto = lo realmente transferido (sumando las filas)
+    g0.envio = env; g0.recargo = esp.rec; g0.esperado = esp.total; g0.ajuste = transf - esp.total; g0.monto = (+g0.monto || 0) + env + esp.rec + g0.ajuste;
+  }
   if (f.nota) g0.nota = String(f.nota).slice(0, 200);
+  gs.push(...extra);
   if (f.cobroId) gs.forEach(g => { g.cobroId = f.cobroId; });
   if (f.comprobante) g0.comprobante = f.comprobante;
   if (paquete) gs.forEach(g => { g.paqueteId = paquete.id; });
@@ -364,7 +415,7 @@ function despGo() {
     if (!porCob.length || !f.cuenta || f.cuenta === 'sin') return toast('Elegí la cuenta');
     const gs = registrarPagos(porCob, f, f.conEnvio);
     const tot = gs.reduce((s2, g) => s2 + (+g.monto || 0), 0);
-    D.res = { cls: 'ok', html: `💸 ${esc(c.nombre)} pagó ${fmt(tot)}<div style="font-size:15px;margin-top:4px">${numsTxt(porCob)} · ${esc(f.cuenta)}${f.conEnvio ? ' · con envío' : ''}</div>`, cid: c.id, pagos: gs.map(g => g.id) };
+    D.res = { cls: 'ok', html: `💸 ${esc(c.nombre)} pagó ${fmt(tot)}<div style="font-size:15px;margin-top:4px">${numsTxt(porCob)} · ${esc(f.cuenta)}${f.dos && f.cuenta2 ? ' + ' + esc(f.cuenta2) : ''}${f.conEnvio ? ' · con envío' : ''}</div>`, cid: c.id, pagos: gs.map(g => g.id) };
     cerrarClientaDesp(); render(); focoBuscar(); window.scrollTo(0, 0); return;
   }
   if (porCob.length && !f.cuenta) return toast('Elegí cómo pagó (o "Sin confirmar") antes de despachar');
@@ -382,7 +433,7 @@ function despGo() {
   const k = crearPaquete(c, ps, t, f, f.cuenta === 'sin' ? porCob.map(p => p.id) : []);
   if (porCob.length && f.cuenta !== 'sin') {
     const gs = registrarPagos(porCob, f, t === 'cadeteria' && f.conEnvio, k);
-    k.pagos = gs.map(g => g.id); k.transferido = gs.reduce((s2, g) => s2 + (+g.monto || 0), 0); k.cuenta = f.cuenta;
+    k.pagos = gs.map(g => g.id); k.transferido = gs.reduce((s2, g) => s2 + (+g.monto || 0), 0); k.cuenta = f.dos && f.cuenta2 ? f.cuenta + ' + ' + f.cuenta2 : f.cuenta;
     savePaquetes();
   }
   D.res = { paqId: k.id };
@@ -583,8 +634,10 @@ Object.assign(ACT, {
   despCuenta: d => {
     let cta = d.c;
     if (!cta) { cta = (prompt('¿En qué cuenta entró la transferencia?') || '').trim(); if (!cta) return; }
-    const f = UI.desp.f; f.cuenta = f.cuenta === cta ? null : cta; render();
+    const f = UI.desp.f; f.cuenta = f.cuenta === cta ? null : cta; if (f.cuenta2 === f.cuenta) f.cuenta2 = null; f.transfEdit = false; render();
   },
+  despDos: () => { const f = UI.desp.f; f.dos = !f.dos; if (!f.dos) { f.cuenta2 = null; f.monto2 = ''; } f.transfEdit = false; render(); },
+  despCuenta2: d => { const f = UI.desp.f; f.cuenta2 = f.cuenta2 === d.c ? null : d.c; f.transfEdit = false; render(); setTimeout(() => { const el = $('#dsf-monto2'); if (el) el.focus(); }, 20); },
   despDeshacerPago: () => {
     const r = UI.desp.res; if (!r || !r.pagos) return;
     if (!confirm('¿Deshacer este pago?')) return;
@@ -612,6 +665,12 @@ Object.assign(INP, {
   despF: el => {
     UI.desp.f[el.dataset.f] = el.value;
     if (el.dataset.f === 'transf') UI.desp.f.transfEdit = true;
+    if (el.dataset.f === 'monto2') {
+      const D = UI.desp, f = D.f, porCob = [...D.sel].map(pedById).filter(p => p && sinSalir(p) && porCobrar(p)), v = dosV0(porCob, D.salida, f);
+      const r = $('#dsf-dos-res'); if (r) r.innerHTML = dosResTxt(f, v);
+      const b = $('#dsp-go'); if (b) b.disabled = !(v && v.ok);
+      const tr = $('#dsf-transf'); if (tr && !f.transfEdit && v && v.ok) tr.value = String(v.tot1);
+    }
     // El texto del botón de cadetería muestra el monto: se actualiza sin re-dibujar la pantalla
     if (el.dataset.f === 'monto') { const b = $('#dsp-go'); if (b && UI.desp.salida === 'cadeteria') b.textContent = '🚴 Despachar por cadetería' + (num(el.value) > 0 ? ' · cobra ' + fmt(num(el.value)) : ''); }
   }

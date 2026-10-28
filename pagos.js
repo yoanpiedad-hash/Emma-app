@@ -108,9 +108,22 @@ function eleccionHTML() {
     ${ps.length > 1 ? '<div class="small muted mt">Tiene más pedidos sin pagar: tildá los que entran en esta transferencia.</div>' : ''}
     <div class="mt">${filas}</div>
     <div class="tot-l big"><span>Pagó</span><span>${fmt(tot)}</span></div>
-    <div class="card-t mt">¿A qué cuenta entró?</div>
+    ${P.dos ? pagDosHTML(ps) : `<div class="card-t mt">¿A qué cuenta entró?</div>
     <div class="pg-ctas">${cuentasPago().map(cta => `<button class="b" data-act="pagCuenta" data-c="${esc(cta)}"${P.sel.size ? '' : ' disabled'}>${esc(cta)}</button>`).join('')}<button class="b gh" data-act="pagCuenta" data-c=""${P.sel.size ? '' : ' disabled'}>Otra…</button></div>
+    <div class="row mt"><button class="b sm gh" data-act="pagDos"${P.sel.size ? '' : ' disabled'}>＋ Pagó con 2 medios</button></div>`}
   </div>`;
+}
+/** Pago con 2 medios (transferencia + efectivo, débito/POS + efectivo…). El recargo de Mercado Pago va solo sobre su parte. */
+function pagSelBase() { const P = UI.pag; return [...P.sel].map(pedById).filter(p => p && !pagado(p)).reduce((s2, p) => s2 + calc(p).total, 0); }
+function pagDosV() { const D = UI.pag.dos; return D && D.c1 && D.c2 ? esperadoDos(pagSelBase(), 0, D.c1, D.c2, D.m2) : null; }
+function pagDosTxt() { const D = UI.pag.dos, v = pagDosV(); if (!v || !(num(D.m2) > 0)) return 'Poné cuánto entró por el 2º medio'; if (!v.ok) return '⚠️ Ese monto no cierra con el total'; return `✓ ${esc(D.c1)} ${fmt(v.tot1)} + ${esc(D.c2)} ${fmt(v.tot2)}`; }
+function pagDosHTML() {
+  const D = UI.pag.dos, ctas = cuentasPago(), v = pagDosV();
+  const bs = (k, excl) => ctas.filter(c => c !== excl).map(cta => `<button class="b sm seg${D[k] === cta ? ' on' : ''}" data-act="pagDosCta" data-k="${k}" data-c="${esc(cta)}">${esc(cta)}</button>`).join('');
+  return `<div class="card-t mt">1er medio</div><div class="pg-ctas">${bs('c1', D.c2)}</div>
+    <div class="card-t mt">2º medio</div><div class="pg-ctas">${bs('c2', D.c1)}</div>
+    ${D.c1 && D.c2 ? `<div class="row mt"><label class="small muted" for="pg-m2">Entró por ${esc(D.c2)}</label><input id="pg-m2" type="number" inputmode="numeric" data-inp="pagM2" value="${esc(D.m2 || '')}" placeholder="$" style="width:130px"><span class="small muted" id="pg-dos-res">${pagDosTxt()}</span></div>` : ''}
+    <div class="row mt"><button class="b ok lg" id="pg-dos-go" data-act="pagDosGo"${v && v.ok ? '' : ' disabled'}>💸 Marcar pago</button><button class="b gh" data-act="pagDos">✕ Quitar</button></div>`;
 }
 function okHTML() {
   const u = UI.pag.ult; if (!u) return '';
@@ -146,9 +159,9 @@ function controlHTML() {
 function pagFoco() { setTimeout(() => { const q = $('#pg-q'); if (q && UI.tab === 'pagos' && UI.pag.modo === 'marcar' && window.matchMedia && matchMedia('(pointer:fine)').matches) q.focus(); }, 30); }
 Object.assign(ACT, {
   pagModo: d => { UI.pag.modo = d.m; render(); if (d.m === 'marcar') pagFoco(); },
-  pagElegir: d => { const P = UI.pag; P.elegido = d.id; P.sel = new Set([d.id]); render(); window.scrollTo(0, 0); },
+  pagElegir: d => { const P = UI.pag; P.dos = null; P.elegido = d.id; P.sel = new Set([d.id]); render(); window.scrollTo(0, 0); },
   pagTog: d => { const P = UI.pag; P.sel.has(d.id) ? P.sel.delete(d.id) : P.sel.add(d.id); render(); },
-  pagCancelar: () => { UI.pag.elegido = null; UI.pag.sel = new Set(); render(); pagFoco(); },
+  pagCancelar: () => { UI.pag.dos = null; UI.pag.elegido = null; UI.pag.sel = new Set(); render(); pagFoco(); },
   pagCuenta: d => {
     const P = UI.pag;
     let cta = d.c;
@@ -159,6 +172,19 @@ Object.assign(ACT, {
     const gs = registrarPagos(ps, { cuenta: cta, origen: 'pagos' }, false, null);   // un solo pago (con recargo si es Mercado Pago)
     P.ult = { ids: gs.map(g => g.id), nombre: c.nombre, cuenta: cta, total: gs.reduce((s, g) => s + (+g.monto || 0), 0), nums: ps.map(p => '#' + p.num).join(' · ') };
     P.elegido = null; P.sel = new Set(); P.q = '';
+    const q = $('#pg-q'); if (q) q.value = '';
+    render(); window.scrollTo(0, 0); pagFoco();
+  },
+  pagDos: () => { const P = UI.pag; P.dos = P.dos ? null : { c1: null, c2: null, m2: '' }; render(); },
+  pagDosCta: d => { const D = UI.pag.dos; if (!D) return; D[d.k] = D[d.k] === d.c ? null : d.c; render(); if (D.c1 && D.c2) setTimeout(() => { const el = $('#pg-m2'); if (el) el.focus(); }, 20); },
+  pagDosGo: () => {
+    const P = UI.pag, D = P.dos, v = pagDosV(); if (!D || !v || !v.ok) return;
+    const ps = [...P.sel].map(pedById).filter(p => p && !pagado(p));
+    if (!ps.length) return;
+    const c = cliById(ps[0].clienteId) || { nombre: '?' };
+    const gs = registrarPagos(ps, { cuenta: D.c1, cuenta2: D.c2, monto2: D.m2, origen: 'pagos' }, false, null);
+    P.ult = { ids: gs.map(g => g.id), nombre: c.nombre, cuenta: D.c1 + ' + ' + D.c2, total: gs.reduce((s2, g) => s2 + (+g.monto || 0), 0), nums: ps.map(p => '#' + p.num).join(' · ') };
+    P.dos = null; P.elegido = null; P.sel = new Set(); P.q = '';
     const q = $('#pg-q'); if (q) q.value = '';
     render(); window.scrollTo(0, 0); pagFoco();
   },
@@ -186,7 +212,7 @@ Object.assign(ACT, {
   }
 });
 Object.assign(CHG, { pagDia: (d, el) => { UI.pag.dia = el.value || hoyISO(); UI.pag.abierta = null; render(); } });
-Object.assign(INP, { pagQ: el => { UI.pag.q = el.value; UI.pag.elegido = null; renderPagLista(); } });
+Object.assign(INP, { pagM2: el => { const D = UI.pag.dos; if (!D) return; D.m2 = el.value; const v = pagDosV(), r = $('#pg-dos-res'), b = $('#pg-dos-go'); if (r) r.innerHTML = pagDosTxt(); if (b) b.disabled = !(v && v.ok); }, pagQ: el => { UI.pag.q = el.value; UI.pag.elegido = null; renderPagLista(); } });
 document.addEventListener('keydown', e => {
   if (UI.tab !== 'pagos' || e.target.id !== 'pg-q' || e.key !== 'Enter') return;
   e.preventDefault();
