@@ -30,6 +30,8 @@
 .dsp-fil .b{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;font-size:13px;white-space:normal;text-align:center}
 .dsp-fil .b b{font-size:22px;line-height:1}
 .dsp-fil .b.on{border-color:var(--ac);background:var(--ac2);color:var(--ac)}
+.dsp-vistas{grid-template-columns:repeat(3,1fr);position:sticky;top:0;z-index:5;background:var(--bg,#fff);padding:6px 0 8px;margin-bottom:6px}
+.dsp-vistas .b.warn:not(.on){border-color:var(--li);color:var(--li)}
 .dsp-ag-h{font-weight:800;font-size:13px;letter-spacing:.5px;color:var(--ac);padding:10px 2px 2px;text-transform:uppercase}
 .lbl.ag2{border:2.5px solid #000}
 .ag2-rem{border-bottom:2px solid #000;padding-bottom:1mm}
@@ -186,7 +188,16 @@ function inicioHTML() {
   if (!h) h = '<div class="empty">No hay pedidos pagados esperando salir 🎉</div>';
   h = `<div class="row mb" style="justify-content:flex-end"><button class="b sm" data-act="tab" data-t="pagos">📊 Pagos del día</button></div><div class="dsp-fil">${fil}</div>` + h;
   if (sinPagar) h += `<div class="small muted" style="margin:-4px 2px 12px">⏳ ${sinPagar} pedido${sinPagar > 1 ? 's' : ''} todavía sin pagar.</div>`;
-  return h + (typeof liberarHTML === 'function' ? liberarHTML() : '') + hoyHTML();
+  // Subpestañas (28/10): cada cosa en su pantalla, sin bajar hasta el final
+  const nArmar = a.cadeteria.length + a.agencia.length + a.retiro.length + a.sin_definir.length;
+  const nLib = typeof paraLiberar === 'function' ? paraLiberar().length : 0, nHoy = paquetesDeHoy().length;
+  let V = UI.desp.vista || 'armar'; if (V === 'liberar' && typeof liberarHTML !== 'function') V = 'armar';
+  const vs = [['armar', '📦 Para armar', nArmar], ['liberar', '⏳ Para liberar', nLib], ['hoy', '🚚 Salió hoy', nHoy]]
+    .map(([k, txt, n]) => `<button class="b${V === k ? ' on' : ''}${k === 'liberar' && n ? ' warn' : ''}" data-act="despVista" data-v="${k}"><b>${n}</b>${txt}</button>`).join('');
+  const pes = `<div class="dsp-fil dsp-vistas">${vs}</div>`;
+  if (V === 'liberar') return pes + liberarHTML();
+  if (V === 'hoy') return pes + (hoyHTML() || '<div class="empty">Todavía no salió nada hoy</div>');
+  return pes + h;
 }
 function paquetesDeHoy() {
   const hoy = hoyISO();
@@ -623,6 +634,11 @@ function buscarEnter() {
 
 Object.assign(ACT, {
   despPick: d => despPick(+d.i),
+  despDarSalida: d => {
+    const ids = String(d.ids || '').split(',').filter(Boolean); UI.desp.res = null;
+    abrirClientaDesp(d.cid, ids, d.t);
+    if (ENVIOS.has(d.t)) { elegirSalida(d.t); render(); }   // en el celu abre en "Solo pago": acá queremos la salida
+  },
   despArmar: d => { const a = paraArmar()[d.t] || [], g = a.find(x => x.cid === d.cid); UI.desp.res = null; abrirClientaDesp(d.cid, g ? g.ps.map(p => p.id) : null, d.t); },
   despAbrir: d => { UI.desp.res = null; abrirClientaDesp(d.cid); },
   despCerrar: () => { cerrarClientaDesp(); render(); focoBuscar(); },
@@ -660,6 +676,7 @@ Object.assign(ACT, {
     if (f.conEnvio) { f._cobroAntes = f.cobro; f.cobro = 'pago'; } else if (f.cobro === 'pago') f.cobro = f._cobroAntes === 'pago' ? 'pago' : (f._cobroAntes || null);
     f.transfEdit = false; render();
   },
+  despVista: d => { UI.desp.vista = d.v; render(); },
   despFiltro: d => { UI.desp.filtro = UI.desp.filtro === d.t ? 'todos' : d.t; UI.desp.filtroHoy = null; render(); },
   despFiltroHoy: d => { UI.desp.filtroHoy = d.t; render(); },
   despGo: () => despGo(),
