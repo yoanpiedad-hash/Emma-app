@@ -1,0 +1,2 @@
+Poppins (Regular, Medium, Bold), recortada a letras latinas con acentos. Se usa en la etiqueta de agencia.
+Poppins © Indian Type Foundry · licencia SIL Open Font License 1.1 (https://openfontlicense.org).
