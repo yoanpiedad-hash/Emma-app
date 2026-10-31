@@ -76,7 +76,7 @@ const pagado = p => !!p.cambio || !!p.pago || p.estado === 'listo';
 /** En Despacho se pide la cuenta de todo pedido que no tenga un pago marcado (los cambios no se cobran acá). */
 const porCobrar = p => !p.cambio && !p.pago;
 /** Código de la etiqueta de GrisalExpress: EMMA + su N Orden (letras y números, con algún número; ej. EMMAHMGU5CMH). Un nombre como "Emma Pérez" no lo es. */
-const esGrisal = q => /^emma(?=[a-z]*\d)[a-z0-9]{6,12}$/i.test(String(q).trim());
+const esGrisal = q => /^(ema)?emma(?=[a-z]*\d)[a-z0-9]{6,16}$/i.test(String(q).trim());
 /** Pedidos de una clienta que todavía no salieron, del más viejo al más nuevo. */
 function abiertosDe(cid) {
   return todosPedidos().filter(p => p.clienteId === cid && sinSalir(p))
@@ -219,7 +219,7 @@ function hoyHTML() {
     .map(([t, txt, c]) => `<button class="b${F === t ? ' on' : ''}" data-act="despFiltroHoy" data-t="${t}"${c || t === 'todos' ? '' : ' disabled'}><b>${c}</b>${txt}</button>`).join('');
   return `<div class="card"><div class="card-t">Salió hoy</div><div class="dsp-fil">${pes}</div>
     ${ks.length ? '' : '<div class="empty">Nada de esto salió hoy</div>'}
-    ${cad ? `<div class="row mb"><button class="b sm" data-act="despGrisal">📋 Copiar para GrisalExpress</button><button class="b sm" data-act="despHoja">🖨️ Hoja del cadete</button></div>` : ''}
+    ${cad ? `<div class="row mb">${grisalConectado() ? `<button class="b sm pri" data-act="despGrisalPasar">🚴 Pasar a Grisal${grisalPendientes().length ? ' (' + grisalPendientes().length + ')' : ' ✓'}</button>` : ''}<button class="b sm" data-act="despGrisal">📋 Copiar para GrisalExpress</button><button class="b sm" data-act="despHoja">🖨️ Hoja del cadete</button></div>` : ''}
     ${ks.map(k => { const c = cliById(k.clienteId) || { nombre: '?' }; return `<div class="dsp-k"><span class="mono small muted">${hora(k.fecha)}</span><span>${ico[k.tipo]}</span><span style="flex:1;min-width:120px"><b>${esc(c.nombre)}</b> <span class="small muted">${esc(k.nums.map(x => '#' + x).join(' · '))}</span>${k.grisalCopiado ? ' <span class="chip ac">📋 copiada</span>' : ''}</span>${k.tipo !== 'retiro' ? `<button class="b sm" data-act="despPrint" data-k="${k.id}" title="Reimprimir etiqueta">🖨️</button>` : ''}<button class="b sm gh" data-act="despDeshacer" data-k="${k.id}" title="Deshacer">↩️</button></div>`; }).join('')}
   </div>`;
 }
@@ -667,8 +667,8 @@ function abrirPorCodigo(p) {
 function buscarEnter() {
   const D = UI.desp, q = D.q.trim(); if (!q) return;
   if (esGrisal(q)) {
-    const orden = q.replace(/^emma/i, '').trim().toUpperCase();
-    const k = (DB.paquetes || []).find(x => x.grisalOrden && x.grisalOrden.toUpperCase() === orden);
+    const Q = q.trim().toUpperCase(), orden = Q.replace(/^(EMA)?EMMA/, ''), sinEma = Q.replace(/^EMA(?=EMMA)/, '');
+    const k = (DB.paquetes || []).find(x => x.grisalOrden && [Q, orden, sinEma].includes(x.grisalOrden.toUpperCase()));
     D.q = ''; $('#dsp-q').value = ''; cerrarSug();
     if (k) { const p = pedById(k.principal); if (p) return abrirPorCodigo(p); }
     D.res = { cls: 'pe', html: `Etiqueta de GrisalExpress ${esc(orden)}: todavía no está vinculada a un paquete` };
@@ -738,6 +738,7 @@ Object.assign(ACT, {
   despDeshacer: d => deshacerPaquete(d.k),
   despResX: () => { UI.desp.res = null; render(); focoBuscar(); },
   despGrisal: () => copiarGrisalHoy(),
+  despGrisalPasar: () => pasarAGrisal(),
   despHoja: () => hojaCadeteHoy()
 });
 Object.assign(INP, {
@@ -786,3 +787,42 @@ try {
   Object.values(ETQ_IMG).forEach(o => { const i = new Image(); i.src = o.src; if (i.decode) i.decode().catch(() => {}); });
   if (document.fonts && document.fonts.load) ['400', '500', '700'].forEach(w => document.fonts.load(w + ' 20px Poppins').catch(() => {}));
 } catch (e) { /* si falla, imprime igual */ }
+
+// ─── Pasar a Grisal directo a la planilla (31/10) ──────────────
+// La app manda las cadeterías de hoy a un Apps Script de Yoan (app web) que escribe en la hoja "ingresos" de Grisal.
+// URL y clave en config (grisalUrl, grisalClave): nunca en el código (el repo es público).
+const GRISAL_LETRAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function grisalOrdenNuevo() {
+  for (;;) {
+    let c = ''; const r = crypto.getRandomValues(new Uint32Array(8));
+    for (let i = 0; i < 8; i++) c += GRISAL_LETRAS[r[i] % GRISAL_LETRAS.length];
+    if (/\d/.test(c) && !(DB.paquetes || []).some(k => k.grisalOrden === 'EMMA' + c)) return 'EMMA' + c;
+  }
+}
+const grisalConectado = () => !!(cfg('grisalUrl') && cfg('grisalClave'));
+const grisalPendientes = () => paquetesDeHoy().filter(k => k.tipo === 'cadeteria' && !k.grisalEnviado && !k.grisalCopiado);   // las copiadas a mano ya están en la planilla
+let _grisalOcupado = false;
+async function pasarAGrisal() {
+  if (_grisalOcupado) return;
+  const ks = grisalPendientes().reverse();
+  if (!ks.length) return toast('Las cadeterías de hoy ya están en Grisal ✓');
+  const [y, mo, d] = hoyISO().split('-'), fecha = d + '/' + mo + '/' + y.slice(2);
+  ks.forEach(k => { if (!k.grisalOrden) k.grisalOrden = grisalOrdenNuevo(); });
+  savePaquetes();   // el código queda guardado antes de mandar: si se reintenta, no se duplica la fila
+  const filas = ks.map(k => {
+    const c = cliById(k.clienteId) || {}, e = k.envio || {};
+    return { orden: k.grisalOrden, tipo: k.tipoEnvio === 'cambio' ? 'Cambio' : 'Común', nombre: e.nombre || c.nombreEnvio || c.nombre || '', tel: telLegible(e.tel || c.tel), direccion: e.direccion || c.direccion || '', zona: e.barrio || c.barrio || '', cobrar: k.cobro || 0, producto: 'Paquete chico', fecha, detalles: e.nota || c.notaCadete || '' };
+  });
+  _grisalOcupado = true; toast('🚴 Pasando ' + filas.length + ' a Grisal…', 3000);
+  try {
+    const r = await fetch(cfg('grisalUrl'), { method: 'POST', body: JSON.stringify({ clave: cfg('grisalClave'), filas, marcar: !!cfg('grisalMarcar') }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'error');
+    const ts = ahoraISO(); let n = 0;
+    j.filas.forEach(f => { const k = ks.find(x => x.grisalOrden === f.orden); if (k && f.fila) { k.grisalEnviado = ts; k.grisalFila = f.fila; k.grisalCopiado = k.grisalCopiado || ts; n++; } });
+    savePaquetes();
+    toast(n === filas.length ? `✓ ${n} cadetería${n > 1 ? 's' : ''} en la planilla de Grisal` : `⚠️ Pasaron ${n} de ${filas.length}: probá de nuevo`, 5000);
+  } catch (err) {
+    toast('⚠️ No se pudo pasar a Grisal (' + String(err.message || err).slice(0, 60) + '). Probá de nuevo o usá "Copiar".', 7000);
+  } finally { _grisalOcupado = false; render(); }
+}
