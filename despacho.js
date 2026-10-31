@@ -34,6 +34,7 @@
 .dsp-vistas .b.warn:not(.on){border-color:var(--li);color:var(--li)}
 .dsp-ag-h{font-weight:800;font-size:13px;letter-spacing:.5px;color:var(--ac);padding:10px 2px 2px;text-transform:uppercase}
 .sheet-t.a4ag{margin:2mm 0 0 2mm;page-break-after:auto;break-after:auto}
+@media print{body{min-height:0!important}#print-area{display:flow-root!important}}
 .sheet-t.a4ag+.sheet-t.a4ag{page-break-before:always;break-before:page}
 @font-face{font-family:'Poppins';font-weight:400;font-display:block;src:url(fonts/Poppins-Regular.woff) format('woff')}
 @font-face{font-family:'Poppins';font-weight:500;font-display:block;src:url(fonts/Poppins-Medium.woff) format('woff')}
@@ -246,13 +247,16 @@ function clientaHTML() {
       <button class="b sm gh" data-act="despVer" data-id="${p.id}" title="Ver detalle">👁️</button></div>`;
   }).join('');
   const todos = ab.length > 1 ? `<button class="b sm" data-act="despTodos">${D.sel.size === ab.length ? '☐ Ninguno' : '☑ Todos'}</button>` : '';
+  // "Más plazo" se maneja desde Despacho (30/10): sobre los tildados, o sobre todos los que pueden si no hay ninguno tildado
+  const conPlazo = typeof plazoBtnHTML === 'function' ? ab.filter(p => plazoBtnHTML(p)) : [], selPlazo = conPlazo.filter(p => D.sel.has(p.id)), usaPlazo = selPlazo.length ? selPlazo : conPlazo;
+  const btnPlazo = usaPlazo.length ? `<button class="b sm" data-act="masPlazo" data-ids="${usaPlazo.map(p => p.id).join(',')}" title="Pasa a Guardado sin pagar con fecha límite">📅 ${usaPlazo.every(p => p.guardadoSinPagar) ? 'Cambiar plazo' : 'Más plazo'}${selPlazo.length && selPlazo.length < conPlazo.length ? ' (' + selPlazo.length + ')' : ''}</button>` : '';
   const ultimos = !ab.length ? (DB.paquetes || []).filter(k => k.clienteId === c.id).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 3) : [];
   return `<div class="card">
       <div class="row" style="align-items:flex-start"><div class="grow" style="flex:1;min-width:0"><div class="pc-nom" style="white-space:normal">${nomAlias(c)}</div><div class="pc-sub">${histHTML(h)} ${c.tel ? '<span class="mono">' + esc(c.tel) + '</span>' : '<span class="chip pe">⚠️ sin tel</span>'}</div></div><button class="b sm gh" data-act="despCerrar" title="Volver (Esc)">✕</button></div>
       <div class="row mt"><button class="b sm" data-act="verFicha" data-cid="${c.id}">👤 Ficha</button>${c.tel ? `<button class="b sm" data-act="waCli" data-cid="${c.id}" title="Abrir el chat vacío">💬 Chat</button>` : ''}${(() => { const u = ultimoPedidoDe(c.id); return u ? `<button class="b sm" data-act="irPedido" data-id="${u.id}">🛍️ Último pedido #${u.num} · ${esc((liveById(u.liveId) || {}).nombre || '')}</button>` : ''; })()}</div>
       ${alertas.join('')}
     </div>
-    <div class="list-h"><span class="t">Sin salida <span class="bdg">${ab.length}</span></span>${todos}</div>
+    <div class="list-h"><span class="t">Sin salida <span class="bdg">${ab.length}</span></span><span class="row" style="gap:6px">${btnPlazo}${todos}</span></div>
     ${filas || `<div class="empty">No tiene pedidos sin salida${ultimos.length ? '' : ''}</div>${ultimos.map(k => `<div class="small muted" style="text-align:center">Último: ${{ retiro: '🏠 Retiro', agencia: '📦 Agencia', cadeteria: '🚴 Cadetería' }[k.tipo]} el ${fechaUY(localISO(new Date(k.fecha)))} · ${esc(k.nums.map(x => '#' + x).join(' · '))}</div>`).join('')}`}
     ${D.sel.size ? salidaHTML(c, ab.filter(p => D.sel.has(p.id))) : (ab.length ? '<div class="small muted" style="text-align:center;margin:6px 0 14px">Tildá los pedidos que salen</div>' : '')}`;
 }

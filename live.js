@@ -105,7 +105,6 @@ cuerpoPedido = function (p, c, live, t, h) {
       <button class="b wa" data-act="waPedido" data-id="${id}">💬 WhatsApp</button>
       <button class="b" data-act="waCli" data-cid="${c.id}" title="Abrir el chat vacío, sin mensaje">💬 Chat</button>
       ${typeof confBtnHTML === 'function' ? confBtnHTML(p) : ''}
-      ${typeof plazoBtnHTML === 'function' ? plazoBtnHTML(p) : ''}
       <button class="b" data-act="previewMsg" data-id="${id}" title="Ver el mensaje">👁️</button>
       <button class="b" data-act="etqPedido" data-id="${id}">🏷️ Etiqueta</button>
       <button class="b" data-act="verFicha" data-cid="${c.id}">👤 Ficha</button>
@@ -242,3 +241,26 @@ Object.assign(ACT, {
     if (abrirWA(c.tel, textoConfirmacion(c))) { p.confirmWA = ahoraISO(); guardar(); render(); }
   }
 });
+
+// ─── WhatsApp en la compu: app o WhatsApp Web (30/10) ──────────
+// Se elige en Config y queda guardado en ESTE navegador (cada equipo elige el suyo). En el celu siempre wa.me.
+const WA_COMPU_KEY = 'emma_wa_compu';
+function waCompu() { try { return localStorage.getItem(WA_COMPU_KEY) === 'app' ? 'app' : 'web'; } catch (e) { return 'web'; } }
+abrirWA = function (tel, texto) {
+  const k = telKey(tel);
+  if (!k) { toast('Esta clienta no tiene teléfono'); return false; }
+  const n = '598' + k, t = texto ? encodeURIComponent(texto) : '';
+  const movil = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  if (movil) { window.open(`https://wa.me/${n}${t ? '?text=' + t : ''}`, '_blank'); return true; }
+  if (waCompu() === 'app') { location.href = `whatsapp://send?phone=${n}${t ? '&text=' + t : ''}`; return true; }
+  window.open(`https://web.whatsapp.com/send?phone=${n}${t ? '&text=' + t : ''}`, '_blank');
+  return true;
+};
+(function () {
+  const sel = document.getElementById('cf-formato'); if (!sel || document.getElementById('cf-wa')) return;
+  const d = document.createElement('div'); d.className = 'mt';
+  d.innerHTML = '<label class="lb">💬 En esta compu, WhatsApp abre en…</label><select id="cf-wa"><option value="web">WhatsApp Web (Chrome)</option><option value="app">App de WhatsApp (más rápida)</option></select><div class="small muted">Se guarda solo en este equipo. Para "App" tiene que estar instalada la app de WhatsApp. En el celu siempre abre la app.</div>';
+  sel.closest('.grid2').insertAdjacentElement('afterend', d);
+  const s2 = d.querySelector('select'); s2.value = waCompu();
+  s2.addEventListener('change', () => { try { localStorage.setItem(WA_COMPU_KEY, s2.value); } catch (e) {} toast('✓ WhatsApp abre en ' + (s2.value === 'app' ? 'la app' : 'WhatsApp Web')); });
+})();
