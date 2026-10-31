@@ -118,6 +118,8 @@ cuerpoPedido = function (p, c, live, t, h) {
 };
 
 // ─── Etiqueta general: igual para todos ───────────────────────
+// Asterisco al lado del número si la clienta tiene OTROS pedidos sin salida (pendiente, listo o guardado): para armarlos juntos (31/10)
+function otrosAbiertosMarca(p) { try { return typeof abiertosDe === 'function' && abiertosDe(p.clienteId).some(x => x.id !== p.id) ? '<b class="otros-ab">*</b>' : ''; } catch (e) { return ''; } }
 function etqGeneralHTML(p, medida) {
   const c = cliById(p.clienteId) || { nombre: '?', tel: '' }, l = liveById(p.liveId) || {};
   const tam = medida === 'a4' ? '30mm' : medida === '50x30' ? '20mm' : '17mm';
@@ -126,8 +128,8 @@ function etqGeneralHTML(p, medida) {
     ${(() => { const ar = p.cambio ? '' : `<span class="ar">${calc(p).art} art.</span>`;
       // Rollo chico: la cantidad va arriba, así no le saca lugar al nombre. Hoja A4: al lado del número.
       return medida === 'a4'
-        ? `<div class="em"><span>EMMA</span><span>${fechaUY(l.fecha || hoyISO(), 1)}</span></div><div class="nu">#${p.num} ${ar}</div>`
-        : `<div class="em"><span>EMMA ${fechaUY(l.fecha || hoyISO(), 1)}</span>${ar}</div><div class="nu">#${p.num}</div>`; })()}
+        ? `<div class="em"><span>EMMA</span><span>${fechaUY(l.fecha || hoyISO(), 1)}</span></div><div class="nu">#${p.num}${otrosAbiertosMarca(p)} ${ar}</div>`
+        : `<div class="em"><span>EMMA ${fechaUY(l.fecha || hoyISO(), 1)}</span>${ar}</div><div class="nu">#${p.num}${otrosAbiertosMarca(p)}</div>`; })()}
     <div class="no">${esc(c.nombre)}</div>
     <div class="te">${esc(c.tel || '')}</div></div></div>`;
 }

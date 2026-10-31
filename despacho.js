@@ -568,7 +568,7 @@ hojasHTML = function (etiquetas) {
 const _etqHTMLbase = etqHTML;
 etqHTML = function (p) {
   const c = cliById(p.clienteId);
-  return c && c.agencia ? etqAgenciaHTML(Object.assign({}, c, { nombre: c.nombreEnvio || c.nombre })) : _etqHTMLbase(p);
+  return c && c.agencia ? etqAgenciaHTML(Object.assign({}, c, { nombre: c.nombreEnvio || c.nombre })) : _etqHTMLbase(p).replace(`<div class="l-num">#${p.num}</div>`, `<div class="l-num">#${p.num}${otrosAbiertosMarca(p)}</div>`);
 };
 async function imprimirPaquete(id) {
   const k = paqById(id); if (!k) return;
