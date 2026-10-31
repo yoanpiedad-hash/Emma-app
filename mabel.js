@@ -240,7 +240,10 @@ Object.assign(CHG, {
 // Para liberar = pedidos sin pagar con el plazo vencido. La app solo los marca: liberar es siempre con un toque de Yoan o Yanaina.
 const HORA_LIBERAR = 16;
 const plazoPagoDias = () => Math.max(1, +cfgN('plazoPagoDias', 2) || 2);   // el pago es el día siguiente al live; se libera a las 16:00 del día después
-const limiteDe = p => p.estado === 'guardado' ? (p.guardadoSinPagar && p.guardadoSinPagar.hasta) : sumarDias(p.fechas.creado || hoyISO(), plazoPagoDias());
+// Límite del pedido normal (31/10): el día SIGUIENTE a la fecha de pago del live, a las 16:00 (tolerancia que no se le dice a la clienta).
+// Lives viejos sin fecha real: como antes, creado + plazoPagoDias.
+function limitePagoNormal(p) { const l = liveById(p.liveId); return l && l.fechaPagoISO ? sumarDias(l.fechaPagoISO, 1) : sumarDias(p.fechas.creado || hoyISO(), plazoPagoDias()); }
+const limiteDe = p => p.estado === 'guardado' ? (p.guardadoSinPagar && p.guardadoSinPagar.hasta) : limitePagoNormal(p);
 const limiteVencido = f => !!f && (f < hoyISO() || (f === hoyISO() && new Date().getHours() >= HORA_LIBERAR));
 function paraLiberar() {
   return todosPedidos().filter(p => !p.cambio && !pagado(p) && !pagoAlRetirar(p)

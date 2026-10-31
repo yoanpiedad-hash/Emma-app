@@ -264,3 +264,46 @@ abrirWA = function (tel, texto) {
   const s2 = d.querySelector('select'); s2.value = waCompu();
   s2.addEventListener('change', () => { try { localStorage.setItem(WA_COMPU_KEY, s2.value); } catch (e) {} toast('✓ WhatsApp abre en ' + (s2.value === 'app' ? 'la app' : 'WhatsApp Web')); });
 })();
+
+// ─── Fecha de pago real del live (31/10) ──────────────────────
+// live.fechaPagoISO = fecha elegida en el calendario; live.fechaPago = el texto que sale en el mensaje ("el martes 3/11").
+// La clienta solo ve esa fecha. "Para liberar" usa el día siguiente a las 16:00 (mabel.js, limitePagoNormal).
+const DIAS_FP = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const fechaPagoTexto = iso => 'el ' + DIAS_FP[new Date(iso + 'T12:00:00').getDay()] + ' ' + fechaUY(iso, 1).replace(/^0/, '').replace('/0', '/');
+function ponerFechaPago(l, iso) { if (!l || !iso) return; l.fechaPagoISO = iso; l.fechaPago = fechaPagoTexto(iso); saveLives(); }
+nuevoLive = function () {
+  if (!puedoAgregar()) return;
+  const sug = 'Live ' + fechaUY(hoyISO());
+  const nombre = prompt('Nombre del nuevo live:', sug);
+  if (nombre === null) return;
+  tomarRespaldo('Antes de crear "' + (nombre || sug) + '"');
+  const iso = sumarDias(hoyISO(), 1);
+  const l = { id: uid('l'), nombre: nombre.trim() || sug, fecha: hoyISO(), fechaPago: fechaPagoTexto(iso), fechaPagoISO: iso, descuento: 0, pedidoCounter: 0, pedidos: [] };
+  DB.lives.push(l);
+  saveLives();
+  saveConfig({ liveActualId: l.id });
+  UI.cargaId = null; UI.abiertos.clear();
+  toast('✓ Live creado · pagan hasta ' + l.fechaPago + ' (cambiala en 📅 si es otra)', 5000);
+  render();
+  const cp = $('#cpl-in'); if (cp) cp.focus();
+};
+function pintarFechaPago() {
+  const viejo = document.getElementById('live-fpago'); if (!viejo) return;
+  let box = document.getElementById('live-fp-box');
+  if (!box) {
+    viejo.style.display = 'none';
+    const lb = viejo.previousElementSibling; if (lb) lb.textContent = '📅 Pagan hasta (sale en el mensaje)';
+    box = document.createElement('div'); box.id = 'live-fp-box';
+    box.innerHTML = '<div class="row" style="gap:6px"><input type="date" id="live-fp-d" style="flex:1;min-width:0"><button class="b sm" id="live-fp-m" type="button">Mañana</button></div><div class="small muted" id="live-fp-t" style="margin-top:4px"></div>';
+    viejo.insertAdjacentElement('afterend', box);
+    box.querySelector('#live-fp-d').addEventListener('change', e => { if (!e.target.value) return; ponerFechaPago(liveActual(), e.target.value); toast('✓ Pagan hasta ' + liveActual().fechaPago); pintarFechaPago(); render(); });
+    box.querySelector('#live-fp-m').addEventListener('click', () => { const l = liveActual(); ponerFechaPago(l, sumarDias(l.fecha || hoyISO(), 1)); toast('✓ Pagan hasta ' + l.fechaPago); pintarFechaPago(); render(); });
+  }
+  const l = liveActual(); if (!l) return;
+  const d = box.querySelector('#live-fp-d'); if (document.activeElement !== d) d.value = l.fechaPagoISO || '';
+  box.querySelector('#live-fp-t').innerHTML = l.fechaPagoISO
+    ? `La clienta ve: "Podés pagarlo hasta <b>${esc(l.fechaPago)}</b>". Se libera el ${fechaPagoTexto(sumarDias(l.fechaPagoISO, 1)).slice(3)} a las 16:00.`
+    : (l.fechaPago ? `Texto anterior: "${esc(l.fechaPago)}". Elegí la fecha para que "Para liberar" la use.` : 'Elegí hasta qué día pagan.');
+}
+const _renderLiveFP = renderLive;
+renderLive = function () { _renderLiveFP.apply(this, arguments); try { pintarFechaPago(); } catch (e) { console.warn(e); } };
