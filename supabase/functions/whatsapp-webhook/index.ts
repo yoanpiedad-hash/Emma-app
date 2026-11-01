@@ -6,8 +6,8 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, type Ctx } from './tools.ts';
-import { SYSTEM_BASE } from './prompt.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, type Ctx } from 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/b41f9a808e6cfec1b1243e9e524a539683523c68/supabase/functions/whatsapp-webhook/tools.ts'; // fijado a un commit: para cambiar tools.ts, commitear y actualizar el hash
+import { SYSTEM_BASE } from 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/b41f9a808e6cfec1b1243e9e524a539683523c68/supabase/functions/whatsapp-webhook/prompt.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 // Secretos de la función primero; si no están, la tabla mabel_ajustes (solo la ve la función): ruta secreta, WABA ID, phone number ID, host de la API.
@@ -226,6 +226,8 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
   }
   if (!respuesta) respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 💛';
   // En modo prueba no se envía por WhatsApp, pero se guarda igual para que la conversación tenga memoria
+  // Leído (tildes azules) solo cuando Mabel contesta de verdad: así Yanaina sigue viendo como no leídos los chats que no atendió Mabel
+  if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
   await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true });
   return { respuesta, error, ...(opts.dry ? { prueba: true } : {}) };
@@ -283,7 +285,7 @@ Deno.serve(async (req) => {
         if (!numOk) { console.warn('aviso de otro número:', v.metadata?.phone_number_id, ch.field); continue; }
         if (ch.field === 'messages') for (const m of v.messages || []) {
           const wa = String(m.from || ''); if (!wa) continue;
-          if (await ingestar(m, wa)) { pendientes.set(telKeyDe(wa), wa); marcarLeido(m.id); }
+          if (await ingestar(m, wa)) pendientes.set(telKeyDe(wa), wa); // NO marcar leído acá: en coexistencia se marca también en el celu de Yanaina
         }
         if (ch.field === 'smb_message_echoes') for (const e of v.message_echoes || []) await ingestarEco(e);
       } catch (e) { console.error('ingesta:', (e as Error).message); }
