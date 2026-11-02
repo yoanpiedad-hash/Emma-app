@@ -6,8 +6,8 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, type Ctx } from 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/74d2e0a4e86719d476467f2dd3cc2fc53aabce1b/supabase/functions/whatsapp-webhook/tools.ts'; // fijado a un commit: para cambiar tools.ts, commitear y actualizar el hash
-import { SYSTEM_BASE } from 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/74d2e0a4e86719d476467f2dd3cc2fc53aabce1b/supabase/functions/whatsapp-webhook/prompt.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, type Ctx } from 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/2e9057ae8e49f9fb422287f71395f265112bf374/supabase/functions/whatsapp-webhook/tools.ts'; // fijado a un commit: para cambiar tools.ts, commitear y actualizar el hash
+import { SYSTEM_BASE } from 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/2e9057ae8e49f9fb422287f71395f265112bf374/supabase/functions/whatsapp-webhook/prompt.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 // Secretos de la función primero; si no están, la tabla mabel_ajustes (solo la ve la función): ruta secreta, WABA ID, phone number ID, host de la API.
