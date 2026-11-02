@@ -84,7 +84,7 @@ export async function buscarPedido(ctx: Ctx) {
     const p = r.datos, live = lives.get(r.live_id);
     const total = calcTotal(p, live);
     return {
-      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, total, estado: p.estado, estado_pago: estadoPago(p, c),
+      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, fecha_pago: live?.datos?.fechaPagoISO || null, total, estado: p.estado, estado_pago: estadoPago(p, c),
       entrega: entregaEf(p, c), guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
