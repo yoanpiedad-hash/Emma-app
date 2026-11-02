@@ -258,7 +258,6 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     if (s(a.ci)) cambiosCli.ci = s(a.ci);
     if (s(a.departamento)) cambiosCli.depto = s(a.departamento);
     hint.agencia_habitual = esHabitual(cambiosCli.agencia);
-    hint.dia_otras_agencias = cfg.diaOtrasAgencias || 'viernes';
   }
   const x = Math.max(0, Math.min(tar, Math.round(num(a.envio_transferido))));
   await conReintento(async () => {
