@@ -14,6 +14,19 @@ export const telKeyDe = (s: string) => String(s || '').replace(/\D/g, '').slice(
 const normB = (t: string) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const BARRIOS = (() => { const m = new Map<string, string>(); BARRIOS_GRISAL.forEach((b) => { if (!m.has(normB(b))) m.set(normB(b), b); }); return m; })();
 const barrioCanon = (v: string) => BARRIOS.get(normB(v)) || '';
+/** Barrios de la lista que contienen lo que escribió la clienta (ej. "Jardines" → Jardines del Hipódromo, Jardines de Carrasco). */
+const barrioOpciones = (v: string) => {
+  const n = normB(v); if (n.length < 3) return [] as string[];
+  const vistos = new Set<string>(), out: string[] = [];
+  const todos = [...BARRIOS.values()].sort((a, b) => a.length - b.length);
+  for (const b of todos) {
+    const parte = b.split('/').map((x) => x.trim()).find((x) => normB(x).includes(n));
+    if (!parte) continue;
+    const clave = normB(parte).replace(/s$/, '');
+    if (!vistos.has(clave)) { vistos.add(clave); out.push(parte); }
+  }
+  return out.slice(0, 6);
+};
 const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo'];
 const medioDe = (c: string) => /mercado\s*pago/i.test(c || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(c || '') ? 'efectivo' : 'transferencia';
 const esHabitual = (a: string) => /^(dac|nu[nñ]ez|correo)/.test(normB(a));
@@ -247,7 +260,11 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   if (tipo === 'cadeteria') {
     if (!s(a.direccion)) return { error: 'Falta la dirección.' };
     const barrio = barrioCanon(s(a.barrio));
-    if (!barrio) return derivar(ctx, `Barrio "${s(a.barrio)}" no está en la lista de GrisalExpress (o es fuera de Montevideo)`);
+    if (!barrio) {
+      const op = barrioOpciones(s(a.barrio));
+      if (op.length) return { ok: false, preguntar_barrio: true, opciones: op, que_hacer: 'El barrio no es exacto. Preguntale a la clienta cuál de estas opciones es (sin decir que es una lista) y volvé a llamar guardar_entrega con el que elija.' };
+      return { ok: false, preguntar_barrio: true, que_hacer: 'Ese barrio no está en la lista de GrisalExpress. Preguntale el barrio de nuevo (puede estar mal escrito o ser otro nombre). Si la segunda vez tampoco está, pasá a Yanaina con la dirección y el barrio.' };
+    }
     cambiosCli.direccion = s(a.direccion); cambiosCli.barrio = barrio;
     if (s(a.nombre_retira)) cambiosCli.nombreEnvio = s(a.nombre_retira);
     if (s(a.nota_cadete)) cambiosCli.notaCadete = s(a.nota_cadete);

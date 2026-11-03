@@ -200,9 +200,46 @@ async function atender(telKey: string, wa: string, lote: any[]) {
   throw new Error('Demasiadas vueltas de herramientas');
 }
 
+// ─── Turnos (3/11): una sola respuesta por ráfaga y nada se pierde ─────────
+// 1) Espera a que la clienta deje de escribir (4 s sin mensajes nuevos, máximo ~25 s).
+// 2) Un solo proceso por conversación (mabel_tomar_turno). Los demás se van: el que tiene el turno
+//    contesta y después vuelve a mirar si llegaron mensajes mientras tanto.
+// 3) Los ids que se están atendiendo quedan anotados en el turno; si el proceso se corta antes de
+//    contestar, el próximo turno los vuelve a poner pendientes (mensaje reclamado sin respuesta).
+async function pendienteMasNuevo(telKey: string) {
+  const { data } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).order('creado', { ascending: false }).limit(1);
+  return data?.[0] ? Date.parse(data[0].creado) : 0;
+}
 async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esperar?: boolean } = {}) {
-  if (opts.esperar !== false) await sleep(4000); // junta la foto y el texto que llegan pegados
-  // Reclama los mensajes pendientes: si dos invocaciones corren a la vez, solo una se los lleva
+  if (opts.esperar !== false) {
+    await sleep(4000);
+    for (let i = 0; i < 6; i++) {
+      const t = await pendienteMasNuevo(telKey);
+      if (!t) break;
+      const edad = Date.now() - t;
+      if (edad >= 4000) break;
+      await sleep(4000 - edad + 300);
+    }
+  }
+  let ultima: any = { respuesta: null, motivo: 'sin mensajes pendientes' };
+  for (let intento = 0; intento < 2; intento++) {
+    const { data: t, error: et } = await sb.rpc('mabel_tomar_turno', { p_tel: telKey, p_seg: 150 });
+    if (et) { console.error('turno:', et.message); return { respuesta: null, motivo: 'error al tomar turno' }; }
+    if (!t?.ok) return { respuesta: null, motivo: 'otra invocación está atendiendo esta conversación' };
+    try {
+      for (let ronda = 0; ronda < 3; ronda++) {
+        const r = await procesarUna(telKey, wa, opts);
+        if (!r.respuesta) break;
+        ultima = r;
+      }
+    } finally { await sb.rpc('mabel_soltar_turno', { p_tel: telKey }); }
+    if (opts.dry || !(await pendienteMasNuevo(telKey))) break; // llegó algo justo al soltar: otra vuelta
+  }
+  return ultima;
+}
+
+async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } = {}) {
+  // Reclama los mensajes pendientes de esta conversación
   const { data: lote } = await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
   if (!lote?.length) return { respuesta: null, motivo: 'sin mensajes pendientes' };
   lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado)));
@@ -215,6 +252,7 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
   const { count } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').gte('creado', new Date(Date.now() - 3600e3).toISOString());
   if ((count || 0) > 40) return { respuesta: null, motivo: 'demasiados mensajes en una hora' };
 
+  await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: lote.map((m: any) => String(m.id)) });
   let respuesta = '', error: string | null = null;
   const ctxMin: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [] };
   try { respuesta = await atender(telKey, wa, lote); }
@@ -230,6 +268,7 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
   if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
   await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true });
+  await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
   return { respuesta, error, ...(opts.dry ? { prueba: true } : {}) };
 }
 
