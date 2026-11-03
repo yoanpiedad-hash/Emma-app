@@ -183,12 +183,20 @@ async function atender(telKey: string, wa: string, lote: any[]) {
   }
   const messages: any[] = [...(await historia(telKey, lote.map((m) => m.id))), { role: 'user', content: bloques }];
 
-  for (let vuelta = 0; vuelta < 6; vuelta++) {
+  let corregido = false;
+  for (let vuelta = 0; vuelta < 7; vuelta++) {
     const j = await claude(system, messages);
     messages.push({ role: 'assistant', content: j.content });
     const usos = (j.content || []).filter((b: any) => b.type === 'tool_use');
     if (j.stop_reason !== 'tool_use' || !usos.length) {
-      return String((j.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')).trim();
+      const txt = String((j.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')).trim();
+      // Guardia (3/11): dijo que le avisa a Yanaina sin haber derivado (copia la frase del historial). Se le pide que decida de verdad.
+      if (/aviso a yanaina/i.test(txt) && !ctx.derivado && !corregido) {
+        corregido = true;
+        messages.push({ role: 'user', content: [{ type: 'text', text: '(Nota interna, no es de la clienta) Dijiste que le avisás a Yanaina pero no llamaste pasar_a_yanaina. Si de verdad hay que pasarla, llamala con el motivo. Si no, contestá lo que la clienta pidió usando las herramientas que hagan falta. No uses esa frase sin derivar.' }] });
+        continue;
+      }
+      return txt;
     }
     const res: any[] = [];
     for (const u of usos) {
@@ -267,7 +275,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
   // Leído (tildes azules) solo cuando Mabel contesta de verdad: así Yanaina sigue viendo como no leídos los chats que no atendió Mabel
   if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
-  await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true });
+  await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true, ...(error ? { media: { error: error.slice(0, 500) } } : {}) });
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
   return { respuesta, error, ...(opts.dry ? { prueba: true } : {}) };
 }
