@@ -117,7 +117,7 @@ export async function buscarPedido(ctx: Ctx) {
   return {
     clienta_encontrada: !!c,
     nota_de_la_clienta: c?.datos?.notaMabel || '',
-    datos_guardados: c ? { direccion: c.datos.direccion || '', barrio: c.datos.barrio || '', agencia: c.datos.agencia || '', ciudad: c.datos.ciudad || '', departamento: c.datos.depto || '', nombre_envio: c.datos.nombreEnvio || '', ci: c.datos.ci || '', nota_cadete: c.datos.notaCadete || '' } : null,
+    datos_guardados: c ? { direccion: c.datos.direccion || '', barrio: c.datos.barrio || '', agencia: c.datos.agencia || '', ciudad: c.datos.ciudad || '', departamento: c.datos.depto || '', nombre_envio: c.datos.nombreEnvio || '', ci: c.datos.ci || '', nota_cadete: c.datos.notaCadete || '', otras_direcciones: (c.datos.direcciones || []).filter((x: any) => normD(x.direccion) !== normD(c.datos.direccion)).map((x: any) => ({ direccion: x.direccion, barrio: x.barrio || '', etiqueta: x.etiqueta || '' })), puede_guardar_sin_pagar: !!c.datos.puedeGuardarSinPagar } : null,
     pedidos_abiertos: pedidos,
     a_transferir,
     sin_pagar_para_marcar: sinPagar.length,
@@ -126,6 +126,16 @@ export async function buscarPedido(ctx: Ctx) {
 }
 
 // ─── Escritura con control de cambios ─────────────────────────
+const normD = (v: any) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+// Lista de direcciones de cadetería de la clienta (3/11): la principal es datos.direccion; las demás quedan en datos.direcciones.
+function sumarDireccion(d: any, dir: string, barrio: string, etiqueta: string) {
+  const l = Array.isArray(d.direcciones) ? [...d.direcciones] : [];
+  if (d.direccion && !l.some((x: any) => normD(x.direccion) === normD(d.direccion))) l.push({ direccion: d.direccion, barrio: d.barrio || '' });
+  const i = l.findIndex((x: any) => normD(x.direccion) === normD(dir));
+  const nueva = { ...(i >= 0 ? l[i] : {}), direccion: dir, barrio: barrio || (i >= 0 ? l[i].barrio : ''), ...(etiqueta ? { etiqueta } : {}) };
+  if (i >= 0) l[i] = nueva; else l.push(nueva);
+  return l.slice(-5);
+}
 async function guardarPedido(row: any, datos: any) {
   const { data, error } = await sb.from('pedidos').update({ estado: datos.estado || 'pendiente', entrega: datos.entrega || 'sin_definir', datos, actualizado: new Date().toISOString() }).eq('id', row.id).eq('actualizado', row.actualizado).select('id');
   if (error) throw new Error('No se pudo guardar el pedido: ' + error.message);
@@ -260,8 +270,12 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   const hint: any = {};
   if (tipo === 'cadeteria') {
     if (!s(a.direccion)) return { error: 'Falta la dirección.' };
-    // El barrio es opcional: GrisalExpress lo completa si falta. Si coincide con su lista, va con el nombre exacto; si no, tal cual lo dijo.
-    const barrio = barrioCanon(s(a.barrio)) || s(a.barrio).toUpperCase();
+    const barrio = barrioCanon(s(a.barrio));
+    if (!barrio) {
+      const op = barrioOpciones(s(a.barrio));
+      if (op.length) return { ok: false, preguntar_barrio: true, opciones: op, que_hacer: 'El barrio no es exacto. Preguntale a la clienta cuál de estas opciones es (sin decir que es una lista) y volvé a llamar guardar_entrega con el que elija.' };
+      return { ok: false, preguntar_barrio: true, que_hacer: 'Ese barrio no está en la lista de GrisalExpress. Preguntale el barrio de nuevo (puede estar mal escrito o ser otro nombre). Si la segunda vez tampoco está, pasá a Yanaina con la dirección y el barrio.' };
+    }
     cambiosCli.direccion = s(a.direccion); cambiosCli.barrio = barrio;
     if (s(a.nombre_retira)) cambiosCli.nombreEnvio = s(a.nombre_retira);
     if (s(a.nota_cadete)) cambiosCli.notaCadete = s(a.nota_cadete);
@@ -275,7 +289,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   }
   const x = Math.max(0, Math.min(tar, Math.round(num(a.envio_transferido))));
   await conReintento(async () => {
-    if (Object.keys(cambiosCli).length) { const { data } = await sb.from('clientas').select('*').eq('id', ctx.clienta.id).single(); await guardarClienta(data, { ...data.datos, ...cambiosCli }); }
+    if (Object.keys(cambiosCli).length) { const { data } = await sb.from('clientas').select('*').eq('id', ctx.clienta.id).single(); const extra: any = tipo === 'cadeteria' ? { direcciones: sumarDireccion(data.datos, cambiosCli.direccion, cambiosCli.barrio, s(a.etiqueta).toLowerCase()) } : {}; await guardarClienta(data, { ...data.datos, ...cambiosCli, ...extra }); }
     for (const r of objetivo) {
       const { data } = await sb.from('pedidos').select('*').eq('id', r.id).single();
       const p = JSON.parse(JSON.stringify(data.datos)); p.entrega = tipo;
@@ -301,6 +315,38 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     ...(tipo === 'retiro' ? { paga_al_retirar: objetivo.some((r) => !pagado(r.datos)) } : {}),
     mensaje_de_cierre: tipo === 'cadeteria' ? 'Listo, ya lo tenemos anotado. Cuando salga te avisa la cadetería.' : tipo === 'agencia' ? 'Listo, anotado. Cuando salga te mandamos la foto del comprobante de envío.' : 'Listo, anotado. ¡Te esperamos!',
   };
+}
+
+// ─── guardar_pedido (3/11) ────────────────────────────────────
+// Pagado → Guardado (con pago). Sin pagar → solo si la ficha tiene puedeGuardarSinPagar, hasta 7 días. Si no, Yanaina.
+export async function guardarPedidoCli(ctx: Ctx, a: any) {
+  if (!ctx.clienta) return derivar(ctx, 'Pide guardar el pedido pero no hay ficha de clienta para este número');
+  const { filas, cobros } = await abiertos(ctx);
+  let objetivo = filas.filter((r) => ['pendiente', 'listo'].includes(r.datos.estado));
+  if (cobros.length) { const ids = cobros[0].datos.pedidos || []; objetivo = filas.filter((r) => ids.includes(r.id)); }
+  if (!objetivo.length) return { ok: true, ya_guardado: true, que_hacer: 'Sus pedidos ya están guardados: confirmale corto que siguen guardados.' };
+  const hoy = hoyUY(), max = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const pagos = objetivo.map((r) => pagado(r.datos));
+  if (pagos.some((x) => !x) && pagos.some((x) => x)) return derivar(ctx, 'Pide guardar: tiene pedidos pagos y otros sin pagar');
+  const sinPagar = !pagos[0];
+  const { data: cli } = await sb.from('clientas').select('datos').eq('id', ctx.clienta.id).single();
+  if (sinPagar && !cli?.datos?.puedeGuardarSinPagar) return derivar(ctx, 'Pide guardar el pedido sin pagar' + (a?.hasta ? ' hasta el ' + a.hasta : '') + ' (no está autorizada a guardar sin pagar)');
+  let hasta = /^\d{4}-\d{2}-\d{2}$/.test(String(a?.hasta || '')) ? String(a.hasta) : max;
+  if (hasta < hoy) hasta = max;
+  if (sinPagar && hasta > max) return derivar(ctx, 'Pide guardar sin pagar hasta el ' + hasta + ' (más de 7 días)');
+  const nums: number[] = [];
+  for (const r0 of objetivo) {
+    await conReintento(async () => {
+      const { data: r } = await sb.from('pedidos').select('*').eq('id', r0.id).single();
+      const p = JSON.parse(JSON.stringify(r.datos));
+      p.estado = 'guardado'; p.fechas = p.fechas || {}; p.fechas.guardado = hoy;
+      if (sinPagar) p.guardadoSinPagar = { desde: hoy, hasta, porMabel: true };
+      const n = '⏸️ Pidió guardarlo' + (a?.hasta ? ' hasta el ' + a.hasta : '') + ' (le dijo a Mabel)';
+      p.notas = p.notas ? String(p.notas) + '\n' + n : n;
+      await guardarPedido(r, p); nums.push(p.num);
+    });
+  }
+  return { ok: true, pedidos: nums, sin_pagar: sinPagar, ...(sinPagar ? { hasta } : {}), mensaje_de_cierre: sinPagar ? 'Dale bella, te lo guardamos 💛' : 'Dale bella, te lo guardamos. Cuando quieras que salga, avisanos 💛' };
 }
 
 // ─── confirmar_pedido (3/11) ──────────────────────────────────
@@ -336,11 +382,12 @@ export const HERRAMIENTAS = [
     nota: { type: 'string', description: 'Nota corta opcional (ejemplo: "transfirió $1.200")' } }, required: ['cuenta', 'monto', 'destino_coincide'] } },
   { name: 'guardar_entrega', description: 'Carga cómo recibe el pedido: retiro, cadeteria (Montevideo) o agencia.', input_schema: { type: 'object', properties: {
     tipo: { type: 'string', enum: ['retiro', 'cadeteria', 'agencia'] },
-    direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio si la clienta lo dijo (opcional)' },
-    nota_cadete: { type: 'string', description: 'Cadetería: indicación para el cadete (opcional)' },
+    direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio (tiene que estar en la lista de GrisalExpress)' },
+    nota_cadete: { type: 'string', description: 'Cadetería: indicación para el cadete (opcional)' }, etiqueta: { type: 'string', description: 'Cadetería: nombre de la dirección si la clienta lo dice (casa, trabajo, mamá…)' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' } }, required: ['tipo'] } },
+  { name: 'guardar_pedido', description: 'La clienta pide guardar su pedido (que no salga todavía, juntarlo con el próximo live, levantarlo más adelante). Si ya pagó, lo pasa a Guardado. Si no pagó, solo lo guarda si la ficha lo permite (hasta 7 días); si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'Fecha hasta la que lo guarda, AAAA-MM-DD, solo si la clienta dijo una' } } } },
   { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
   { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' } }, required: ['motivo'] } },
   { name: 'actualizar_nota', description: 'Reescribe la nota de la clienta (máximo 3 líneas, solo hechos con fecha, sin opiniones ni datos sensibles). Llamala al cerrar una conversación en la que pasó algo útil para la próxima vez.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
@@ -353,6 +400,7 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
     case 'marcar_pagado': return await marcarPagado(ctx, input || {});
     case 'guardar_entrega': return await guardarEntrega(ctx, input || {});
     case 'confirmar_pedido': return await confirmarPedido(ctx);
+    case 'guardar_pedido': return await guardarPedidoCli(ctx, input || {});
     case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo);
     case 'actualizar_nota': return await actualizarNota(ctx, input?.texto);
     default: return { error: 'Herramienta desconocida' };
