@@ -130,10 +130,11 @@ async function ingestarHistorial(value: any) {
 // ─── Agente ───────────────────────────────────────────────────
 async function historia(telKey: string, excluir: string[]) {
   const desde = new Date(Date.now() - 36 * 3600e3).toISOString();
-  const { data } = await sb.from('mabel_mensajes').select('id,direccion,texto,tipo,media,creado').eq('tel_key', telKey).gte('creado', desde).order('creado', { ascending: false }).limit(24);
+  const { data } = await sb.from('mabel_mensajes').select('id,direccion,texto,tipo,media,creado,procesado').eq('tel_key', telKey).gte('creado', desde).order('creado', { ascending: false }).limit(24);
   const msgs: { role: 'user' | 'assistant'; content: string }[] = [];
   for (const r of (data || []).reverse()) {
     if (excluir.includes(r.id)) continue;
+    if (r.direccion === 'in' && r.procesado === false) continue; // llegó mientras se contestaba: lo atiende la próxima vuelta (si no, se contesta dos veces)
     const t = r.direccion === 'in' ? (r.media ? `[mandó un archivo: ${r.media.mime}] ` : '') + (r.texto || '') : r.direccion === 'echo' ? '(Equipo Emma, desde el celular) ' + (r.texto || '') : (r.texto || '');
     if (!t.trim()) continue;
     const role = r.direccion === 'in' ? 'user' : 'assistant';
@@ -284,6 +285,9 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
   const { count } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').gte('creado', new Date(Date.now() - 3600e3).toISOString());
   if ((count || 0) > 40) return { respuesta: null, motivo: 'demasiados mensajes en una hora' };
 
+  // Lo que llegó mientras se preparaba la respuesta entra en el mismo lote (una sola respuesta)
+  const { data: mas } = await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
+  if (mas?.length) { lote.push(...mas); lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado))); }
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: lote.map((m: any) => String(m.id)) });
   let respuesta = '', error: string | null = null;
   const ctxMin: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [] };

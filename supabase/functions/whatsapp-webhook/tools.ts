@@ -261,6 +261,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   if (!['retiro', 'cadeteria', 'agencia'].includes(tipo)) return { error: 'tipo tiene que ser retiro, cadeteria o agencia' };
   const { filas, cobros } = await abiertos(ctx);
   let objetivo = filas.filter((r) => ['pendiente', 'listo'].includes(r.datos.estado));
+  if (!objetivo.length && !cobros.length) objetivo = filas.filter((r) => r.datos.estado === 'guardado' && pagado(r.datos)); // guardado con pago: se le puede dejar anotada la entrega
   if (cobros.length) { const ids = cobros[0].datos.pedidos || []; objetivo = filas.filter((r) => ids.includes(r.id)); }
   else if (objetivo.length > 1) return derivar(ctx, 'Tiene más de un pedido abierto y no hay cobro agrupado (eligió entrega)');
   if (!objetivo.length) return { error: 'No hay pedido abierto al que cargarle la entrega. Pasalo a Yanaina.' };
