@@ -145,7 +145,7 @@ async function historia(telKey: string, excluir: string[]) {
 async function claude(system: any[], messages: any[]) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST', headers: { 'x-api-key': ENV('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: MODELO, max_tokens: 700, system, tools: HERRAMIENTAS, messages }),
+    body: JSON.stringify({ model: MODELO, max_tokens: 1500, system, tools: HERRAMIENTAS, messages }),
   });
   const j = await r.json();
   if (!r.ok) throw new Error('Claude API: ' + JSON.stringify(j).slice(0, 300));
@@ -200,7 +200,9 @@ async function atender(telKey: string, wa: string, lote: any[]) {
     const j = await claude(system, messages);
     messages.push({ role: 'assistant', content: j.content });
     const usos = (j.content || []).filter((b: any) => b.type === 'tool_use');
-    if (j.stop_reason !== 'tool_use' || !usos.length) {
+    // Cortada por largo con una herramienta a medio escribir: se descarta y se vuelve a pedir (3/11)
+    if (usos.length && j.stop_reason === 'max_tokens') { messages.pop(); continue; }
+    if (!usos.length) {
       const txt = String((j.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')).trim();
       if (!txt) {
         // Respuesta vacía (3/11): se reintenta una vez; si vuelve vacía, error con el detalle (queda guardado).
