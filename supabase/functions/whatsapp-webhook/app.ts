@@ -195,13 +195,18 @@ async function atender(telKey: string, wa: string, lote: any[]) {
   }
   const messages: any[] = [...(await historia(telKey, lote.map((m) => m.id))), { role: 'user', content: bloques }];
 
-  let corregido = false;
+  let corregido = false, vacio = false;
   for (let vuelta = 0; vuelta < 7; vuelta++) {
     const j = await claude(system, messages);
     messages.push({ role: 'assistant', content: j.content });
     const usos = (j.content || []).filter((b: any) => b.type === 'tool_use');
     if (j.stop_reason !== 'tool_use' || !usos.length) {
       const txt = String((j.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')).trim();
+      if (!txt) {
+        // Respuesta vacía (3/11): se reintenta una vez; si vuelve vacía, error con el detalle (queda guardado).
+        if (!vacio) { vacio = true; if (!(j.content || []).length) messages.pop(); messages.push({ role: 'user', content: [{ type: 'text', text: '(Nota interna, no es de la clienta) Tu respuesta llegó vacía. Contestale a la clienta con un mensaje corto.' }] }); continue; }
+        throw new Error('respuesta vacía: stop_reason=' + j.stop_reason + ' content=' + JSON.stringify(j.content || []).slice(0, 200));
+      }
       // Guardia (3/11): dijo que le avisa a Yanaina sin haber derivado (copia la frase del historial). Se le pide que decida de verdad.
       if (/aviso a yanaina/i.test(txt) && !ctx.derivado && !corregido) {
         corregido = true;
