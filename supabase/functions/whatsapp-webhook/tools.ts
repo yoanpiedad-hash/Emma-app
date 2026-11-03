@@ -260,12 +260,8 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   const hint: any = {};
   if (tipo === 'cadeteria') {
     if (!s(a.direccion)) return { error: 'Falta la dirección.' };
-    const barrio = barrioCanon(s(a.barrio));
-    if (!barrio) {
-      const op = barrioOpciones(s(a.barrio));
-      if (op.length) return { ok: false, preguntar_barrio: true, opciones: op, que_hacer: 'El barrio no es exacto. Preguntale a la clienta cuál de estas opciones es (sin decir que es una lista) y volvé a llamar guardar_entrega con el que elija.' };
-      return { ok: false, preguntar_barrio: true, que_hacer: 'Ese barrio no está en la lista de GrisalExpress. Preguntale el barrio de nuevo (puede estar mal escrito o ser otro nombre). Si la segunda vez tampoco está, pasá a Yanaina con la dirección y el barrio.' };
-    }
+    // El barrio es opcional: GrisalExpress lo completa si falta. Si coincide con su lista, va con el nombre exacto; si no, tal cual lo dijo.
+    const barrio = barrioCanon(s(a.barrio)) || s(a.barrio).toUpperCase();
     cambiosCli.direccion = s(a.direccion); cambiosCli.barrio = barrio;
     if (s(a.nombre_retira)) cambiosCli.nombreEnvio = s(a.nombre_retira);
     if (s(a.nota_cadete)) cambiosCli.notaCadete = s(a.nota_cadete);
@@ -340,7 +336,7 @@ export const HERRAMIENTAS = [
     nota: { type: 'string', description: 'Nota corta opcional (ejemplo: "transfirió $1.200")' } }, required: ['cuenta', 'monto', 'destino_coincide'] } },
   { name: 'guardar_entrega', description: 'Carga cómo recibe el pedido: retiro, cadeteria (Montevideo) o agencia.', input_schema: { type: 'object', properties: {
     tipo: { type: 'string', enum: ['retiro', 'cadeteria', 'agencia'] },
-    direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio (tiene que estar en la lista de GrisalExpress)' },
+    direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio si la clienta lo dijo (opcional)' },
     nota_cadete: { type: 'string', description: 'Cadetería: indicación para el cadete (opcional)' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
