@@ -231,6 +231,8 @@ function textoConfirmacion(c) { return (cfg('msgConfirmacion') || CONF_MSG_DEF).
 function confirmacionEnviada(p) { return todosPedidos().some(x => x.clienteId === p.clienteId && x.liveId === p.liveId && x.confirmWA); }
 function confBtnHTML(p) {
   if (!p.prendas || !p.prendas.length || p.cambio) return '';
+  const conf = todosPedidos().find(x => x.clienteId === p.clienteId && x.liveId === p.liveId && x.confirmado);
+  if (conf) return `<span class="chip ok" title="La clienta confirmó por WhatsApp${conf.confirmadoPor === 'mabel' ? ' (lo marcó Mabel)' : ''}">💛 Confirmó</span>`;
   return confirmacionEnviada(p) ? '<span class="chip ok" title="Ya se le mandó el mensaje de confirmación en este live">✓ Confirmación enviada</span>'
     : `<button class="b" data-act="waConfirm" data-id="${p.id}" title="Manda: ${esc(textoConfirmacion(cliById(p.clienteId) || { nombre: '' }))}">✅ Enviar confirmación</button>`;
 }

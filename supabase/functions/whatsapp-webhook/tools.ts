@@ -85,7 +85,7 @@ export async function buscarPedido(ctx: Ctx) {
     const total = calcTotal(p, live);
     return {
       numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, fecha_pago: live?.datos?.fechaPagoISO || null, total, estado: p.estado, estado_pago: estadoPago(p, c),
-      entrega: entregaEf(p, c), guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
+      entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
     };
@@ -289,6 +289,28 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   };
 }
 
+// ─── confirmar_pedido (3/11) ──────────────────────────────────
+// La clienta confirma ("sí", "confirmo mi pedido"): marca confirmado el/los pedidos abiertos del live más reciente (últimos 3 días). No toca pagos.
+export async function confirmarPedido(ctx: Ctx) {
+  await cargarClienta(ctx);
+  const { filas, lives } = await abiertos(ctx);
+  const desde = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
+  const cand = filas.filter((r) => r.datos?.estado !== 'guardado' && !r.datos?.guardadoSinPagar && (lives.get(r.live_id)?.fecha || '') >= desde);
+  if (!cand.length) return { ok: false, motivo: 'No hay pedido abierto de un live de los últimos 3 días a este número' };
+  const ultimo = cand.map((r) => lives.get(r.live_id)?.fecha || '').sort().pop();
+  const rs = cand.filter((r) => (lives.get(r.live_id)?.fecha || '') === ultimo);
+  const ahora = new Date().toISOString(), nums: number[] = [];
+  for (const r0 of rs) {
+    await conReintento(async () => {
+      const { data: r } = await sb.from('pedidos').select('*').eq('id', r0.id).single();
+      if (!r || r.datos?.confirmado) { if (r) nums.push(r.datos.num); return; }
+      await guardarPedido(r, { ...r.datos, confirmado: ahora, confirmadoPor: 'mabel' });
+      nums.push(r.datos.num);
+    });
+  }
+  return { ok: true, pedidos_confirmados: nums, live: lives.get(rs[0].live_id)?.nombre || '' };
+}
+
 // ─── Definición de herramientas para la API de Claude ─────────────
 export const HERRAMIENTAS = [
   { name: 'buscar_pedido', description: 'Trae el estado actual de la clienta que está escribiendo: pedidos abiertos, totales a transferir, datos de entrega guardados, nota y configuración. Sin parámetros.', input_schema: { type: 'object', properties: {} } },
@@ -305,6 +327,7 @@ export const HERRAMIENTAS = [
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' } }, required: ['tipo'] } },
+  { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
   { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' } }, required: ['motivo'] } },
   { name: 'actualizar_nota', description: 'Reescribe la nota de la clienta (máximo 3 líneas, solo hechos con fecha, sin opiniones ni datos sensibles). Llamala al cerrar una conversación en la que pasó algo útil para la próxima vez.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
 ];
@@ -315,6 +338,7 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
     case 'buscar_pedido': return await buscarPedido(ctx);
     case 'marcar_pagado': return await marcarPagado(ctx, input || {});
     case 'guardar_entrega': return await guardarEntrega(ctx, input || {});
+    case 'confirmar_pedido': return await confirmarPedido(ctx);
     case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo);
     case 'actualizar_nota': return await actualizarNota(ctx, input?.texto);
     default: return { error: 'Herramienta desconocida' };
