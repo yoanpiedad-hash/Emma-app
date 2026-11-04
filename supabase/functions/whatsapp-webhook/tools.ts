@@ -318,6 +318,80 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   };
 }
 
+// ─── vincular_pedido (4/11) ───────────────────────────────────
+// La clienta escribe desde un número que no está en ningún pedido ("soy Ale, te pedí una remera", "confirmo el pedido 34").
+// Busca en los lives de hoy y ayer un pedido sin teléfono que coincida con el número de pedido y/o el nombre (TikTok),
+// y le pone este teléfono. Si el pedido que coincide ya tiene OTRO teléfono, no lo toca y avisa a Yanaina.
+const normN = (v: any) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+function parecido(a: string, b: string) {
+  a = normN(a); b = normN(b); if (!a || !b) return 0;
+  if (a === b) return 1;
+  const sa = a.replace(/ /g, ''), sb2 = b.replace(/ /g, '');
+  if (sa.length >= 4 && sb2.length >= 4 && (sa.includes(sb2) || sb2.includes(sa))) return 0.9;
+  const ta = a.split(' '), tb = b.split(' ');
+  if (ta.some((x) => x.length >= 4 && tb.includes(x))) return 0.85;
+  // distancia de edición sobre el texto sin espacios
+  const m = sa.length, n = sb2.length; const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (sa[i - 1] === sb2[j - 1] ? 0 : 1));
+  return 1 - d[m][n] / Math.max(m, n);
+}
+export async function vincularPedido(ctx: Ctx, a: any) {
+  const num = parseInt(String(a?.num ?? '').replace(/\D/g, ''), 10) || 0, nombre = String(a?.nombre || '').trim();
+  if (!num && !nombre) return { ok: false, que_hacer: 'Pedile el número de pedido o su usuario de TikTok.' };
+  const ayer = new Date(Date.now() - 36 * 3600e3).toISOString().slice(0, 10);
+  const { data: lvs } = await sb.from('lives').select('id,datos').gte('datos->>fecha', ayer);
+  const lids = (lvs || []).map((l: any) => l.id);
+  if (!lids.length) return { ok: false, no_encontrado: true };
+  const { data: ps } = await sb.from('pedidos').select('*').in('live_id', lids).eq('borrado', false).in('estado', ['pendiente', 'listo']);
+  const cids = [...new Set((ps || []).map((p: any) => p.clienta_id))];
+  const { data: cls } = cids.length ? await sb.from('clientas').select('*').in('id', cids) : { data: [] as any[] };
+  const cl = new Map((cls || []).map((c: any) => [c.id, c]));
+  const cand = (ps || []).map((p: any) => {
+    const c: any = cl.get(p.clienta_id) || { datos: {} };
+    const nombres = [c.datos.nombre, c.datos.nombreEnvio, ...(c.datos.alias || [])].filter(Boolean);
+    const sim = nombre ? Math.max(0, ...nombres.map((x: string) => parecido(x, nombre))) : 0;
+    return { p, c, sim, porNum: !!num && Number(p.datos.num) === num };
+  });
+  let elegido: any = null;
+  if (num) {
+    const xs = cand.filter((x) => x.porNum).sort((x, y) => y.sim - x.sim);
+    if (xs.length === 1 && (!nombre || xs[0].sim >= 0.6)) elegido = xs[0];
+    else if (xs.length > 1 && nombre && xs[0].sim >= 0.6 && xs[0].sim - (xs[1]?.sim || 0) >= 0.2) elegido = xs[0];
+  }
+  if (!elegido && nombre) {
+    const xs = cand.filter((x) => x.sim >= 0.8).sort((x, y) => y.sim - x.sim);
+    if (xs.length === 1 || (xs.length > 1 && xs[0].sim - xs[1].sim >= 0.15)) elegido = xs[0];
+    else if (xs.length > 1) return derivar(ctx, 'Escribe desde un número sin pedido (' + (nombre || '') + (num ? ', pedido #' + num : '') + '): coincide con varios pedidos: ' + xs.slice(0, 4).map((x) => '#' + x.p.datos.num + ' ' + x.c.datos.nombre).join(', '));
+  }
+  if (!elegido) return { ok: false, no_encontrado: true };
+  const telC = String(elegido.c.datos.tel || '').replace(/\D/g, '');
+  if (telC && telKeyDe(telC) !== ctx.telKey) return derivar(ctx, 'Escribe desde el 0' + ctx.telKey + ' y dice ser ' + (nombre || 'la clienta') + (num ? ' (pedido #' + num + ')' : '') + '. Puede ser el pedido #' + elegido.p.datos.num + ' de ' + elegido.c.datos.nombre + ', pero esa ficha tiene otro teléfono (' + elegido.c.datos.tel + '). Verificar.');
+  if (ctx.clienta && ctx.clienta.id !== elegido.c.id) {
+    // Este número ya tiene ficha: el pedido pasa a esa ficha y el nombre del live queda como alias
+    await conReintento(async () => {
+      const { data: r } = await sb.from('pedidos').select('*').eq('id', elegido.p.id).single();
+      const d = { ...r.datos, clienteId: ctx.clienta.id };
+      const { error } = await sb.from('pedidos').update({ clienta_id: ctx.clienta.id, datos: d, actualizado: new Date().toISOString() }).eq('id', r.id).eq('actualizado', r.actualizado);
+      if (error) throw new Error(error.message);
+    });
+    await conReintento(async () => {
+      const { data: c } = await sb.from('clientas').select('*').eq('id', ctx.clienta.id).single();
+      const alias = [...new Set([...(c.datos.alias || []), elegido.c.datos.nombre].filter(Boolean))];
+      await guardarClienta(c, { ...c.datos, alias });
+    });
+  } else {
+    await conReintento(async () => {
+      const { data: c } = await sb.from('clientas').select('*').eq('id', elegido.c.id).single();
+      const { data, error } = await sb.from('clientas').update({ tel_key: ctx.telKey, datos: { ...c.datos, tel: '0' + ctx.telKey, telKey: ctx.telKey }, actualizado: new Date().toISOString() }).eq('id', c.id).eq('actualizado', c.actualizado).select('id');
+      if (error) throw new Error(error.message);
+      if (!data?.length) throw new Error('conflicto');
+    });
+  }
+  await cargarClienta(ctx);
+  return { ok: true, pedido: elegido.p.datos.num, nombre_en_el_live: elegido.c.datos.nombre, que_hacer: 'Listo, el pedido quedó con su número. Seguí con lo que pidió (si quería confirmar, llamá confirmar_pedido; si pregunta el total, buscar_pedido).' };
+}
+
 // ─── guardar_pedido (3/11) ────────────────────────────────────
 // Pagado → Guardado (con pago). Sin pagar → solo si la ficha tiene puedeGuardarSinPagar, hasta 7 días. Si no, Yanaina.
 export async function guardarPedidoCli(ctx: Ctx, a: any) {
@@ -388,6 +462,7 @@ export const HERRAMIENTAS = [
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' } }, required: ['tipo'] } },
+  { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' } } } },
   { name: 'guardar_pedido', description: 'La clienta pide guardar su pedido (que no salga todavía, juntarlo con el próximo live, levantarlo más adelante). Si ya pagó, lo pasa a Guardado. Si no pagó, solo lo guarda si la ficha lo permite (hasta 7 días); si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'Fecha hasta la que lo guarda, AAAA-MM-DD, solo si la clienta dijo una' } } } },
   { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
   { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' } }, required: ['motivo'] } },
@@ -401,6 +476,7 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
     case 'marcar_pagado': return await marcarPagado(ctx, input || {});
     case 'guardar_entrega': return await guardarEntrega(ctx, input || {});
     case 'confirmar_pedido': return await confirmarPedido(ctx);
+    case 'vincular_pedido': return await vincularPedido(ctx, input || {});
     case 'guardar_pedido': return await guardarPedidoCli(ctx, input || {});
     case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo);
     case 'actualizar_nota': return await actualizarNota(ctx, input?.texto);
