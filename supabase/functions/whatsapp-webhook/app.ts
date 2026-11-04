@@ -280,6 +280,9 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
   if (cfg.mabelActiva === false) return { respuesta: null, motivo: 'Mabel pausada (config.mabelActiva=false)' };
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
   if (solo.length && !solo.includes(telKey)) return { respuesta: null, motivo: 'número fuera de mabelSolo' };
+  // Abierta a todas: nunca les contesta a los números del equipo (Yoan, Yharol), que hablan en lo personal con Yanaina por este número
+  const equipo = ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean);
+  if (!solo.length && equipo.includes(telKey)) return { respuesta: null, motivo: 'número del equipo' };
   const { data: conv } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
   if (conv?.datos?.estado === 'yanaina' && conv.datos.hasta > new Date().toISOString()) return { respuesta: null, motivo: 'conversación para Yanaina' };
   const { count } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').gte('creado', new Date(Date.now() - 3600e3).toISOString());
@@ -296,9 +299,9 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
     error = String((e as Error).message || e); console.error('Mabel error:', error);
     const { data: c } = await sb.from('clientas').select('*').eq('tel_key', telKey).eq('borrado', false).limit(1); ctxMin.clienta = c?.[0] || null;
     await pasarAYanaina(ctxMin, 'Error técnico de Mabel: ' + error.slice(0, 120)).catch(() => {});
-    respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 💛';
+    respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
   }
-  if (!respuesta) respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 💛';
+  if (!respuesta) respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
   // En modo prueba no se envía por WhatsApp, pero se guarda igual para que la conversación tenga memoria
   // Leído (tildes azules) solo cuando Mabel contesta de verdad: así Yanaina sigue viendo como no leídos los chats que no atendió Mabel
   if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));

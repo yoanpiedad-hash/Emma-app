@@ -158,7 +158,7 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string) {
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
-  return { ok: true, derivado: true, mensaje_para_la_clienta: 'Ya le aviso a Yanaina y te escribe enseguida 💛' };
+  return { ok: true, derivado: true, mensaje_para_la_clienta: 'Ya le aviso a Yanaina y te escribe enseguida 🫶' };
 }
 
 // ─── actualizar_nota ──────────────────────────────────────────
@@ -347,7 +347,7 @@ export async function guardarPedidoCli(ctx: Ctx, a: any) {
       await guardarPedido(r, p); nums.push(p.num);
     });
   }
-  return { ok: true, pedidos: nums, sin_pagar: sinPagar, ...(sinPagar ? { hasta } : {}), mensaje_de_cierre: sinPagar ? 'Dale bella, te lo guardamos 💛' : 'Dale bella, te lo guardamos. Cuando quieras que salga, avisanos 💛' };
+  return { ok: true, pedidos: nums, sin_pagar: sinPagar, ...(sinPagar ? { hasta } : {}), mensaje_de_cierre: sinPagar ? 'Dale bella, te lo guardamos 🫶' : 'Dale bella, te lo guardamos. Cuando quieras que salga, avisanos 🫶' };
 }
 
 // ─── confirmar_pedido (3/11) ──────────────────────────────────
