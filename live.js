@@ -242,9 +242,27 @@ Object.assign(ACT, {
     if (!p.prendas.length) return toast('Agregá la primera prenda primero');
     if (confirmacionEnviada(p) && !confirm('Ya le mandaste la confirmación en este live. ¿Mandarla de nuevo?')) return;
     if (!c.tel && !pedirTel(c)) return;
-    if (abrirWA(c.tel, textoConfirmacion(c))) { p.confirmWA = ahoraISO(); guardar(); render(); }
+    enviarConfirmacionAPI(p, c);
   }
 });
+
+// ─── Confirmación por la API de WhatsApp (4/11) ────────────────
+// Sale sola desde el número de Emma con la plantilla aprobada por Meta (emma_confirmacion), sin abrir WhatsApp.
+// Si la API falla, ofrece mandarla a mano como antes.
+async function enviarConfirmacionAPI(p, c) {
+  const manual = () => { if (abrirWA(c.tel, textoConfirmacion(c))) { p.confirmWA = ahoraISO(); guardar(); render(); } };
+  if (typeof NUBE === 'undefined' || !NUBE.sb) return manual();
+  toast('📤 Enviando confirmación…');
+  try {
+    const { data, error } = await NUBE.sb.functions.invoke('whatsapp-enviar', { body: { plantilla: 'emma_confirmacion', items: [{ ref: p.id, tel: c.tel, vars: [primerNombreConf(c.nombre) || 'bella'] }] } });
+    const r = data && data.res && data.res[0];
+    if (error || !r || !r.ok) throw new Error((r && r.error) || (error && error.message) || 'sin respuesta');
+    p.confirmWA = ahoraISO(); p.confirmPorAPI = true; guardar(); render();
+    toast('✅ Confirmación enviada a ' + (primerNombreConf(c.nombre) || 'la clienta'));
+  } catch (e) {
+    if (confirm('No se pudo mandar por la API (' + e.message + '). ¿Abrir WhatsApp para mandarla a mano?')) manual();
+  }
+}
 
 // ─── WhatsApp en la compu: app o WhatsApp Web (30/10) ──────────
 // Se elige en Config y queda guardado en ESTE navegador (cada equipo elige el suyo). En el celu siempre wa.me.
