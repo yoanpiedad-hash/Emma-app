@@ -303,6 +303,11 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
     respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
   }
   if (!respuesta) respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
+  // Que no repita el mismo emoji que en su mensaje anterior (4/11)
+  try {
+    const { data: prev } = await sb.from('mabel_mensajes').select('texto').eq('tel_key', telKey).eq('direccion', 'out').order('creado', { ascending: false }).limit(1);
+    respuesta = variarEmoji(respuesta, String(prev?.[0]?.texto || ''));
+  } catch (_) { /* no es grave */ }
   // En modo prueba no se envía por WhatsApp, pero se guarda igual para que la conversación tenga memoria
   // Leído (tildes azules) solo cuando Mabel contesta de verdad: así Yanaina sigue viendo como no leídos los chats que no atendió Mabel
   if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
@@ -310,6 +315,19 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
   await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true, ...(error ? { media: { error: error.slice(0, 500) } } : {}) });
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
   return { respuesta, error, ...(opts.dry ? { prueba: true } : {}) };
+}
+
+const EMOJIS_VAR = ['🫶', '❤️', '💗', '🩷', '🥰'];
+function variarEmoji(txt: string, anterior: string) {
+  const usados = EMOJIS_VAR.filter((e) => anterior.includes(e));
+  if (!usados.length) return txt;
+  let out = txt;
+  for (const e of usados) {
+    if (!out.includes(e)) continue;
+    const otro = EMOJIS_VAR.find((x) => !anterior.includes(x) && !out.includes(x));
+    out = Math.random() < 0.35 || !otro ? out.split(' ' + e).join('').split(e).join('').trim() : out.split(e).join(otro);
+  }
+  return out;
 }
 
 // ─── Repaso en silencio (4/11) ────────────────────────────────
