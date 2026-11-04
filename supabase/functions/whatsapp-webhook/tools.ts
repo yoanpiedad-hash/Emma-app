@@ -322,19 +322,32 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
 // La clienta escribe desde un número que no está en ningún pedido ("soy Ale, te pedí una remera", "confirmo el pedido 34").
 // Busca en los lives de hoy y ayer un pedido sin teléfono que coincida con el número de pedido y/o el nombre (TikTok),
 // y le pone este teléfono. Si el pedido que coincide ya tiene OTRO teléfono, no lo toca y avisa a Yanaina.
-const normN = (v: any) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const EMOJI_PAL: Record<string, string> = { '🦋': 'mariposa', '🌸': 'flor', '🌺': 'flor', '🌷': 'flor', '🌹': 'rosa', '❤': 'corazon', '❤️': 'corazon', '💖': 'corazon', '💕': 'corazon', '⭐': 'estrella', '🌟': 'estrella', '✨': 'brillo', '🌙': 'luna', '☀️': 'sol', '🌞': 'sol', '🐱': 'gato', '🐶': 'perro', '🦄': 'unicornio', '👑': 'reina', '🍒': 'cereza', '🍓': 'frutilla', '🐝': 'abeja', '🌻': 'girasol', '🐼': 'panda', '🦁': 'leon' };
+const VACIAS = new Set(['la', 'el', 'los', 'las', 'de', 'del', 'soy', 'usuario', 'usuaria', 'user', 'un', 'una', 'que', 'te', 'mi', 'tiktok', 'con']);
+// Normaliza nombres de TikTok: emojis a palabra, sin tildes, como suena (z=s, v=b, ll=y, sin h), sin letras repetidas, sin palabras vacías
+const normN = (v: any) => {
+  let s = String(v || '');
+  for (const [e, w] of Object.entries(EMOJI_PAL)) s = s.split(e).join(' ' + w + ' ');
+  s = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ');
+  s = s.replace(/z/g, 's').replace(/c([ei])/g, 's$1').replace(/v/g, 'b').replace(/ll/g, 'y').replace(/qu/g, 'k').replace(/c/g, 'k').replace(/h/g, '').replace(/([a-z])\1+/g, '$1');
+  return s.split(/\s+/).filter((w) => w && !VACIAS.has(w)).join(' ').trim();
+};
+function edRatio(sa: string, sb2: string) {
+  const m = sa.length, n = sb2.length; if (!m || !n) return 0;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (sa[i - 1] === sb2[j - 1] ? 0 : 1));
+  return 1 - d[m][n] / Math.max(m, n);
+}
 function parecido(a: string, b: string) {
   a = normN(a); b = normN(b); if (!a || !b) return 0;
   if (a === b) return 1;
   const sa = a.replace(/ /g, ''), sb2 = b.replace(/ /g, '');
   if (sa.length >= 4 && sb2.length >= 4 && (sa.includes(sb2) || sb2.includes(sa))) return 0.9;
-  const ta = a.split(' '), tb = b.split(' ');
-  if (ta.some((x) => x.length >= 4 && tb.includes(x))) return 0.85;
-  // distancia de edición sobre el texto sin espacios
-  const m = sa.length, n = sb2.length; const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
-  for (let j = 1; j <= n; j++) d[0][j] = j;
-  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (sa[i - 1] === sb2[j - 1] ? 0 : 1));
-  return 1 - d[m][n] / Math.max(m, n);
+  const ta = a.split(' ').filter((x) => x.length >= 4), tb = b.split(' ').filter((x) => x.length >= 4);
+  let mejor = edRatio(sa, sb2);
+  for (const x of ta) for (const y of tb) { const r = x === y ? 0.9 : edRatio(x, y) * 0.95; if (r > mejor) mejor = r; }
+  return mejor;
 }
 export async function vincularPedido(ctx: Ctx, a: any) {
   const num = parseInt(String(a?.num ?? '').replace(/\D/g, ''), 10) || 0, nombre = String(a?.nombre || '').trim();
