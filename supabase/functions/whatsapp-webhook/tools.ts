@@ -349,13 +349,24 @@ function parecido(a: string, b: string) {
   for (const x of ta) for (const y of tb) { const r = x === y ? 0.9 : edRatio(x, y) * 0.95; if (r > mejor) mejor = r; }
   return mejor;
 }
+// Si no aparece y hoy hay vivo, puede que el pedido todavía no esté cargado: queda en espera y el repaso (cada 5 min) lo vuelve a buscar.
+async function dejarEnEspera(ctx: Ctx, a: any) {
+  const hoy = hoyUY();
+  const { data: lv } = await sb.from('lives').select('id').eq('datos->>fecha', hoy).limit(1);
+  if (!lv?.length || a?.reintento) return null;
+  const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
+  const buscar = { nombre: String(a?.nombre || ''), num: a?.num || null, confirmar: !!a?.confirmar, hasta: new Date(Date.now() + 3 * 3600e3).toISOString() };
+  const datos = { ...(cv?.datos || { id: ctx.telKey, tel: '0' + ctx.telKey, estado: 'agente' }), buscar };
+  if (cv) await sb.from('conversaciones').update({ datos }).eq('id', ctx.telKey); else await sb.from('conversaciones').insert({ id: ctx.telKey, datos });
+  return { ok: false, no_encontrado: true, en_espera: true, que_hacer: 'Todavía no aparece (puede que lo estén cargando en el vivo). Decile: "Dale bella, apenas aparezca tu pedido te aviso 🫶". No pases a Yanaina ni le vuelvas a pedir el usuario.' };
+}
 export async function vincularPedido(ctx: Ctx, a: any) {
   const num = parseInt(String(a?.num ?? '').replace(/\D/g, ''), 10) || 0, nombre = String(a?.nombre || '').trim();
   if (!num && !nombre) return { ok: false, que_hacer: 'Pedile el número de pedido o su usuario de TikTok.' };
   const ayer = new Date(Date.now() - 36 * 3600e3).toISOString().slice(0, 10);
   const { data: lvs } = await sb.from('lives').select('id,datos').gte('datos->>fecha', ayer);
   const lids = (lvs || []).map((l: any) => l.id);
-  if (!lids.length) return { ok: false, no_encontrado: true };
+  if (!lids.length) return (await dejarEnEspera(ctx, a)) || { ok: false, no_encontrado: true };
   const { data: ps } = await sb.from('pedidos').select('*').in('live_id', lids).eq('borrado', false).in('estado', ['pendiente', 'listo']);
   const cids = [...new Set((ps || []).map((p: any) => p.clienta_id))];
   const { data: cls } = cids.length ? await sb.from('clientas').select('*').in('id', cids) : { data: [] as any[] };
@@ -377,7 +388,7 @@ export async function vincularPedido(ctx: Ctx, a: any) {
     if (xs.length === 1 || (xs.length > 1 && xs[0].sim - xs[1].sim >= 0.15)) elegido = xs[0];
     else if (xs.length > 1) return derivar(ctx, 'Escribe desde un número sin pedido (' + (nombre || '') + (num ? ', pedido #' + num : '') + '): coincide con varios pedidos: ' + xs.slice(0, 4).map((x) => '#' + x.p.datos.num + ' ' + x.c.datos.nombre).join(', '));
   }
-  if (!elegido) return { ok: false, no_encontrado: true };
+  if (!elegido) return (await dejarEnEspera(ctx, a)) || { ok: false, no_encontrado: true };
   const telC = String(elegido.c.datos.tel || '').replace(/\D/g, '');
   if (telC && telKeyDe(telC) !== ctx.telKey) return derivar(ctx, 'Escribe desde el 0' + ctx.telKey + ' y dice ser ' + (nombre || 'la clienta') + (num ? ' (pedido #' + num + ')' : '') + '. Puede ser el pedido #' + elegido.p.datos.num + ' de ' + elegido.c.datos.nombre + ', pero esa ficha tiene otro teléfono (' + elegido.c.datos.tel + '). Verificar.');
   if (ctx.clienta && ctx.clienta.id !== elegido.c.id) {
@@ -475,7 +486,7 @@ export const HERRAMIENTAS = [
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' } }, required: ['tipo'] } },
-  { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' } } } },
+  { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si la clienta estaba confirmando el pedido' } } } },
   { name: 'guardar_pedido', description: 'La clienta pide guardar su pedido (que no salga todavía, juntarlo con el próximo live, levantarlo más adelante). Si ya pagó, lo pasa a Guardado. Si no pagó, solo lo guarda si la ficha lo permite (hasta 7 días); si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'Fecha hasta la que lo guarda, AAAA-MM-DD, solo si la clienta dijo una' } } } },
   { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
   { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' } }, required: ['motivo'] } },

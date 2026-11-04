@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -322,6 +322,27 @@ async function repasarPendientes(soloTel = '') {
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
   const equipo = ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean);
   const { data: convs } = await sb.from('conversaciones').select('id,datos').eq('borrado', false).limit(500);
+  // Clientas en espera de que aparezca su pedido (vincular_pedido sin resultado durante el vivo)
+  for (const c of (convs || []).filter((c: any) => c.datos?.buscar && c.datos.buscar.hasta > ahora && !equipo.includes(c.id)).slice(0, 10)) {
+    const b = c.datos.buscar, ctx: Ctx = { telKey: c.id, wa: '598' + c.id, clienta: null, clientas: [], media: null, llamadas: [] };
+    try {
+      await cargarClienta(ctx);
+      const r: any = await vincularPedido(ctx, { ...b, reintento: true });
+      if (r.ok || r.derivado) {
+        const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', c.id).maybeSingle();
+        const nd = { ...(cv?.datos || c.datos) }; delete nd.buscar;
+        await sb.from('conversaciones').update({ datos: nd }).eq('id', c.id);
+      }
+      if (r.ok) {
+        let conf = false;
+        if (b.confirmar) { const rc: any = await confirmarPedido(ctx); conf = !!rc?.ok; }
+        const txt = `¡Listo bella, ya encontramos tu pedido #${r.pedido}!` + (conf ? ' Quedó confirmado 🫶' : ' 🫶');
+        const id = await enviar('598' + c.id, txt);
+        await sb.from('mabel_mensajes').insert({ id, tel_key: c.id, wa_id: '598' + c.id, direccion: 'out', tipo: 'text', texto: txt, procesado: true });
+      }
+      hechos.push({ tel: c.id, buscar: r.ok ? 'vinculado #' + r.pedido : (r.derivado ? 'a Yanaina' : 'sigue sin aparecer') });
+    } catch (e) { hechos.push({ tel: c.id, buscar: 'error ' + String((e as Error).message || e).slice(0, 120) }); }
+  }
   const cand = (convs || []).filter((c: any) => {
     const d = c.datos || {}, rep = d.repaso || '';
     if (soloTel) return c.id === soloTel; // prueba: fuerza una conversación
