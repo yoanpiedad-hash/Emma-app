@@ -321,3 +321,29 @@ avisosMabelHTML = function () {
   return h;
 };
 pintarAvisosMabel();
+
+// ─── Avisos de arriba plegados (4/11) ──────────────────────────
+// Se ve uno solo (el de Mabel si hay) con un botón "+N ▾" para desplegar el resto; así no tapan la pantalla en el live.
+// La elección queda guardada en este equipo.
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '.mb-plg{display:flex;gap:6px;align-items:stretch}.mb-plg>.mb-av{flex:1;margin-bottom:6px}.mb-plg>button{margin-bottom:6px;white-space:nowrap}';
+  document.head.appendChild(st);
+})();
+function avisosAbiertos() { try { return localStorage.getItem('emma_avisos_abiertos') === '1'; } catch (e) { return false; } }
+pintarAvisosMabel = function () {
+  let el = document.getElementById('avisos-mabel');
+  if (!el) { const a = document.getElementById('avisos'); if (!a) return; el = document.createElement('div'); el.id = 'avisos-mabel'; a.after(el); }
+  const tmp = document.createElement('div'); tmp.innerHTML = avisosMabelHTML();
+  const items = [...tmp.children];
+  let h;
+  if (items.length <= 1) h = tmp.innerHTML;
+  else {
+    const iPri = Math.max(0, items.findIndex(x => x.classList.contains('az')));
+    const pri = items[iPri], resto = items.filter((_, i) => i !== iPri), ab = avisosAbiertos();
+    h = `<div class="mb-plg">${pri.outerHTML}<button class="b sm" type="button" data-act="togAvisos" title="${ab ? 'Plegar' : 'Ver los otros avisos'}">${ab ? '▴' : `+${resto.length} ▾`}</button></div>` + (ab ? resto.map(x => x.outerHTML).join('') : '');
+  }
+  if (el.innerHTML !== h) el.innerHTML = h;
+};
+ACT.togAvisos = () => { try { localStorage.setItem('emma_avisos_abiertos', avisosAbiertos() ? '0' : '1'); } catch (e) {} pintarAvisosMabel(); };
+pintarAvisosMabel();
