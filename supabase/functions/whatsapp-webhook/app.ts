@@ -24,7 +24,7 @@ const graph = () => (ENV('WHATSAPP_API_BASE') || GRAPH_DEF).replace(/\/+$/, '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 const b64 = (u: Uint8Array) => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
-const AUTOMATICO = /Gracias por elegir Emma Indumentaria|mensaje autom[aá]tico de Emma/i;
+const AUTOMATICO = /Gracias por elegir Emma Indumentaria|mensaje autom[aá]tico de Emma|me confirm[aá]s con un S[ÍI]|Formas de pago/i;
 
 // ─── Seguridad del webhook ────────────────────────────────────
 async function firmaOk(raw: string, header: string | null) {
