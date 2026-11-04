@@ -329,3 +329,65 @@ function pintarFechaPago() {
 }
 const _renderLiveFP = renderLive;
 renderLive = function () { _renderLiveFP.apply(this, arguments); try { pintarFechaPago(); } catch (e) { console.warn(e); } };
+
+// ─── Totales por la API de WhatsApp (4/11) ─────────────────────
+// Botón en el live: manda a cada pedido sin pagar la plantilla emma_total_2 (aprobada por Meta) desde el número de Emma.
+// Prex va como variable (sale del bloque PREX de Config → mensaje de pago), así cuando cambia la cuenta no hay que tocar Meta.
+function prexLinea() {
+  const m = String(cfg('msgPago') || '').match(/PREX[^\n]*\n([\s\S]*?)(\n\s*\n|$)/i);
+  const l = m ? m[1].split('\n').map(x => x.trim()).filter(Boolean).join(' — ') : '';
+  return l || 'Lilian Altezor — CI 46344767 — Cuenta 1837669';
+}
+function varsTotal(p) {
+  const c = cliById(p.clienteId) || { nombre: '' }, live = liveById(p.liveId), t = calc(p);
+  const porPrenda = new Map(); t.unidades.forEach(u => porPrenda.set(u.i, (porPrenda.get(u.i) || 0) + u.precio));
+  const partes = p.prendas.map((pr, i) => { const q = pr.qty || 1; return `${pr.nombre}${q > 1 ? ' x' + q : ''}: ${fmt(porPrenda.has(i) ? porPrenda.get(i) : pr.precio * q)}`; });
+  t.promos.forEach(x => partes.push(`${x.nombre}: -${fmt(x.monto)}`));
+  if (t.descLive) partes.push(`Descuento live ${t.livePct}%: -${fmt(t.descLive)}`);
+  if (t.descVip) partes.push(`Descuento VIP ${t.vipPct}%: -${fmt(t.descVip)}`);
+  if (t.saldo) partes.push(`Saldo a favor: -${fmt(t.saldo)}`);
+  const fecha = String((live && live.fechaPago) || '').replace(/^el\s+/i, '').trim();
+  return [String(c.nombre || '').trim() || 'bella', String(p.num), partes.join(' · '), fmt(t.total).replace(/^\$\s*/, ''), fecha, prexLinea()];
+}
+function pendientesTotal(l) {
+  return (l ? l.pedidos || [] : []).filter(p => !p.borrado && !p.cambio && p.prendas && p.prendas.length && p.estado === 'pendiente' && !p.totalAPI);
+}
+async function enviarTotalesAPI() {
+  const l = liveActual(); if (!l) return;
+  if (!l.fechaPago) return toast('Primero elegí hasta qué día pagan');
+  if (typeof NUBE === 'undefined' || !NUBE.sb) return toast('Sin conexión con la nube');
+  const lista = pendientesTotal(l), sinTel = lista.filter(p => !(cliById(p.clienteId) || {}).tel), ok = lista.filter(p => (cliById(p.clienteId) || {}).tel);
+  if (!ok.length) return toast(sinTel.length ? `Quedan ${sinTel.length} sin teléfono` : 'No hay totales para mandar');
+  if (!confirm(`Se van a mandar ${ok.length} totales por WhatsApp desde el número de Emma (cuesta unos $0,45 cada uno).` + (sinTel.length ? `\n${sinTel.length} no tienen teléfono y quedan afuera.` : '') + '\n\n¿Mandar?')) return;
+  const btn = document.getElementById('live-tot-api'); if (btn) btn.disabled = true;
+  let bien = 0; const mal = [];
+  for (let i = 0; i < ok.length; i += 15) {
+    const tanda = ok.slice(i, i + 15);
+    if (btn) btn.textContent = `📤 Enviando… ${i}/${ok.length}`;
+    try {
+      const { data, error } = await NUBE.sb.functions.invoke('whatsapp-enviar', { body: { plantilla: 'emma_total_2', items: tanda.map(p => ({ ref: p.id, tel: cliById(p.clienteId).tel, vars: varsTotal(p) })) } });
+      if (error) throw error;
+      (data.res || []).forEach(r => { const p = pedById(r.ref); if (r.ok && p) { p.totalAPI = ahoraISO(); bien++; } else if (p) mal.push(`#${p.num} ${(cliById(p.clienteId) || {}).nombre || ''}: ${r.error}`); });
+    } catch (e) { tanda.forEach(p => mal.push(`#${p.num}: ${e.message || e}`)); }
+    guardar();
+  }
+  if (btn) btn.disabled = false;
+  render();
+  alert(`✅ ${bien} totales enviados.` + (mal.length ? `\n\n⚠️ No salieron ${mal.length} (mandalos con 💬 WhatsApp):\n` + mal.slice(0, 25).join('\n') : '') + (sinTel.length ? `\n\nSin teléfono: ${sinTel.map(p => '#' + p.num).join(', ')}` : ''));
+}
+const _pintarFP_tot = pintarFechaPago;
+pintarFechaPago = function () {
+  _pintarFP_tot.apply(this, arguments);
+  const box = document.getElementById('live-fp-box'); if (!box) return;
+  let bar = document.getElementById('live-tot-bar');
+  if (!bar) {
+    bar = document.createElement('div'); bar.id = 'live-tot-bar'; bar.style.marginTop = '8px';
+    bar.innerHTML = '<button class="b wa" id="live-tot-api" type="button" style="width:100%">📤 Mandar los totales por WhatsApp</button><div class="small muted" id="live-tot-t" style="margin-top:4px"></div>';
+    box.insertAdjacentElement('afterend', bar);
+    bar.querySelector('#live-tot-api').addEventListener('click', enviarTotalesAPI);
+  }
+  const l = liveActual(); if (!l) return;
+  const todos = (l.pedidos || []).filter(p => !p.borrado && !p.cambio && p.prendas && p.prendas.length);
+  const env = todos.filter(p => p.totalAPI).length, faltan = pendientesTotal(l).length;
+  const t = bar.querySelector('#live-tot-t'); if (t) t.textContent = `${env} enviados por la API · ${faltan} sin pagar por mandar`;
+};
