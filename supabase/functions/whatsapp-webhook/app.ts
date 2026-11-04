@@ -333,7 +333,7 @@ async function repasarPendientes(soloTel = '') {
         const nd = { ...(cv?.datos || c.datos) }; delete nd.buscar;
         await sb.from('conversaciones').update({ datos: nd }).eq('id', c.id);
       }
-      if (r.ok) {
+      if (r.ok && !r.ya_vinculado) {
         let conf = false;
         if (b.confirmar) { const rc: any = await confirmarPedido(ctx); conf = !!rc?.ok; }
         const txt = `¡Listo bella, ya encontramos tu pedido #${r.pedido}!` + (conf ? ' Quedó confirmado 🫶' : ' 🫶');

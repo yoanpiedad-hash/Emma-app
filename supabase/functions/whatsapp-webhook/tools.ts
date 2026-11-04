@@ -360,6 +360,10 @@ async function dejarEnEspera(ctx: Ctx, a: any) {
   if (cv) await sb.from('conversaciones').update({ datos }).eq('id', ctx.telKey); else await sb.from('conversaciones').insert({ id: ctx.telKey, datos });
   return { ok: false, no_encontrado: true, en_espera: true, que_hacer: 'Todavía no aparece (puede que lo estén cargando en el vivo). Decile: "Dale bella, apenas aparezca tu pedido te aviso 🫶". No pases a Yanaina ni le vuelvas a pedir el usuario.' };
 }
+async function limpiarEspera(ctx: Ctx) {
+  const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
+  if (cv?.datos?.buscar) { const d = { ...cv.datos }; delete d.buscar; await sb.from('conversaciones').update({ datos: d }).eq('id', ctx.telKey); }
+}
 export async function vincularPedido(ctx: Ctx, a: any) {
   const num = parseInt(String(a?.num ?? '').replace(/\D/g, ''), 10) || 0, nombre = String(a?.nombre || '').trim();
   if (!num && !nombre) return { ok: false, que_hacer: 'Pedile el número de pedido o su usuario de TikTok.' };
@@ -390,6 +394,7 @@ export async function vincularPedido(ctx: Ctx, a: any) {
   }
   if (!elegido) return (await dejarEnEspera(ctx, a)) || { ok: false, no_encontrado: true };
   const telC = String(elegido.c.datos.tel || '').replace(/\D/g, '');
+  if (telC && telKeyDe(telC) === ctx.telKey) { await limpiarEspera(ctx); return { ok: true, ya_vinculado: true, pedido: elegido.p.datos.num, que_hacer: 'Ese pedido ya está a su número.' }; }
   if (telC && telKeyDe(telC) !== ctx.telKey) return derivar(ctx, 'Escribe desde el 0' + ctx.telKey + ' y dice ser ' + (nombre || 'la clienta') + (num ? ' (pedido #' + num + ')' : '') + '. Puede ser el pedido #' + elegido.p.datos.num + ' de ' + elegido.c.datos.nombre + ', pero esa ficha tiene otro teléfono (' + elegido.c.datos.tel + '). Verificar.');
   if (ctx.clienta && ctx.clienta.id !== elegido.c.id) {
     // Este número ya tiene ficha: el pedido pasa a esa ficha y el nombre del live queda como alias
@@ -413,6 +418,7 @@ export async function vincularPedido(ctx: Ctx, a: any) {
     });
   }
   await cargarClienta(ctx);
+  await limpiarEspera(ctx);
   return { ok: true, pedido: elegido.p.datos.num, nombre_en_el_live: elegido.c.datos.nombre, que_hacer: 'Listo, el pedido quedó con su número. Seguí con lo que pidió (si quería confirmar, llamá confirmar_pedido; si pregunta el total, buscar_pedido).' };
 }
 
