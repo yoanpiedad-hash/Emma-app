@@ -391,3 +391,37 @@ pintarFechaPago = function () {
   const env = todos.filter(p => p.totalAPI).length, faltan = pendientesTotal(l).length;
   const t = bar.querySelector('#live-tot-t'); if (t) t.textContent = `${env} enviados por la API · ${faltan} sin pagar por mandar`;
 };
+
+// ─── Atajos en el live (4/11) ──────────────────────────────────
+// 1) Botón de confirmación también en el cuadro de carga (arriba), para no bajar hasta el pedido.
+const _renderCarga_conf = renderCarga;
+renderCarga = function () {
+  _renderCarga_conf.apply(this, arguments);
+  const p = UI.cargaId && pedById(UI.cargaId), head = document.getElementById('cr-head');
+  if (!p || !head || p.cambio || !p.prendas || !p.prendas.length) return;
+  const html = typeof confBtnHTML === 'function' ? confBtnHTML(p) : '';
+  if (html) head.insertAdjacentHTML('beforeend', `<div class="row mt" style="gap:6px">${html}</div>`);
+};
+// 2) Aviso "📵 Sin teléfono (N)" arriba, en Nuevo pedido: pedidos de este live cuya clienta no tiene teléfono.
+function pintarSinTel() {
+  const card = document.getElementById('np-card'); if (!card) return;
+  const t = card.querySelector('.card-t'); if (!t) return;
+  const l = liveActual();
+  const xs = (l ? l.pedidos || [] : []).filter(p => !p.borrado && !((cliById(p.clienteId) || {}).tel));
+  let b = document.getElementById('np-sintel');
+  if (!b) {
+    b = document.createElement('button'); b.id = 'np-sintel'; b.type = 'button'; b.className = 'b sm'; b.style.marginLeft = '8px';
+    t.appendChild(b);
+    b.addEventListener('click', () => { UI.verSinTel = !UI.verSinTel; pintarSinTel(); });
+  }
+  b.hidden = !xs.length;
+  b.textContent = `📵 Sin teléfono (${xs.length})`;
+  b.className = 'b sm' + (xs.length ? ' dan' : '');
+  let lista = document.getElementById('np-sintel-l');
+  if (!lista) { lista = document.createElement('div'); lista.id = 'np-sintel-l'; lista.className = 'small mt'; t.insertAdjacentElement('afterend', lista); }
+  lista.innerHTML = UI.verSinTel && xs.length
+    ? xs.map(p => `<div class="row" style="gap:6px;margin:2px 0"><b>#${p.num}</b><span class="grow">${esc((cliById(p.clienteId) || {}).nombre || '?')}</span><button class="b sm" data-act="irPedido" data-id="${p.id}">Ir</button></div>`).join('')
+    : '';
+}
+const _renderLive_sintel = renderLive;
+renderLive = function () { _renderLive_sintel.apply(this, arguments); try { pintarSinTel(); } catch (e) { console.warn(e); } };
