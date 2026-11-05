@@ -195,8 +195,15 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     envCobro = +cobro.datos.envio || 0;
   } else {
     const sp = filas.filter((r) => !pagado(r.datos) && r.datos.estado === 'pendiente');
-    if (sp.length > 1) return derivar(ctx, 'Tiene más de un pedido sin pagar y no hay cobro agrupado');
     objetivo = sp;
+    if (sp.length > 1) {
+      // 4/11: varios pedidos sin pagar y sin cobro agrupado: si el monto cierra con el del último live, o con todos juntos, se marca eso
+      const ult = [...sp].sort((x, y) => String(lives.get(y.live_id)?.fecha || '').localeCompare(String(lives.get(x.live_id)?.fecha || '')) || (y.datos.num - x.datos.num))[0];
+      const cierra = (ps: any[]) => { const b = ps.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0); return [b, b + tar, Math.round(b * (1 + mp / 100)), Math.round((b + tar) * (1 + mp / 100))].some((e) => monto >= e - 2 && monto <= e + 30); };
+      if (cierra([ult])) objetivo = [ult];
+      else if (cierra(sp)) objetivo = sp;
+      else return derivar(ctx, `Tiene ${sp.length} pedidos sin pagar (${sp.map((r) => '#' + r.datos.num).join(', ')}) y el comprobante de $${monto} no coincide ni con el último ni con todos juntos`);
+    }
   }
   if (!objetivo.length) return { error: 'No hay ningún pedido sin pagar para marcar. Si dice que ya pagó, pasalo a Yanaina.' };
 
@@ -266,7 +273,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   let objetivo = filas.filter((r) => ['pendiente', 'listo'].includes(r.datos.estado));
   if (!objetivo.length && !cobros.length) objetivo = filas.filter((r) => r.datos.estado === 'guardado' && pagado(r.datos)); // guardado con pago: se le puede dejar anotada la entrega
   if (cobros.length) { const ids = cobros[0].datos.pedidos || []; objetivo = filas.filter((r) => ids.includes(r.id)); }
-  else if (objetivo.length > 1) return derivar(ctx, 'Tiene más de un pedido abierto y no hay cobro agrupado (eligió entrega)');
+  // 4/11: con varios pedidos abiertos la entrega se carga en todos (salen juntos)
   if (!objetivo.length) return { error: 'No hay pedido abierto al que cargarle la entrega. Pasalo a Yanaina.' };
 
   const s = (v: any) => String(v ?? '').trim();
