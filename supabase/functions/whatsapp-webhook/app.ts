@@ -329,6 +329,16 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
       return { respuesta: null, reintentar: true, motivo: 'llegaron mensajes nuevos: se arma una sola respuesta' };
     }
   }
+  // 4/11: una sola frase de pase a Yanaina (si ya lo dijo con otras palabras, se saca la frase fija)
+  {
+    const FIJA = /\s*ya le aviso a yanaina y te escribe enseguida[.!]?\s*/i;
+    const sinFija = respuesta.replace(FIJA, ' ');
+    if (FIJA.test(respuesta) && /(le paso a yanaina|se lo paso a yanaina|le aviso a yanaina|lo ve yanaina|lo revisa yanaina|te escribe yanaina|lo confirma yanaina|lo define yanaina|yanaina te confirma|yanaina te escribe|yanaina lo)/i.test(sinFija)) {
+      const emo = (respuesta.match(/(\p{Extended_Pictographic}\uFE0F?)\s*$/u) || [])[1] || '';
+      respuesta = sinFija.replace(/\s*(\p{Extended_Pictographic}\uFE0F?)\s*$/u, '').trim();
+      if (emo && !/\p{Extended_Pictographic}/u.test(respuesta)) respuesta += ' ' + emo;
+    }
+  }
   // Que no repita el mismo emoji que en su mensaje anterior (4/11)
   try {
     const { data: prev } = await sb.from('mabel_mensajes').select('texto').eq('tel_key', telKey).eq('direccion', 'out').order('creado', { ascending: false }).limit(1);
