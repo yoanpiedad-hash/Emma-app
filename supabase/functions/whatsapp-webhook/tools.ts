@@ -305,6 +305,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     for (const r of objetivo) {
       const { data } = await sb.from('pedidos').select('*').eq('id', r.id).single();
       const p = JSON.parse(JSON.stringify(data.datos)); p.entrega = tipo;
+      if (s(a.nota_interna) && !String(p.notas || '').includes(s(a.nota_interna))) { const n = '📦 ' + s(a.nota_interna).slice(0, 150); p.notas = p.notas ? String(p.notas) + '\n' + n : n; }
       if (tipo === 'retiro') { if (!pagado(p)) p.pagaAlRetirar = true; else delete p.pagaAlRetirar; if (s(a.horario_retiro)) { const n = '🕒 Pasa a retirar: ' + s(a.horario_retiro).slice(0, 80) + ' (le dijo a Mabel)'; p.notas = p.notas ? String(p.notas).replace(/🕒 Pasa a retirar:[^\n]*/, '').trim() + (String(p.notas).replace(/🕒 Pasa a retirar:[^\n]*/, '').trim() ? '\n' : '') + n : n; } }
       else delete p.pagaAlRetirar;
       if (tipo === 'cadeteria') {
@@ -520,7 +521,7 @@ export const HERRAMIENTAS = [
   { name: 'guardar_entrega', description: 'Carga cómo recibe el pedido: retiro, cadeteria (Montevideo) o agencia.', input_schema: { type: 'object', properties: {
     tipo: { type: 'string', enum: ['retiro', 'cadeteria', 'agencia'] },
     direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio (tiene que estar en la lista de GrisalExpress)' },
-    nota_cadete: { type: 'string', description: 'Cadetería: indicación para el cadete (opcional)' }, etiqueta: { type: 'string', description: 'Cadetería: nombre de la dirección si la clienta lo dice (casa, trabajo, mamá…)' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio (cobra un envío y medio)' },
+    nota_cadete: { type: 'string', description: 'Cadetería: SOLO referencias para llegar (portón verde, apto 2, timbre) o el horario de entrega. Nada más.' }, nota_interna: { type: 'string', description: 'Nota para el equipo de Emma sobre este pedido (va junto con otra cosa, lo de Yharol, armar con otro pedido…). No la ve el cadete.' }, etiqueta: { type: 'string', description: 'Cadetería: nombre de la dirección si la clienta lo dice (casa, trabajo, mamá…)' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio (cobra un envío y medio)' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' } }, required: ['tipo'] } },
