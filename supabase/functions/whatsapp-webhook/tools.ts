@@ -114,7 +114,15 @@ export async function buscarPedido(ctx: Ctx) {
     const b = baseDe(sinPagar);
     a_transferir = { pedidos: [sinPagar[0].datos.num], transferencia: b, transferencia_con_cadeteria: b + tar, mercado_pago: esperadoDe(b, 0, 'Mercado Pago', mp).total, mercado_pago_con_cadeteria: esperadoDe(b, tar, 'Mercado Pago', mp).total };
   }
+  // 5/11: para cambios — pedidos ya enviados/entregados en los últimos 21 días, con los días que pasaron desde que salieron
+  let enviados_recientes: any[] = [];
+  if (ctx.clientas.length) {
+    const { data: en } = await sb.from('pedidos').select('*').in('clienta_id', ctx.clientas.map((k) => k.id)).eq('borrado', false).eq('estado', 'enviado');
+    const hoyMs = Date.now();
+    enviados_recientes = (en || []).map((r) => { const p = r.datos, f = p.fechas?.enviado || p.fechas?.listo || null; const dias = f ? Math.floor((hoyMs - new Date(f + 'T12:00:00-03:00').getTime()) / 864e5) : null; return { numero: p.num, fecha_enviado: f, dias_desde_que_salio: dias, entrega: entregaEf(p, c), prendas: (p.prendas || []).map((x: any) => x.nombre).filter(Boolean) }; }).filter((x) => x.dias_desde_que_salio !== null && x.dias_desde_que_salio <= 21).sort((a, b) => (a.dias_desde_que_salio as number) - (b.dias_desde_que_salio as number));
+  }
   return {
+    enviados_recientes,
     clienta_encontrada: !!c,
     nota_de_la_clienta: c?.datos?.notaMabel || '',
     datos_guardados: c ? { direccion: c.datos.direccion || '', barrio: c.datos.barrio || '', agencia: c.datos.agencia || '', ciudad: c.datos.ciudad || '', departamento: c.datos.depto || '', nombre_envio: c.datos.nombreEnvio || '', ci: c.datos.ci || '', nota_cadete: c.datos.notaCadete || '', otras_direcciones: (c.datos.direcciones || []).filter((x: any) => normD(x.direccion) !== normD(c.datos.direccion)).map((x: any) => ({ direccion: x.direccion, barrio: x.barrio || '', etiqueta: x.etiqueta || '' })), puede_guardar_sin_pagar: !!c.datos.puedeGuardarSinPagar } : null,
