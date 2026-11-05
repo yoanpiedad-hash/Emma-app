@@ -152,9 +152,12 @@ async function conReintento<T>(fn: () => Promise<T>): Promise<T> {
 
 // ─── pasar_a_yanaina ──────────────────────────────────────────
 export async function pasarAYanaina(ctx: Ctx, motivo: string) {
-  const ahora = new Date(), hasta = new Date(ahora.getTime() + 12 * 3600e3);
+  // 4/11: cuando deriva Mabel, la conversación vuelve sola a Mabel en 1 hora (si Yanaina contesta desde el celu, el eco la deja más tiempo)
+  const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3);
   const c = ctx.clienta;
-  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() };
+  const { data: prevCv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
+  const prev = prevCv?.datos || {};
+  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;

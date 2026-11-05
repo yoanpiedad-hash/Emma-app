@@ -87,7 +87,7 @@ async function ingestarEco(e: any) {
   const wa = String(e.to || ''), telKey = telKeyDe(wa), id = String(e.id || uid('eco')), texto = e.text?.body || `[${e.type || 'mensaje'}]`;
   const { data } = await sb.from('mabel_mensajes').upsert([{ id, tel_key: telKey, wa_id: wa, direccion: 'echo', tipo: String(e.type || 'text'), texto, procesado: true }], { onConflict: 'id', ignoreDuplicates: true }).select('id');
   if (!data?.length || AUTOMATICO.test(texto)) return; // repetido, o es el total / recordatorio que manda la app: no cuenta como "habló una persona"
-  const ahora = new Date(), hasta = new Date(ahora.getTime() + 12 * 3600e3).toISOString();
+  const ahora = new Date(), hasta = new Date(ahora.getTime() + 3 * 3600e3).toISOString(); // 4/11: 3 h desde el último mensaje de Yanaina (antes 12 h)
   const { data: cl } = await sb.from('clientas').select('id,datos').eq('tel_key', telKey).eq('borrado', false).limit(1);
   const { data: ex } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
   const vigente = ex?.datos?.estado === 'yanaina' && ex.datos.hasta > ahora.toISOString();
@@ -294,6 +294,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
   if (mas?.length) { lote.push(...mas); lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado))); }
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: lote.map((m: any) => String(m.id)) });
   let respuesta = '', error: string | null = null;
+  const inicioTurno = new Date().toISOString();
   const ctxMin: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [] };
   try { respuesta = await atender(telKey, wa, lote); }
   catch (e) {
@@ -310,6 +311,15 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
   } catch (_) { /* no es grave */ }
   // En modo prueba no se envía por WhatsApp, pero se guarda igual para que la conversación tenga memoria
   // Leído (tildes azules) solo cuando Mabel contesta de verdad: así Yanaina sigue viendo como no leídos los chats que no atendió Mabel
+  // 4/11: si ya la había derivado a Yanaina en las últimas 6 horas y ahora vuelve a derivar, lo hace en silencio (no le escribe)
+  {
+    const { data: cvD } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
+    const dd = cvD?.datos || {};
+    if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3) {
+      await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
+      return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado que le escribe Yanaina)', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
+    }
+  }
   if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
   await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true, ...(error ? { media: { error: error.slice(0, 500) } } : {}) });
