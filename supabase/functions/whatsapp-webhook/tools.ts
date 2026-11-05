@@ -298,7 +298,8 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     if (s(a.departamento)) cambiosCli.depto = s(a.departamento);
     hint.agencia_habitual = esHabitual(cambiosCli.agencia);
   }
-  const x = Math.max(0, Math.min(tar, Math.round(num(a.envio_transferido))));
+  const cambio = !!a.con_cambio, tarE = cambio ? Math.round(tar * 1.5) : tar; // 4/11: si el cadete además lleva/retira un cambio, cobra un envío y medio
+  const x = Math.max(0, Math.min(tarE, Math.round(num(a.envio_transferido))));
   await conReintento(async () => {
     if (Object.keys(cambiosCli).length) { const { data } = await sb.from('clientas').select('*').eq('id', ctx.clienta.id).single(); const extra: any = tipo === 'cadeteria' ? { direcciones: sumarDireccion(data.datos, cambiosCli.direccion, cambiosCli.barrio, s(a.etiqueta).toLowerCase()) } : {}; await guardarClienta(data, { ...data.datos, ...cambiosCli, ...extra }); }
     for (const r of objetivo) {
@@ -308,8 +309,9 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
       else delete p.pagaAlRetirar;
       if (tipo === 'cadeteria') {
         p.tipoEnvio = p.tipoEnvio || 'comun';
-        if (x >= tar) { p.cobroEnvio = 'pago'; p.cobroMonto = 0; } else if (x > 0) { p.cobroEnvio = 'monto'; p.cobroMonto = tar - x; } else { p.cobroEnvio = 'cobrar'; p.cobroMonto = 0; }
-        if (p.pago && x > 0) p.pago.conEnvio = x >= tar;
+        if (x >= tarE) { p.cobroEnvio = 'pago'; p.cobroMonto = 0; } else if (x > 0 || cambio) { p.cobroEnvio = 'monto'; p.cobroMonto = tarE - x; } else { p.cobroEnvio = 'cobrar'; p.cobroMonto = 0; }
+        if (cambio) { const n = '🔄 Con cambio: el cadete cobra un envío y medio ($' + tarE + ')'; if (!String(p.notas || '').includes('Con cambio')) p.notas = p.notas ? String(p.notas) + '\n' + n : n; }
+        if (p.pago && x > 0) p.pago.conEnvio = x >= tarE;
       }
       await guardarPedido(data, p);
       // El envío ya transferido va a la fila de pago más nueva del pedido (misma convención que la app: envio, ajuste)
@@ -319,7 +321,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
       }
     }
   });
-  const cadete = tipo === 'cadeteria' ? (x >= tar ? 0 : tar - x) : null;
+  const cadete = tipo === 'cadeteria' ? (x >= tarE ? 0 : tarE - x) : null;
   return {
     ok: true, tipo, pedidos: objetivo.map((r) => r.datos.num), ...hint,
     ...(cadete !== null ? { el_cadete_cobra: cadete } : {}),
@@ -518,7 +520,7 @@ export const HERRAMIENTAS = [
   { name: 'guardar_entrega', description: 'Carga cómo recibe el pedido: retiro, cadeteria (Montevideo) o agencia.', input_schema: { type: 'object', properties: {
     tipo: { type: 'string', enum: ['retiro', 'cadeteria', 'agencia'] },
     direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio (tiene que estar en la lista de GrisalExpress)' },
-    nota_cadete: { type: 'string', description: 'Cadetería: indicación para el cadete (opcional)' }, etiqueta: { type: 'string', description: 'Cadetería: nombre de la dirección si la clienta lo dice (casa, trabajo, mamá…)' },
+    nota_cadete: { type: 'string', description: 'Cadetería: indicación para el cadete (opcional)' }, etiqueta: { type: 'string', description: 'Cadetería: nombre de la dirección si la clienta lo dice (casa, trabajo, mamá…)' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio (cobra un envío y medio)' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' } }, required: ['tipo'] } },
