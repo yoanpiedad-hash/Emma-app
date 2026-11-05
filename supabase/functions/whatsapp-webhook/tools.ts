@@ -166,7 +166,7 @@ export async function buscarPedido(ctx: Ctx) {
     pedidos_abiertos: pedidos,
     a_transferir,
     sin_pagar_para_marcar: sinPagar.length,
-    config: { tarifa_cadeteria: tar, recargo_mercado_pago_pct: mp, dia_otras_agencias: cfg.diaOtrasAgencias || 'viernes', cuentas: cuentasDe(cfg) },
+    config: { tarifa_cadeteria: tar, recargo_mercado_pago_pct: mp, cuentas: cuentasDe(cfg) },
   };
 }
 
