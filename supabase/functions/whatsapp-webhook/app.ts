@@ -440,6 +440,16 @@ async function repasarPendientes(soloTel = '') {
     const sinResp: string[] = [];
     for (const m of ult || []) { if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo))) continue; if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
     if (sinResp.length) {
+      // 5/11: el repaso solo contesta a clientas con pedido pendiente en la app; si no tiene, se queda en silencio (queda para Yanaina)
+      const { data: cls } = await sb.from('clientas').select('id').eq('tel_key', telKey).eq('borrado', false);
+      let conPedido = false;
+      if (cls?.length) { const { data: pp } = await sb.from('pedidos').select('id').in('clienta_id', cls.map((x: any) => x.id)).eq('borrado', false).in('estado', ['pendiente', 'listo', 'guardado']).limit(1); conPedido = !!pp?.length; }
+      if (!conPedido) {
+        const { data: cv1 } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
+        await sb.from('conversaciones').update({ datos: { ...(cv1?.datos || d), repaso: new Date().toISOString(), repasoNota: 'REPASO: sin pedidos pendientes, en silencio' } }).eq('id', telKey);
+        hechos.push({ tel: telKey, silencio: 'sin pedidos pendientes' });
+        continue;
+      }
       await sb.from('mabel_mensajes').update({ procesado: false }).in('id', sinResp);
       const { data: cv0 } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
       await sb.from('conversaciones').update({ datos: { ...(cv0?.datos || d), repaso: new Date().toISOString() } }).eq('id', telKey);
