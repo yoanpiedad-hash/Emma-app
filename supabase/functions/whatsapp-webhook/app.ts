@@ -295,6 +295,16 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   const { count } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').gte('creado', new Date(Date.now() - 3600e3).toISOString());
   if ((count || 0) > 40) return { respuesta: null, motivo: 'demasiados mensajes en una hora' };
 
+  // 4/11: agradecimientos sueltos (👍, gracias, ok, sticker, emojis) después de un mensaje nuestro que no era pregunta: no se contesta
+  {
+    const ACK = /^(ok+|oka+y?|okis|dale+|listo+|genial|perfecto|b+ueno+|gracias+|muchas gracias|mil gracias|gracias bella|gracias a vos|igualmente|un beso|besos?|\[sticker\]|\[reaction\]|[\p{Extended_Pictographic}\uFE0F\u200D\s]+)[\s.!¡]*([\p{Extended_Pictographic}\uFE0F\u200D\s]*)$/iu;
+    const soloAck = lote.every((m: any) => !m.media && ACK.test(String(m.texto || '').trim() || '[sticker]'));
+    if (soloAck) {
+      const { data: ul } = await sb.from('mabel_mensajes').select('texto,creado').eq('tel_key', telKey).in('direccion', ['out', 'echo']).order('creado', { ascending: false }).limit(1);
+      const u = ul?.[0];
+      if (u && !String(u.texto || '').includes('?') && Date.now() - Date.parse(u.creado) < 6 * 3600e3) return { respuesta: null, motivo: 'agradecimiento suelto: no se contesta' };
+    }
+  }
   // Lo que llegó mientras se preparaba la respuesta entra en el mismo lote (una sola respuesta)
   const { data: mas } = await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
   if (mas?.length) { lote.push(...mas); lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado))); }
