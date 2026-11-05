@@ -93,7 +93,8 @@ async function ingestar(m: any, wa: string): Promise<boolean> {
 async function ingestarEco(e: any) {
   const wa = String(e.to || ''), telKey = telKeyDe(wa), id = String(e.id || uid('eco')), texto = e.text?.body || `[${e.type || 'mensaje'}]`;
   const { data } = await sb.from('mabel_mensajes').upsert([{ id, tel_key: telKey, wa_id: wa, direccion: 'echo', tipo: String(e.type || 'text'), texto, procesado: true }], { onConflict: 'id', ignoreDuplicates: true }).select('id');
-  if (!data?.length || AUTOMATICO.test(texto)) return; // repetido, o es el total / recordatorio que manda la app: no cuenta como "habló una persona"
+  if (!data?.length || AUTOMATICO.test(texto)) return;
+  if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(e.type || ''))) return; // 5/11: borrar o editar un mensaje no es contestarle a la clienta: no frena a Mabel ni mueve la ventana // repetido, o es el total / recordatorio que manda la app: no cuenta como "habló una persona"
   const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3).toISOString(); // 4/11: 1 h desde el último mensaje de Yanaina (antes 12 h)
   const { data: cl } = await sb.from('clientas').select('id,datos').eq('tel_key', telKey).eq('borrado', false).limit(1);
   const { data: ex } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
@@ -437,7 +438,7 @@ async function repasarPendientes(soloTel = '') {
     // contesta si puede, o deriva (en silencio si ya la había derivado hace poco)
     const { data: ult } = await sb.from('mabel_mensajes').select('id,direccion,creado,tipo').eq('tel_key', telKey).order('creado', { ascending: false }).limit(15);
     const sinResp: string[] = [];
-    for (const m of ult || []) { if (m.direccion !== 'in') break; if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo))) continue; if (m.creado > desde) sinResp.push(m.id); }
+    for (const m of ult || []) { if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo))) continue; if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
     if (sinResp.length) {
       await sb.from('mabel_mensajes').update({ procesado: false }).in('id', sinResp);
       const { data: cv0 } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
