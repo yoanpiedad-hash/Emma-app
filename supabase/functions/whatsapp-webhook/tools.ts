@@ -93,17 +93,33 @@ export async function buscarPedido(ctx: Ctx) {
   const c = ctx.clienta;
   const { filas, lives, cobros } = await abiertos(ctx);
   const tar = tarifaDe(cfg), mp = mpDe(cfg);
+  // 5/11: pedidos de lives anteriores a la activación de Mabel (4/11) que figuran sin pagar: puede ser que estén pagados y no marcados. No se piden comprobantes: se busca en el historial y, si no se puede confirmar, queda para Yanaina en silencio.
+  const anteriores = new Set<string>();
+  const evidencia: Record<string, any> = {};
+  for (const r of filas) {
+    const live0 = lives.get(r.live_id);
+    if (live0?.fecha && String(live0.fecha) < '2026-11-04' && !pagado(r.datos) && r.datos.estado === 'pendiente') {
+      anteriores.add(r.id);
+      try {
+        const { data: tot } = await sb.from('mabel_historial').select('fecha').eq('tel_key', ctx.telKey).eq('de', 'equipo').ilike('texto', `%pedido #${r.datos.num}%`).gte('fecha', String(live0.fecha)).order('fecha', { ascending: false }).limit(1);
+        const f0 = tot?.[0]?.fecha || String(live0.fecha);
+        const { data: cp } = await sb.from('mabel_historial').select('fecha,tipo').eq('tel_key', ctx.telKey).eq('de', 'clienta').in('tipo', ['media_placeholder', 'image', 'document']).gt('fecha', f0).order('fecha').limit(5);
+        evidencia[r.id] = { total_enviado_el: tot?.[0]?.fecha || null, archivos_de_la_clienta_despues_del_total: (cp || []).map((x: any) => x.fecha) };
+      } catch (_) { /* sin indicio */ }
+    }
+  }
   const pedidos = filas.map((r) => {
     const p = r.datos, live = lives.get(r.live_id);
     const total = calcTotal(p, live);
     return {
+      ...(anteriores.has(r.id) ? { anterior_a_mabel_sin_marcar_pago: true, indicio_en_historial: evidencia[r.id] || null, aviso: 'NO le pidas comprobante de este pedido y no le digas que lo debe: puede estar pagado y sin marcar. Si hace falta, pasalo a Yanaina en silencio.' } : {}),
       numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, fecha_pago: live?.datos?.fechaPagoISO || null, total, estado: p.estado, estado_pago: estadoPago(p, c),
       entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
     };
   });
-  const sinPagar = filas.filter((r) => !pagado(r.datos) && r.datos.estado === 'pendiente');
+  const sinPagar = filas.filter((r) => !pagado(r.datos) && r.datos.estado === 'pendiente' && !anteriores.has(r.id));
   let a_transferir: any = null;
   const kab = cobros[0];
   const baseDe = (rs: any[]) => rs.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0);
@@ -159,16 +175,17 @@ async function conReintento<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 // ─── pasar_a_yanaina ──────────────────────────────────────────
-export async function pasarAYanaina(ctx: Ctx, motivo: string) {
+export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false) {
   // 4/11: cuando deriva Mabel, la conversación vuelve sola a Mabel en 1 hora (si Yanaina contesta desde el celu, el eco la deja más tiempo)
   const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3);
   const c = ctx.clienta;
   const { data: prevCv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
   const prev = prevCv?.datos || {};
-  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
+  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(silencio ? { silencio: true } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
+  if (silencio) return { ok: true, derivado: true, en_silencio: true, instruccion: 'Quedó para Yanaina en silencio: NO le escribas nada a la clienta sobre esto (ni "le aviso a Yanaina").' };
   return { ok: true, derivado: true, mensaje_para_la_clienta: 'Ya le aviso a Yanaina y te escribe enseguida 🫶' };
 }
 
@@ -536,7 +553,7 @@ export const HERRAMIENTAS = [
   { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si la clienta estaba confirmando el pedido' }, prenda: { type: 'string', description: 'Lo que dice que compró, si lo dijo ("conjunto chocolate", "jean")' } } } },
   { name: 'guardar_pedido', description: 'La clienta pide guardar su pedido (que no salga todavía, juntarlo con el próximo live, levantarlo más adelante). Si ya pagó, lo pasa a Guardado. Si no pagó, solo lo guarda si la ficha lo permite (hasta 7 días); si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'Fecha hasta la que lo guarda, AAAA-MM-DD, solo si la clienta dijo una' } } } },
   { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
-  { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' } }, required: ['motivo'] } },
+  { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' }, en_silencio: { type: 'boolean', description: 'true = no se le avisa a la clienta (Yanaina lo ve en la bandeja). Usalo para pedidos anteriores a Mabel sin marcar como pagos y cuando el equipo ya habló con la clienta.' } }, required: ['motivo'] } },
   { name: 'actualizar_nota', description: 'Reescribe la nota de la clienta (máximo 3 líneas, solo hechos con fecha, sin opiniones ni datos sensibles). Llamala al cerrar una conversación en la que pasó algo útil para la próxima vez.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
 ];
 
@@ -549,7 +566,7 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
     case 'confirmar_pedido': return await confirmarPedido(ctx);
     case 'vincular_pedido': return await vincularPedido(ctx, input || {});
     case 'guardar_pedido': return await guardarPedidoCli(ctx, input || {});
-    case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo);
+    case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo, !!input?.en_silencio);
     case 'actualizar_nota': return await actualizarNota(ctx, input?.texto);
     default: return { error: 'Herramienta desconocida' };
   }

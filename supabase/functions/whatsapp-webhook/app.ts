@@ -370,7 +370,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
       const { data: ec } = await sb.from('mabel_mensajes').select('texto,tipo').eq('tel_key', telKey).eq('direccion', 'echo').gte('creado', new Date(Date.now() - 12 * 3600e3).toISOString()).limit(30);
       equipoActivo = (ec || []).some((e: any) => !['edit', 'revoke', 'system', 'unsupported', 'ephemeral'].includes(String(e.tipo)) && !AUTOMATICO.test(String(e.texto || '')));
     }
-    if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || (dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3))) {
+    if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || dd.silencio === true || (dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3))) {
       // Si además respondió algo útil (ej. el horario), se manda eso sin la frase de "le aviso a Yanaina"
       const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*ya le aviso a yanaina[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
       if (resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) {
