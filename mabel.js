@@ -178,9 +178,13 @@ function montarCfgMabel() {
   const cf = document.getElementById('p-config'); if (!cf || document.getElementById('cf-mabel')) return;
   const d = document.createElement('div'); d.className = 'card'; d.id = 'cf-mabel';
   d.innerHTML = `<div class="card-t">🤖 Mabel (agente de WhatsApp)</div>
-    <label class="lb">📣 Novedades de hoy (horario de retiro, avisos). Mabel solo usa esto para horarios.</label>
+    <label class="lb">📣 Avisos de hoy (ej. “hoy no hay cadetería”). Los horarios de retiro se cargan más abajo, por fecha.</label>
     <textarea id="mb-nov" rows="3" data-chg="mbNov" placeholder="ej: Hoy retiro de 16 a 20 hs"></textarea>
     <div class="row mt"><label class="small muted">Vale hasta</label><input id="mb-vence" type="date" data-chg="mbNov" style="width:auto"><span class="small" id="mb-nov-est"></span></div>
+    <div class="card-t mt">🏪 Horarios de retiro por fecha</div>
+    <div class="small muted">Mabel usa estos horarios con la fecha real (hoy, mañana, el viernes 6/11). Un día sin horario cargado: no da horario y le pide escribir el día antes. Las fechas pasadas se borran solas.</div>
+    <div class="row mt" style="flex-wrap:wrap;gap:6px"><input id="mb-hr-f" type="date" style="width:auto"><input id="mb-hr-d" type="time" value="11:00" style="width:auto"><span class="small">a</span><input id="mb-hr-h" type="time" value="17:00" style="width:auto"><label class="small"><input id="mb-hr-c" type="checkbox"> Sin retiro ese día</label><button class="b sm" data-act="mbHrAdd">+ Agregar</button></div>
+    <div id="mb-hr-lista" class="mt"></div>
     <div class="grid2 mt">
       <div><label class="lb">Día de otras agencias (no DAC, Núñez ni Correo)</label><select id="mb-dia" data-chg="mbCfg" data-k="diaOtrasAgencias">${DIAS_SEM.slice(1).map(x => `<option>${x}</option>`).join('')}</select></div>
       <div><label class="lb">Recargo Mercado Pago (%)</label><input id="mb-mp" type="number" inputmode="numeric" data-chg="mbCfg" data-k="mpRecargo"></div>
@@ -188,12 +192,21 @@ function montarCfgMabel() {
     </div>`;
   const v = document.getElementById('cf-version'); if (v) cf.insertBefore(d, v); else cf.appendChild(d);
 }
+// Horarios de retiro por fecha (5/11): lista [{fecha:'YYYY-MM-DD', desde:'11:00', hasta:'17:00', cerrado:bool}]. Mabel la lee en la nube.
+function horariosRetiro() { return (cfgN('horariosRetiro', []) || []).filter(x => x && x.fecha >= hoyISO()).sort((a, b) => a.fecha.localeCompare(b.fecha)); }
+function pintarHorariosRetiro() {
+  const l = $('#mb-hr-lista'); if (!l) return;
+  const f = x => { const d = new Date(x.fecha + 'T12:00:00'); return DIAS_SEM[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1); };
+  const hs = horariosRetiro();
+  l.innerHTML = hs.length ? hs.map(x => `<div class="row" style="justify-content:space-between;padding:4px 0"><span>${x.fecha === hoyISO() ? '<b>HOY</b> · ' : ''}${esc(f(x))}: ${x.cerrado ? '<b>sin retiro</b>' : esc(x.desde) + ' a ' + esc(x.hasta) + ' hs'}</span><button class="b sm" data-act="mbHrDel" data-f="${x.fecha}">✕</button></div>`).join('') : '<div class="small muted">Sin horarios cargados.</div>';
+}
 function pintarCfgMabel() {
   montarCfgMabel();
   const n = cfgN('novedadesHoy', null) || {}, a = document.activeElement;
   if (a !== $('#mb-nov')) $('#mb-nov').value = n.texto || '';
   if (a !== $('#mb-vence')) $('#mb-vence').value = n.vence || hoyISO();
   $('#mb-nov-est').innerHTML = n.texto ? (novedadesVigentes() ? '<span class="c-ok">✓ vigente</span>' : '<span class="c-li">vencida: Mabel no la usa</span>') : '';
+  pintarHorariosRetiro();
   $('#mb-dia').value = cfgN('diaOtrasAgencias', 'viernes');
   if (a !== $('#mb-mp')) $('#mb-mp').value = cfgN('mpRecargo', 10);
   if (a !== $('#mb-gsp')) $('#mb-gsp').value = cfgN('guardarSinPagarDias', 30);
@@ -228,6 +241,17 @@ Object.assign(ACT, {
   cobroAnular: d => { const k = DB.cobros.find(x => x.id === d.id); if (!k || !confirm('¿Anular este cobro agrupado? Los pedidos quedan como estaban.')) return; k.estado = 'anulado'; saveCobros(); render(); },
   convWA: d => { const v = DB.conversaciones.find(x => x.id === d.id); if (v) abrirWA(v.tel || (cliById(v.clienteId) || {}).tel, ''); },
   convDevolver: d => { devolverAMabel(d.id); toast('↩️ Mabel vuelve a atender esa conversación'); render(); }
+});
+Object.assign(ACT, {
+  mbHrAdd: () => {
+    const f = $('#mb-hr-f').value, d = $('#mb-hr-d').value, h = $('#mb-hr-h').value, c = $('#mb-hr-c').checked;
+    if (!f) return toast('Elegí la fecha');
+    if (f < hoyISO()) return toast('Esa fecha ya pasó');
+    if (!c && (!d || !h || h <= d)) return toast('Revisá el horario (desde / hasta)');
+    const lista = horariosRetiro().filter(x => x.fecha !== f); lista.push(c ? { fecha: f, cerrado: true } : { fecha: f, desde: d, hasta: h });
+    saveConfig({ horariosRetiro: lista }); toast('✓ Horario guardado'); pintarCfgMabel();
+  },
+  mbHrDel: d => { saveConfig({ horariosRetiro: horariosRetiro().filter(x => x.fecha !== d.f) }); toast('✓ Quitado'); pintarCfgMabel(); }
 });
 Object.assign(CHG, {
   cobroTog: (d, el) => { el.checked ? UI.cobroSel.add(d.id) : UI.cobroSel.delete(d.id); pintarModalCobro(); },

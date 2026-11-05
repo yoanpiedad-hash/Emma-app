@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -190,6 +190,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false) 
   const dinamico = [
     `HOY: ${ahoraTxtUY()} (hora de Uruguay, ${hoyUY()}).`,
     salientes ? 'Ya te presentaste con esta clienta en las últimas 24 horas: no vuelvas a presentarte.' : 'Es el primer mensaje tuyo en esta conversación: presentate como indican las instrucciones.',
+    horariosRetiroTexto(cfg),
     nov ? `NOVEDADES DE HOY (vigentes hasta ${nov.vence || 'sin fecha'}): ${nov.texto}` : 'NOVEDADES DE HOY: no hay novedades vigentes.',
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
     salidaCadeteria(),

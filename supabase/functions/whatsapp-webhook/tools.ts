@@ -554,3 +554,10 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
     default: return { error: 'Herramienta desconocida' };
   }
 }
+// 5/11: horarios de retiro por fecha (cargados en la app, Config → Mabel). Siempre con la fecha real, nunca "hoy/mañana" sueltos.
+export function horariosRetiroTexto(c: any) {
+  const hoy = hoyUY(), dia = (f: string) => { const d = new Date(f + 'T12:00:00Z'); return ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1); };
+  const hs = (Array.isArray(c.horariosRetiro) ? c.horariosRetiro : []).filter((x: any) => x?.fecha >= hoy).sort((a: any, b: any) => a.fecha.localeCompare(b.fecha)).slice(0, 14);
+  if (!hs.length) return 'HORARIOS DE RETIRO: no hay ninguno cargado. No des horario: decile que escriba el día antes para coordinar.';
+  return 'HORARIOS DE RETIRO CARGADOS (decí siempre el día con nombre y fecha): ' + hs.map((x: any) => (x.fecha === hoy ? 'HOY ' : '') + dia(x.fecha) + ': ' + (x.cerrado ? 'sin retiro' : 'de ' + x.desde + ' a ' + x.hasta + ' hs')).join('; ') + '. Para un día que no está en la lista no des horario: pedile que escriba el día antes para coordinar.';
+}
