@@ -87,7 +87,7 @@ async function ingestarEco(e: any) {
   const wa = String(e.to || ''), telKey = telKeyDe(wa), id = String(e.id || uid('eco')), texto = e.text?.body || `[${e.type || 'mensaje'}]`;
   const { data } = await sb.from('mabel_mensajes').upsert([{ id, tel_key: telKey, wa_id: wa, direccion: 'echo', tipo: String(e.type || 'text'), texto, procesado: true }], { onConflict: 'id', ignoreDuplicates: true }).select('id');
   if (!data?.length || AUTOMATICO.test(texto)) return; // repetido, o es el total / recordatorio que manda la app: no cuenta como "habló una persona"
-  const ahora = new Date(), hasta = new Date(ahora.getTime() + 3 * 3600e3).toISOString(); // 4/11: 3 h desde el último mensaje de Yanaina (antes 12 h)
+  const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3).toISOString(); // 4/11: 1 h desde el último mensaje de Yanaina (antes 12 h)
   const { data: cl } = await sb.from('clientas').select('id,datos').eq('tel_key', telKey).eq('borrado', false).limit(1);
   const { data: ex } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
   const vigente = ex?.datos?.estado === 'yanaina' && ex.datos.hasta > ahora.toISOString();
@@ -381,6 +381,19 @@ async function repasarPendientes(soloTel = '') {
   for (const c of cand) {
     const d = c.datos || {}, telKey = c.id, wa = '598' + telKey;
     const desde = [d.desde, d.repaso].filter(Boolean).sort().pop() || new Date(Date.now() - 24 * 3600e3).toISOString();
+    // ¿La clienta escribió y nadie le contestó? (último mensaje de la conversación es de ella) → Mabel lo atiende normal:
+    // contesta si puede, o deriva (en silencio si ya la había derivado hace poco)
+    const { data: ult } = await sb.from('mabel_mensajes').select('id,direccion,creado').eq('tel_key', telKey).order('creado', { ascending: false }).limit(15);
+    const sinResp: string[] = [];
+    for (const m of ult || []) { if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
+    if (sinResp.length) {
+      await sb.from('mabel_mensajes').update({ procesado: false }).in('id', sinResp);
+      const { data: cv0 } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
+      await sb.from('conversaciones').update({ datos: { ...(cv0?.datos || d), repaso: new Date().toISOString() } }).eq('id', telKey);
+      const r: any = await procesar(telKey, wa, { esperar: false });
+      hechos.push({ tel: telKey, sin_respuesta: sinResp.length, respuesta: r?.respuesta || null });
+      continue;
+    }
     const { data: t } = await sb.rpc('mabel_tomar_turno', { p_tel: telKey, p_seg: 150 });
     if (!t?.ok) { hechos.push({ tel: telKey, motivo: 'ocupada' }); continue; }
     let nota = '';
