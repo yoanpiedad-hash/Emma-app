@@ -364,12 +364,18 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   {
     const { data: cvD } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
     const dd = cvD?.datos || {};
-    if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3) {
+    // 5/11: si Yanaina ya habló con la clienta desde el celular en las últimas 12 h (mensaje, audio, foto o reacción), Mabel no se mete: deriva en silencio
+    let equipoActivo = false;
+    if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno) {
+      const { data: ec } = await sb.from('mabel_mensajes').select('texto,tipo').eq('tel_key', telKey).eq('direccion', 'echo').gte('creado', new Date(Date.now() - 12 * 3600e3).toISOString()).limit(30);
+      equipoActivo = (ec || []).some((e: any) => !['edit', 'revoke', 'system', 'unsupported', 'ephemeral'].includes(String(e.tipo)) && !AUTOMATICO.test(String(e.texto || '')));
+    }
+    if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || (dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3))) {
       // Si además respondió algo útil (ej. el horario), se manda eso sin la frase de "le aviso a Yanaina"
       const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*ya le aviso a yanaina[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
       if (resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) {
         await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
-        return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado que le escribe Yanaina)', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
+        return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado o Yanaina ya habló con ella)', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
       }
       respuesta = resto;
     }
@@ -439,8 +445,10 @@ async function repasarPendientes(soloTel = '') {
     // contesta si puede, o deriva (en silencio si ya la había derivado hace poco)
     const { data: ult } = await sb.from('mabel_mensajes').select('id,direccion,creado,tipo').eq('tel_key', telKey).order('creado', { ascending: false }).limit(15);
     const sinResp: string[] = [];
-    for (const m of ult || []) { if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo))) continue; if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
-    if (sinResp.length) {
+    for (const m of ult || []) { if (m.direccion === 'echo' && m.tipo === 'reaction') break; /* 5/11: Yanaina reaccionó = lo vio y lo atendió */ if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo))) continue; if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
+    // 5/11: si Yanaina habló con la clienta durante la ventana (eco desde el celular), el repaso no contesta: revisa en silencio y lo dudoso queda para Yanaina
+    const { count: nEco } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'echo').gt('creado', d.desde || new Date(Date.now() - 12 * 3600e3).toISOString());
+    if (sinResp.length && !(nEco && nEco > 0)) {
       // 5/11: el repaso solo contesta a clientas con pedido pendiente en la app; si no tiene, se queda en silencio (queda para Yanaina)
       const { data: cls } = await sb.from('clientas').select('id').eq('tel_key', telKey).eq('borrado', false);
       let conPedido = false;
