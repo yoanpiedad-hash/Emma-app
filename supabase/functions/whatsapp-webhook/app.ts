@@ -78,6 +78,12 @@ async function ingestar(m: any, wa: string): Promise<boolean> {
   else if (tipo === 'button') texto = m.button?.text || '';
   else if (tipo === 'interactive') texto = m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || '';
   else if (tipo === 'reaction') return false; // un emoji sobre un mensaje no necesita respuesta
+  else if (tipo === 'edit' || tipo === 'revoke' || tipo === 'unsupported' || tipo === 'system' || tipo === 'ephemeral') {
+    // 4/11: editó o borró un mensaje (o evento del sistema): se guarda sin responder. Si es una edición con texto nuevo, va como nota.
+    const nuevo = m.edit?.message?.text?.body || m.edit?.text?.body || '';
+    await sb.from('mabel_mensajes').upsert([{ id: m.id, tel_key: telKey, wa_id: wa, direccion: 'in', tipo, texto: nuevo ? '(editó su mensaje anterior: ' + nuevo + ')' : `[${tipo}]`, media: null, procesado: true }], { onConflict: 'id', ignoreDuplicates: true });
+    return false;
+  }
   else texto = `[${tipo}]`;
   const { data, error } = await sb.from('mabel_mensajes').upsert([{ id: m.id, tel_key: telKey, wa_id: wa, direccion: 'in', tipo, texto, media, procesado: false }], { onConflict: 'id', ignoreDuplicates: true }).select('id');
   if (error) throw new Error('log: ' + error.message);
@@ -135,6 +141,7 @@ async function historia(telKey: string, excluir: string[]) {
   const msgs: { role: 'user' | 'assistant'; content: string }[] = [];
   for (const r of (data || []).reverse()) {
     if (excluir.includes(r.id)) continue;
+    if (['edit', 'revoke', 'unsupported', 'system', 'ephemeral'].includes(String(r.tipo)) && String(r.texto || '').startsWith('[')) continue; // eventos sin contenido
     if (r.direccion === 'in' && r.procesado === false) continue; // llegó mientras se contestaba: lo atiende la próxima vuelta (si no, se contesta dos veces)
     const t = r.direccion === 'in' ? (r.media ? `[mandó un archivo: ${r.media.mime}] ` : '') + (r.texto || '') : r.direccion === 'echo' ? '(Equipo Emma, desde el celular) ' + (r.texto || '') : (r.texto || '');
     if (!t.trim()) continue;
@@ -428,9 +435,9 @@ async function repasarPendientes(soloTel = '') {
     const desde = [d.desde, d.repaso].filter(Boolean).sort().pop() || new Date(Date.now() - 24 * 3600e3).toISOString();
     // ¿La clienta escribió y nadie le contestó? (último mensaje de la conversación es de ella) → Mabel lo atiende normal:
     // contesta si puede, o deriva (en silencio si ya la había derivado hace poco)
-    const { data: ult } = await sb.from('mabel_mensajes').select('id,direccion,creado').eq('tel_key', telKey).order('creado', { ascending: false }).limit(15);
+    const { data: ult } = await sb.from('mabel_mensajes').select('id,direccion,creado,tipo').eq('tel_key', telKey).order('creado', { ascending: false }).limit(15);
     const sinResp: string[] = [];
-    for (const m of ult || []) { if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
+    for (const m of ult || []) { if (m.direccion !== 'in') break; if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo))) continue; if (m.creado > desde) sinResp.push(m.id); }
     if (sinResp.length) {
       await sb.from('mabel_mensajes').update({ procesado: false }).in('id', sinResp);
       const { data: cv0 } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
