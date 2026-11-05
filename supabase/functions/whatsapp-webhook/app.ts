@@ -171,6 +171,9 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false) 
   const desde24 = new Date(Date.now() - 24 * 3600e3).toISOString();
   const { count: salientes } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'out').gte('creado', desde24);
   const nov = novedadesVigentes(cfg);
+  // ¿Ya se le mandó el total del último live? (mensaje del total por WhatsApp o plantilla en las últimas 36 h)
+  const { data: totMsg } = await sb.from('mabel_mensajes').select('id').eq('tel_key', telKey).in('direccion', ['out', 'echo']).gte('creado', new Date(Date.now() - 36 * 3600e3).toISOString()).or('texto.ilike.%detalle de tu pedido%,texto.ilike.%Formas de pago%,texto.ilike.%total de tus pedidos%').limit(1);
+  const totalEnviado = !!totMsg?.length;
   // ¿Yanaina le devolvió la conversación después de la última respuesta de Mabel? (3/11)
   const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
   const { data: ult } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', telKey).eq('direccion', 'out').order('creado', { ascending: false }).limit(1);
@@ -181,6 +184,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false) 
     nov ? `NOVEDADES DE HOY (vigentes hasta ${nov.vence || 'sin fecha'}): ${nov.texto}` : 'NOVEDADES DE HOY: no hay novedades vigentes.',
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
     salidaCadeteria(),
+    totalEnviado ? 'TOTAL: ya se le mandó el total de su pedido (puede pagar).' : 'TOTAL: todavía NO se le mandó el total de su último pedido (puede que siga sumando en el vivo).',
     `FORMAS DE PAGO (texto oficial de Config; no lo reenvíes salvo que la clienta lo pida):\n${typeof cfg.msgPago === 'string' ? cfg.msgPago : '(no cargado)'}`,
     devuelta ? 'CONVERSACIÓN DEVUELTA POR YANAINA: Yanaina atendió esta conversación y te la devolvió. Lo que haya quedado pendiente o mal en tus mensajes anteriores ya lo resolvió ella (pudo cambiar prendas, total o marcar el pago en la app). El ESTADO ACTUAL es la verdad: no pidas disculpas ni expliques diferencias con lo que dijiste antes; seguí desde ahí con lo que la clienta pide ahora.' : '',
     repaso ? 'REPASO EN SILENCIO (no es una charla): esta conversación la tenía Yanaina y volvió a vos. Los mensajes de abajo son lo que la clienta mandó mientras la atendía Yanaina. NO le escribas nada a la clienta: tu respuesta final NO se envía, es una nota interna. Fijate solo dos cosas: (1) si hay un comprobante y el pedido no figura pagado en el ESTADO ACTUAL, registralo con marcar_pagado con las reglas de siempre; (2) si dio datos de entrega (dirección y barrio, agencia, ciudad, CI, retiro) que no están cargados, guardalos con guardar_entrega. Si el pedido ya figura pagado o con la entrega cargada, no toques nada (ya lo hizo Yanaina). Si algo no cierra (monto distinto, cuenta rara, acuerdo especial con Yanaina, dudas), no marques nada y llamá pasar_a_yanaina con un motivo claro y corto (así le aparece a Yanaina en la bandeja; igual no le escribís a la clienta). Terminá con una nota corta que empiece con "REPASO:" diciendo qué hiciste o "REPASO: nada para cargar".' : '',
