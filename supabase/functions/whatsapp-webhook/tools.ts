@@ -134,8 +134,29 @@ export async function buscarPedido(ctx: Ctx) {
   let enviados_recientes: any[] = [];
   if (ctx.clientas.length) {
     const { data: en } = await sb.from('pedidos').select('*').in('clienta_id', ctx.clientas.map((k) => k.id)).eq('borrado', false).eq('estado', 'enviado');
-    const hoyMs = Date.now();
-    enviados_recientes = (en || []).map((r) => { const p = r.datos, f = p.fechas?.enviado || p.fechas?.listo || null; const dias = f ? Math.floor((hoyMs - new Date(f + 'T12:00:00-03:00').getTime()) / 864e5) : null; return { numero: p.num, fecha_enviado: f, dias_desde_que_salio: dias, entrega: entregaEf(p, c), prendas: (p.prendas || []).map((x: any) => x.nombre).filter(Boolean) }; }).filter((x) => x.dias_desde_que_salio !== null && x.dias_desde_que_salio <= 21).sort((a, b) => (a.dias_desde_que_salio as number) - (b.dias_desde_que_salio as number));
+    const hoyMs = Date.now(), hoyF = hoyUY(), horaUY = +new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' }).format(new Date());
+    // 5/11: "enviado" en la app = etiqueta impresa, NO que salió. Salida real = el equipo ya le mandó la foto del comprobante de envío (o pasaron más de 5 días).
+    const minF = (en || []).map((r) => r.datos.fechas?.enviado || r.datos.fechas?.listo).filter(Boolean).sort()[0];
+    let fotosEquipo: string[] = [];
+    if (minF) {
+      const desde = new Date(minF + 'T00:00:00-03:00').toISOString();
+      const [{ data: e1 }, { data: e2 }] = await Promise.all([
+        sb.from('mabel_mensajes').select('creado').eq('tel_key', ctx.telKey).eq('direccion', 'echo').in('tipo', ['image', 'document', 'video']).gte('creado', desde).limit(50),
+        sb.from('mabel_historial').select('fecha').eq('tel_key', ctx.telKey).eq('de', 'equipo').in('tipo', ['image', 'media_placeholder', 'document', 'video']).gte('fecha', desde).limit(50),
+      ]);
+      fotosEquipo = [...(e1 || []).map((x: any) => x.creado), ...(e2 || []).map((x: any) => x.fecha)].map((x) => new Date(x).toISOString());
+    }
+    const sumarDia = (f: string) => new Date(new Date(f + 'T12:00:00Z').getTime() + 864e5).toISOString().slice(0, 10);
+    enviados_recientes = (en || []).map((r) => {
+      const p = r.datos, f = p.fechas?.enviado || p.fechas?.listo || null;
+      const dias = f ? Math.floor((hoyMs - new Date(f + 'T12:00:00-03:00').getTime()) / 864e5) : null;
+      const desdeMs = f ? new Date(f + 'T00:00:00-03:00').getTime() : 0;
+      const hayFoto = fotosEquipo.some((x) => new Date(x).getTime() >= desdeMs);
+      const confirmada = hayFoto || (dias !== null && dias > 5);
+      const esperada = p.fechas?.listo ? sumarDia(p.fechas.listo) : (f ? sumarDia(f) : null);
+      const vencida = !!esperada && (hoyF > esperada || (hoyF === esperada && horaUY >= 12));
+      return { numero: p.num, etiqueta_impresa_el: f, dias_desde_la_etiqueta: dias, entrega: entregaEf(p, c), prendas: (p.prendas || []).map((x: any) => x.nombre).filter(Boolean), salida_confirmada: confirmada, ...(confirmada ? {} : { fecha_esperada_de_salida: esperada, fecha_esperada_vencida: vencida, que_decir: vencida ? 'Todavía no figura el comprobante de envío y ya pasó la fecha esperada: decile "Tu pedido ya está pronto para despachar, te paso con Yanaina para que te diga con exactitud" y pasá a Yanaina. NO digas que ya salió.' : 'Todavía no figura el comprobante de envío: NO digas que ya salió; decile que sale en la fecha esperada.' }) };
+    }).filter((x) => x.dias_desde_la_etiqueta !== null && (x.dias_desde_la_etiqueta as number) <= 21).sort((a, b) => (a.dias_desde_la_etiqueta as number) - (b.dias_desde_la_etiqueta as number));
   }
   return {
     enviados_recientes,
