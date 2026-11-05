@@ -373,7 +373,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || dd.silencio === true || (dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3))) {
       // Si además respondió algo útil (ej. el horario), se manda eso sin la frase de "le aviso a Yanaina"
       const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*ya le aviso a yanaina[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
-      if (resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) {
+      if ((equipoActivo || dd.silencio === true) || resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) { // 5/11: con el equipo activo o pase en silencio NUNCA se manda nada
         await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
         return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado o Yanaina ya habló con ella)', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
       }
@@ -381,6 +381,11 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     }
   }
   if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
+  // 5/11: si el modelo escribió una nota interna en vez de un mensaje ("(Sin mensaje a la clienta: …)"), no se manda nunca
+  if (/^\s*[\(\[]\s*(sin mensaje|nota interna|silencio|no le escrib|no se env)/i.test(respuesta) || /^\s*\[?silencio\]?\s*$/i.test(respuesta)) {
+    await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
+    return { respuesta: null, motivo: 'nota interna del modelo: no se envía', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
+  }
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
   await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true, ...(error ? { media: { error: error.slice(0, 500) } } : {}) });
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
