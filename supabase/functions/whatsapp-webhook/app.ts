@@ -316,8 +316,13 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
     const { data: cvD } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
     const dd = cvD?.datos || {};
     if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3) {
-      await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
-      return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado que le escribe Yanaina)', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
+      // Si además respondió algo útil (ej. el horario), se manda eso sin la frase de "le aviso a Yanaina"
+      const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*ya le aviso a yanaina[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
+      if (resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) {
+        await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
+        return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado que le escribe Yanaina)', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
+      }
+      respuesta = resto;
     }
   }
   if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
