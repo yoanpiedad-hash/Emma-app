@@ -371,9 +371,9 @@ async function repasarPendientes(soloTel = '') {
         await sb.from('conversaciones').update({ datos: nd }).eq('id', c.id);
       }
       if (r.ok && !r.ya_vinculado) {
-        let conf = false;
-        if (b.confirmar) { const rc: any = await confirmarPedido(ctx); conf = !!rc?.ok; }
-        const txt = `¡Listo bella, ya encontramos tu pedido #${r.pedido}!` + (conf ? ' Quedó confirmado 🫶' : ' 🫶');
+        let conf = !!r.confirmado;
+        if (!conf && b.confirmar) { const rc: any = await confirmarPedido(ctx); conf = !!rc?.ok; }
+        const txt = conf ? '¡Gracias por confirmar tu pedido bella! 🫶' : `¡Listo bella, ya tenemos tu pedido #${r.pedido}! 🫶`;
         const id = await enviar('598' + c.id, txt);
         await sb.from('mabel_mensajes').insert({ id, tel_key: c.id, wa_id: '598' + c.id, direccion: 'out', tipo: 'text', texto: txt, procesado: true });
       }

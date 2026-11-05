@@ -436,6 +436,12 @@ export async function vincularPedido(ctx: Ctx, a: any) {
   }
   await cargarClienta(ctx);
   await limpiarEspera(ctx);
+  // Si es del vivo de hoy, escribir para identificarse ya cuenta como confirmación (4/11)
+  const lvHoy = (lvs || []).find((l: any) => l.id === elegido.p.live_id && l.datos?.fecha === hoyUY());
+  if (lvHoy) {
+    const rc: any = await confirmarPedido(ctx).catch(() => null);
+    return { ok: true, pedido: elegido.p.datos.num, confirmado: !!rc?.ok, que_hacer: 'Quedó con su número y confirmado. Contestá corto: "¡Gracias por confirmar tu pedido bella! 🫶" (con la presentación si es tu primer mensaje). No digas que lo buscaste ni que lo encontraste, y no le pases el total (puede seguir sumando en el vivo).' };
+  }
   return { ok: true, pedido: elegido.p.datos.num, nombre_en_el_live: elegido.c.datos.nombre, que_hacer: 'Listo, el pedido quedó con su número. Seguí con lo que pidió (si quería confirmar, llamá confirmar_pedido; si pregunta el total, buscar_pedido).' };
 }
 
