@@ -265,8 +265,10 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
     if (et) { console.error('turno:', et.message); return { respuesta: null, motivo: 'error al tomar turno' }; }
     if (!t?.ok) return { respuesta: null, motivo: 'otra invocación está atendiendo esta conversación' };
     try {
-      for (let ronda = 0; ronda < 3; ronda++) {
-        const r = await procesarUna(telKey, wa, opts);
+      let reint = false;
+      for (let ronda = 0; ronda < 4; ronda++) {
+        const r: any = await procesarUna(telKey, wa, { ...opts, reintento: reint });
+        if (r.reintentar) { reint = true; continue; } // una sola vez por invocación
         if (!r.respuesta) break;
         ultima = r;
       }
@@ -276,7 +278,7 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
   return ultima;
 }
 
-async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } = {}) {
+async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; reintento?: boolean } = {}) {
   // Reclama los mensajes pendientes de esta conversación
   const { data: lote } = await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
   if (!lote?.length) return { respuesta: null, motivo: 'sin mensajes pendientes' };
@@ -308,6 +310,15 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean } =
     respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
   }
   if (!respuesta) respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
+  // 4/11: si mientras armaba la respuesta la clienta mandó más mensajes, no contesta por partes: vuelve a armar una sola respuesta con todo
+  if (!error && !opts.dry && !opts.reintento) {
+    const { count: nuevos } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false);
+    if ((nuevos || 0) > 0) {
+      await sb.from('mabel_mensajes').update({ procesado: false }).in('id', lote.map((m: any) => m.id));
+      await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
+      return { respuesta: null, reintentar: true, motivo: 'llegaron mensajes nuevos: se arma una sola respuesta' };
+    }
+  }
   // Que no repita el mismo emoji que en su mensaje anterior (4/11)
   try {
     const { data: prev } = await sb.from('mabel_mensajes').select('texto').eq('tel_key', telKey).eq('direccion', 'out').order('creado', { ascending: false }).limit(1);
