@@ -392,7 +392,13 @@ export async function vincularPedido(ctx: Ctx, a: any) {
   }
   if (!elegido && nombre) {
     const xs = cand.filter((x) => x.sim >= 0.8).sort((x, y) => y.sim - x.sim);
+    // Si hay varias con ese nombre, se descartan las que tienen otro teléfono y, si dijo la prenda, las que no la compraron
+    const libres = xs.filter((x) => { const tl = String(x.c.datos.tel || '').replace(/\D/g, ''); return !tl || telKeyDe(tl) === ctx.telKey; });
+    const pwN = normN(prenda).split(' ').filter((w) => w.length >= 4);
+    const conPrenda = pwN.length ? libres.filter((x) => pwN.some((w) => (x.p.datos.prendas || []).some((pr: any) => normN(pr.nombre).split(' ').some((y) => y === w || edRatio(y, w) >= 0.8)))) : libres;
     if (xs.length === 1 || (xs.length > 1 && xs[0].sim - xs[1].sim >= 0.15)) elegido = xs[0];
+    else if (conPrenda.length === 1) elegido = conPrenda[0];
+    else if (libres.length === 1) elegido = libres[0];
     else if (xs.length > 1) return derivar(ctx, 'Escribe desde un número sin pedido (' + (nombre || '') + (num ? ', pedido #' + num : '') + '): coincide con varios pedidos: ' + xs.slice(0, 4).map((x) => '#' + x.p.datos.num + ' ' + x.c.datos.nombre).join(', '));
   }
   // Por la prenda que dice que compró, entre los pedidos SIN teléfono (ej. "soy Paola, por el conjunto chocolate")
