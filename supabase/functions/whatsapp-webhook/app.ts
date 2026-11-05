@@ -8,6 +8,7 @@
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
 import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
+import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 // Secretos de la función primero; si no están, la tabla mabel_ajustes (solo la ve la función): ruta secreta, WABA ID, phone number ID, host de la API.
@@ -199,6 +200,10 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false) 
       if (!error && blob) {
         const buf = new Uint8Array(await blob.arrayBuffer()), esPdf = String(m.media.mime).includes('pdf');
         bloques.push(esPdf ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64(buf) } } : { type: 'image', source: { type: 'base64', media_type: String(m.media.mime).split(';')[0], data: b64(buf) } });
+        // 4/11: además del PDF se manda su texto (hay PDFs de bancos mal armados que no se ven como documento)
+        if (esPdf) {
+          try { const pdf = await getDocumentProxy(new Uint8Array(buf)); const { text } = await extractText(pdf, { mergePages: true }); const tx = String(text || '').replace(/\s+/g, ' ').trim(); if (tx) bloques.push({ type: 'text', text: '(Texto del PDF adjunto: ' + tx.slice(0, 1500) + ')' }); } catch (_) { /* sin texto */ }
+        }
         ctx.media = m.media;
       }
     }
