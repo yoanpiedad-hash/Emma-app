@@ -368,8 +368,8 @@ async function limpiarEspera(ctx: Ctx) {
   if (cv?.datos?.buscar) { const d = { ...cv.datos }; delete d.buscar; await sb.from('conversaciones').update({ datos: d }).eq('id', ctx.telKey); }
 }
 export async function vincularPedido(ctx: Ctx, a: any) {
-  const num = parseInt(String(a?.num ?? '').replace(/\D/g, ''), 10) || 0, nombre = String(a?.nombre || '').trim();
-  if (!num && !nombre) return { ok: false, que_hacer: 'Pedile el número de pedido o su usuario de TikTok.' };
+  const num = parseInt(String(a?.num ?? '').replace(/\D/g, ''), 10) || 0, nombre = String(a?.nombre || '').trim(), prenda = String(a?.prenda || '').trim();
+  if (!num && !nombre && !prenda) return { ok: false, que_hacer: 'Pedile el número de pedido o su usuario de TikTok.' };
   const ayer = new Date(Date.now() - 36 * 3600e3).toISOString().slice(0, 10);
   const { data: lvs } = await sb.from('lives').select('id,datos').gte('datos->>fecha', ayer);
   const lids = (lvs || []).map((l: any) => l.id);
@@ -394,6 +394,14 @@ export async function vincularPedido(ctx: Ctx, a: any) {
     const xs = cand.filter((x) => x.sim >= 0.8).sort((x, y) => y.sim - x.sim);
     if (xs.length === 1 || (xs.length > 1 && xs[0].sim - xs[1].sim >= 0.15)) elegido = xs[0];
     else if (xs.length > 1) return derivar(ctx, 'Escribe desde un número sin pedido (' + (nombre || '') + (num ? ', pedido #' + num : '') + '): coincide con varios pedidos: ' + xs.slice(0, 4).map((x) => '#' + x.p.datos.num + ' ' + x.c.datos.nombre).join(', '));
+  }
+  // Por la prenda que dice que compró, entre los pedidos SIN teléfono (ej. "soy Paola, por el conjunto chocolate")
+  if (!elegido && prenda) {
+    const pw = normN(prenda).split(' ').filter((w) => w.length >= 4);
+    const xs = cand.filter((x) => !String(x.c.datos.tel || '').replace(/\D/g, '') && pw.some((w) => (x.p.datos.prendas || []).some((pr: any) => normN(pr.nombre).split(' ').some((y) => y === w || edRatio(y, w) >= 0.8))));
+    const conNombre = nombre ? xs.filter((x) => x.sim >= 0.5) : xs;
+    if (conNombre.length === 1) elegido = conNombre[0];
+    else if (!nombre && xs.length === 1) elegido = xs[0];
   }
   if (!elegido) return (await dejarEnEspera(ctx, a)) || { ok: false, no_encontrado: true };
   const telC = String(elegido.c.datos.tel || '').replace(/\D/g, '');
@@ -495,7 +503,7 @@ export const HERRAMIENTAS = [
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' } }, required: ['tipo'] } },
-  { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si la clienta estaba confirmando el pedido' } } } },
+  { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si la clienta estaba confirmando el pedido' }, prenda: { type: 'string', description: 'Lo que dice que compró, si lo dijo ("conjunto chocolate", "jean")' } } } },
   { name: 'guardar_pedido', description: 'La clienta pide guardar su pedido (que no salga todavía, juntarlo con el próximo live, levantarlo más adelante). Si ya pagó, lo pasa a Guardado. Si no pagó, solo lo guarda si la ficha lo permite (hasta 7 días); si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'Fecha hasta la que lo guarda, AAAA-MM-DD, solo si la clienta dijo una' } } } },
   { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
   { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' } }, required: ['motivo'] } },
