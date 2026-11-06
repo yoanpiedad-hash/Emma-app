@@ -425,3 +425,149 @@ function pintarSinTel() {
 }
 const _renderLive_sintel = renderLive;
 renderLive = function () { _renderLive_sintel.apply(this, arguments); try { pintarSinTel(); } catch (e) { console.warn(e); } };
+
+// ─── Recordatorios R1 / R2 por la API (5/11) ───────────────────
+// Cola de quienes siguen sin pagar, con vista previa y confirmación. Igual que "Mandar los totales": plantilla aprobada de Meta por whatsapp-enviar.
+//  R1 = el día de la fecha de pago del live (desde las 20:00) · plantilla emma_recordatorio_1 [nombre, pedido, total]
+//  R2 = el día siguiente (desde las 10:00, el plazo llega hasta las 16:00) · plantilla emma_recordatorio_2 [nombre, pedido]
+// Entran: pedidos sin pagar (pendiente/listo) de los lives cuya fecha de pago es la de la cola (R1: hoy · R2: ayer).
+// Quedan afuera: guardados sin pagar, retiros que pagan al llegar (recibeRecordatorio), clientas sin teléfono, conversaciones donde
+// Yanaina está atendiendo y números del equipo (esto último lo decide la función del servidor, que conoce MABEL_EQUIPO).
+// Una clienta con varios pedidos en la cola recibe UN solo mensaje: "pedido #12 y #15 por $X" (suma).
+const REC = {
+  1: { plantilla: 'emma_recordatorio_1', campo: 'recR1', nombre: 'R1', desde: 20, titulo: 'Último día para pagar' },
+  2: { plantilla: 'emma_recordatorio_2', campo: 'recR2', nombre: 'R2', desde: 10, titulo: 'Pagan hasta hoy 16:00' },
+};
+const recFecha = t => t === 1 ? hoyISO() : sumarDias(hoyISO(), -1);
+/** ¿Se puede mandar ahora? Devuelve { ok, aviso, motivo }. Fuera de fecha no se manda; antes de la hora pedimos una confirmación extra. */
+function recVentana(t) {
+  const h = new Date().getHours(), r = REC[t];
+  if (t === 2 && h >= (typeof HORA_LIBERAR === 'number' ? HORA_LIBERAR : 16)) return { ok: false, motivo: 'Pasaron las 16:00: el plazo ya venció, el R2 sería engañoso' };
+  return { ok: true, aviso: h < r.desde ? `Todavía no son las ${r.desde}:00 (el horario previsto del ${r.nombre})` : '' };
+}
+function nombresPedidos(ps) {
+  const n = ps.map(p => p.num).sort((a, b) => a - b).map((x, i) => i === 0 ? String(x) : '#' + x);
+  return n.length < 2 ? n[0] : n.slice(0, -1).join(', ') + ' y ' + n[n.length - 1];
+}
+function convYanainaDe(c) {
+  const k = c.telKey || '';
+  return (typeof convActivas === 'function' ? convActivas() : []).some(v => v.clienteId === c.id || (k && (v.id === k || (typeof telKey === 'function' && telKey(v.tel) === k))));
+}
+/** La cola de un recordatorio: { grupos:[{c, ps, total}], afuera:{...} } */
+function colaRecordatorio(t) {
+  const fecha = recFecha(t), r = REC[t];
+  const lives = DB.lives.filter(l => !l.borrado && l.fechaPagoISO === fecha);
+  const ids = new Set(lives.map(l => l.id));
+  const abiertos = todosPedidos().filter(p => ids.has(p.liveId) && !p.borrado && !p.cambio && p.prendas && p.prendas.length && ['pendiente', 'listo', 'guardado'].includes(p.estado) && !pagado(p));
+  const afuera = { guardados: 0, alRetirar: 0, sinTel: 0, yanaina: 0, yaMandado: 0 };
+  const porCli = new Map();
+  abiertos.forEach(p => {
+    const ep = estadoPago(p);
+    if (ep === 'guardado_sin_pagar') { afuera.guardados++; return; }
+    if (ep === 'al_retirar') { afuera.alRetirar++; return; }
+    if (!recibeRecordatorio(p)) return;
+    if (p[r.campo]) { afuera.yaMandado++; return; }
+    if (!porCli.has(p.clienteId)) porCli.set(p.clienteId, []);
+    porCli.get(p.clienteId).push(p);
+  });
+  const grupos = [];
+  porCli.forEach((ps, cid) => {
+    const c = cliById(cid) || { id: cid, nombre: '' };
+    if (!c.tel || !telKey(c.tel)) { afuera.sinTel += ps.length; return; }
+    if (convYanainaDe(c)) { afuera.yanaina += ps.length; return; }
+    grupos.push({ c, ps, total: ps.reduce((s, p) => s + calc(p).total, 0) });
+  });
+  grupos.sort((a, b) => Math.min(...a.ps.map(p => p.num)) - Math.min(...b.ps.map(p => p.num)));
+  return { fecha, lives, grupos, afuera };
+}
+const recVars = (t, g) => {
+  const nom = String(g.c.nombre || '').trim() || 'bella', n = nombresPedidos(g.ps);
+  return t === 1 ? [nom, n, fmt(g.total).replace(/^\$\s*/, '')] : [nom, n];
+};
+function recResumenAfuera(a, extra) {
+  const x = [];
+  if (a.guardados) x.push(`${a.guardados} guardado${a.guardados > 1 ? 's' : ''} sin pagar`);
+  if (a.alRetirar) x.push(`${a.alRetirar} retiro${a.alRetirar > 1 ? 's' : ''} que pagan al llegar`);
+  if (a.yanaina) x.push(`${a.yanaina} con Yanaina atendiendo`);
+  if (a.equipo) x.push(`${a.equipo} del equipo`);
+  if (a.sinTel) x.push(`${a.sinTel} sin teléfono`);
+  if (a.yaMandado) x.push(`${a.yaMandado} ya recibieron este recordatorio`);
+  (extra || []).forEach(e => x.push(e));
+  return x;
+}
+/** Paso 1: vista previa. Le pregunta a la función del servidor quiénes no salen (equipo / Yanaina) SIN mandar nada. */
+async function recordatorioVer(t) {
+  const r = REC[t], v = recVentana(t);
+  if (!v.ok) return toast(v.motivo, 5000);
+  if (typeof NUBE === 'undefined' || !NUBE.sb) return toast('Sin conexión con la nube');
+  const q = colaRecordatorio(t);
+  if (!q.lives.length) return toast(`No hay ningún live con fecha de pago ${t === 1 ? 'hoy' : 'ayer'} (${fechaUY(q.fecha, 1)})`, 4500);
+  if (!q.grupos.length) return showModal(`<h3>🔔 ${r.nombre} · nadie para avisar</h3><p class="small muted">${recResumenAfuera(q.afuera).join(' · ') || 'Todos los pedidos de esos lives figuran pagados.'}</p><div class="row mt"><button class="b pri" data-act="closeModal">Cerrar</button></div>`);
+  toast('Revisando la cola…', 1500);
+  let excl = new Map();
+  try {
+    const { data, error } = await NUBE.sb.functions.invoke('whatsapp-enviar', { body: { accion: 'revisar', items: q.grupos.map(g => ({ ref: g.c.id, tel: g.c.tel })) } });
+    // Si la función todavía es la versión vieja contesta "plantilla desconocida": NO se manda nada hasta que esté publicada la nueva.
+    if (error || !data || !data.revisar) return showModal(`<h3>🔔 ${r.nombre} · falta publicar la función</h3><p class="small">La función <b>whatsapp-enviar</b> todavía no tiene el filtro de números del equipo y de Yanaina. Por seguridad no se manda nada hasta publicarla.</p><div class="row mt"><button class="b pri" data-act="closeModal">Cerrar</button></div>`);
+    (data.res || []).forEach(x => { if (!x.ok) excl.set(x.ref, x); });
+  } catch (e) { return toast('No se pudo revisar la cola: ' + (e.message || e), 5000); }
+  const grupos = q.grupos.filter(g => !excl.has(g.c.id));
+  q.grupos.forEach(g => { const x = excl.get(g.c.id); if (!x) return; if (x.skip === 'yanaina') q.afuera.yanaina += g.ps.length; else q.afuera.equipo = (q.afuera.equipo || 0) + g.ps.length; });
+  UI.recCola = { t, ids: grupos.map(g => ({ cid: g.c.id, pids: g.ps.map(p => p.id) })), fecha: q.fecha };
+  const afuera = recResumenAfuera(q.afuera);
+  if (!grupos.length) return showModal(`<h3>🔔 ${r.nombre} · nadie para avisar</h3><p class="small muted">Quedan afuera: ${esc(afuera.join(' · '))}</p><div class="row mt"><button class="b pri" data-act="closeModal">Cerrar</button></div>`);
+  const costo = (grupos.length * 0.45).toFixed(2).replace('.', ',');
+  const msg = t === 1 ? 'Hola {nombre}! … Hoy es el último día para abonar tu pedido #{n} por ${total}. Si ya pagaste, ignorá este mensaje.' : 'Hola {nombre}! … Tu pedido #{n} era para abonar hasta ayer. Podés pagarlo hasta hoy a las 16:00; después se libera.';
+  showModal(`<h3>🔔 ${r.nombre} · ${r.titulo}</h3>
+    <p class="small muted">Lives con pago ${t === 1 ? 'hoy' : 'ayer'} (${fechaUY(q.fecha, 1)}): ${q.lives.map(l => esc(l.nombre)).join(' · ')}</p>
+    ${v.aviso ? `<div class="av am mb"><span class="grow">⏰ ${esc(v.aviso)}</span></div>` : ''}
+    <div class="small muted mb" style="font-style:italic">${esc(msg)}</div>
+    <div style="max-height:42vh;overflow:auto;border:1px solid var(--bd);border-radius:10px;padding:6px 10px">${grupos.map(g => `<div class="row" style="gap:6px;padding:3px 0;border-bottom:1px solid var(--bd)"><b>#${esc(nombresPedidos(g.ps))}</b><span class="grow" style="flex:1">${esc(g.c.nombre || '?')}</span><b class="mono">${fmt(g.total)}</b></div>`).join('')}</div>
+    <p class="mt"><b>${grupos.length} mensaje${grupos.length > 1 ? 's' : ''}</b> · unos $${costo} de Meta${grupos.some(g => g.ps.length > 1) ? ' · las que tienen más de un pedido reciben un solo mensaje con todos' : ''}</p>
+    ${afuera.length ? `<p class="small muted">Quedan afuera: ${esc(afuera.join(' · '))}</p>` : ''}
+    <div class="row mt"><button class="b wa" data-act="recEnviar">📤 Mandar ${grupos.length} ${r.nombre} ahora</button><button class="b gh" data-act="closeModal">Cancelar</button></div>`);
+}
+/** Paso 2: manda lo que se vio en la vista previa (de a 15). Se vuelve a calcular la cola por si algo cambió (pagó, la agarró Yanaina). */
+async function recordatorioEnviar() {
+  const sel = UI.recCola; if (!sel) return;
+  const t = sel.t, r = REC[t], v = recVentana(t);
+  if (!v.ok) return toast(v.motivo, 5000);
+  if (v.aviso && !confirm(`${v.aviso}.\n\n¿Mandar igual?`)) return;
+  const vivos = new Map(colaRecordatorio(t).grupos.map(g => [g.c.id, g]));
+  const lista = sel.ids.map(x => vivos.get(x.cid)).filter(Boolean);
+  UI.recCola = null; closeModal();
+  if (!lista.length) return toast('Ya no queda nadie para avisar');
+  let bien = 0; const mal = [], saltados = [];
+  for (let i = 0; i < lista.length; i += 15) {
+    const tanda = lista.slice(i, i + 15);
+    toast(`📤 Enviando ${r.nombre}… ${i}/${lista.length}`, 4000);
+    try {
+      const { data, error } = await NUBE.sb.functions.invoke('whatsapp-enviar', { body: { plantilla: r.plantilla, items: tanda.map(g => ({ ref: g.c.id, tel: g.c.tel, vars: recVars(t, g) })) } });
+      if (error) throw error;
+      (data.res || []).forEach(x => {
+        const g = tanda.find(y => y.c.id === x.ref); if (!g) return;
+        if (x.ok) { g.ps.forEach(p => { p[r.campo] = ahoraISO(); }); bien++; }
+        else if (x.skip) saltados.push(`${g.c.nombre || '?'}: ${x.error}`);
+        else mal.push(`#${nombresPedidos(g.ps)} ${g.c.nombre || ''}: ${x.error}`);
+      });
+    } catch (e) { tanda.forEach(g => mal.push(`#${nombresPedidos(g.ps)} ${g.c.nombre || ''}: ${e.message || e}`)); }
+    guardar();
+  }
+  render();
+  alert(`✅ ${bien} ${r.nombre} enviados.` + (saltados.length ? `\n\nNo salieron (a propósito) ${saltados.length}:\n` + saltados.slice(0, 15).join('\n') : '') + (mal.length ? `\n\n⚠️ Fallaron ${mal.length} (mandalos con 💬 WhatsApp):\n` + mal.slice(0, 25).join('\n') : ''));
+}
+Object.assign(ACT, { recVer: d => recordatorioVer(+d.t), recEnviar: () => recordatorioEnviar() });
+function pintarRecordatorios() {
+  const tot = document.getElementById('live-tot-bar'); if (!tot) return;
+  let bar = document.getElementById('live-rec-bar');
+  if (!bar) {
+    bar = document.createElement('div'); bar.id = 'live-rec-bar'; bar.style.marginTop = '8px';
+    bar.innerHTML = '<div class="row" style="gap:6px"><button class="b" data-act="recVer" data-t="1" id="live-rec-1" type="button" style="flex:1">🔔 Recordatorio R1</button><button class="b" data-act="recVer" data-t="2" id="live-rec-2" type="button" style="flex:1">🔔 Recordatorio R2</button></div><div class="small muted" id="live-rec-t" style="margin-top:4px"></div>';
+    tot.insertAdjacentElement('afterend', bar);
+  }
+  const t = bar.querySelector('#live-rec-t'); if (!t) return;
+  const n1 = colaRecordatorio(1), n2 = colaRecordatorio(2);
+  t.textContent = `R1 (día de pago, 20:00): ${n1.lives.length ? '~' + n1.grupos.length + ' por avisar' : 'ningún live paga hoy'} · R2 (día siguiente, 10:00): ${n2.lives.length ? '~' + n2.grupos.length + ' por avisar' : 'ningún live pagó ayer'}`;
+}
+const _pintarFP_rec = pintarFechaPago;
+pintarFechaPago = function () { _pintarFP_rec.apply(this, arguments); try { pintarRecordatorios(); } catch (e) { console.warn(e); } };
