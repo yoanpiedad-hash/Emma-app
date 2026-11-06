@@ -25,6 +25,7 @@ const graph = () => (ENV('WHATSAPP_API_BASE') || GRAPH_DEF).replace(/\/+$/, '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 const b64 = (u: Uint8Array) => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
+const UNSUP_TXT = '[Mandó un mensaje o archivo que no llegó al sistema: puede ser un comprobante en un formato que no se recibe]';
 const AUTOMATICO = /Gracias por elegir Emma Indumentaria|mensaje autom[aá]tico de Emma|me confirm[aá]s con un S[ÍI]|Formas de pago/i;
 
 // ─── Seguridad del webhook ────────────────────────────────────
@@ -78,7 +79,12 @@ async function ingestar(m: any, wa: string): Promise<boolean> {
   else if (tipo === 'button') texto = m.button?.text || '';
   else if (tipo === 'interactive') texto = m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || '';
   else if (tipo === 'reaction') return false; // un emoji sobre un mensaje no necesita respuesta
-  else if (tipo === 'edit' || tipo === 'revoke' || tipo === 'unsupported' || tipo === 'system' || tipo === 'ephemeral') {
+  else if (tipo === 'unsupported') {
+    // 6/11: caso Nicole #45: mandó el comprobante en un formato que Meta no entrega (p. ej. foto de "ver una vez") y se perdía en silencio.
+    // Ahora entra como mensaje normal sin contenido: Mabel pide una captura, o (si Yanaina está atendiendo) el repaso lo deja para el equipo.
+    texto = UNSUP_TXT;
+  }
+  else if (tipo === 'edit' || tipo === 'revoke' || tipo === 'system' || tipo === 'ephemeral') {
     // 4/11: editó o borró un mensaje (o evento del sistema): se guarda sin responder. Si es una edición con texto nuevo, va como nota.
     const nuevo = m.edit?.message?.text?.body || m.edit?.text?.body || '';
     await sb.from('mabel_mensajes').upsert([{ id: m.id, tel_key: telKey, wa_id: wa, direccion: 'in', tipo, texto: nuevo ? '(editó su mensaje anterior: ' + nuevo + ')' : `[${tipo}]`, media: null, procesado: true }], { onConflict: 'id', ignoreDuplicates: true });
@@ -142,7 +148,7 @@ async function historia(telKey: string, excluir: string[]) {
   const msgs: { role: 'user' | 'assistant'; content: string }[] = [];
   for (const r of (data || []).reverse()) {
     if (excluir.includes(r.id)) continue;
-    if (['edit', 'revoke', 'unsupported', 'system', 'ephemeral'].includes(String(r.tipo)) && String(r.texto || '').startsWith('[')) continue; // eventos sin contenido
+    if (['edit', 'revoke', 'unsupported', 'system', 'ephemeral'].includes(String(r.tipo)) && String(r.texto || '').startsWith('[') && !(r.direccion === 'in' && r.tipo === 'unsupported' && r.texto === UNSUP_TXT)) continue; // eventos sin contenido (el unsupported de la clienta SÍ se ve, 6/11)
     if (r.direccion === 'in' && r.procesado === false) continue; // llegó mientras se contestaba: lo atiende la próxima vuelta (si no, se contesta dos veces)
     const t = r.direccion === 'in' ? (r.media ? `[mandó un archivo: ${r.media.mime}] ` : '') + (r.texto || '') : r.direccion === 'echo' ? '(Equipo Emma, desde el celular) ' + (r.texto || '') : (r.texto || '');
     if (!t.trim()) continue;
@@ -452,9 +458,9 @@ async function repasarPendientes(soloTel = '') {
     const desde = [d.desde, d.repaso].filter(Boolean).sort().pop() || new Date(Date.now() - 24 * 3600e3).toISOString();
     // ¿La clienta escribió y nadie le contestó? (último mensaje de la conversación es de ella) → Mabel lo atiende normal:
     // contesta si puede, o deriva (en silencio si ya la había derivado hace poco)
-    const { data: ult } = await sb.from('mabel_mensajes').select('id,direccion,creado,tipo').eq('tel_key', telKey).order('creado', { ascending: false }).limit(15);
+    const { data: ult } = await sb.from('mabel_mensajes').select('id,direccion,creado,tipo,texto').eq('tel_key', telKey).order('creado', { ascending: false }).limit(15);
     const sinResp: string[] = [];
-    for (const m of ult || []) { if (m.direccion === 'echo' && m.tipo === 'reaction') break; /* 5/11: Yanaina reaccionó = lo vio y lo atendió */ if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo))) continue; if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
+    for (const m of ult || []) { if (m.direccion === 'echo' && m.tipo === 'reaction') break; /* 5/11: Yanaina reaccionó = lo vio y lo atendió */ if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo)) && !(m.direccion === 'in' && m.tipo === 'unsupported' && m.texto === UNSUP_TXT)) continue; if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
     // 5/11: si Yanaina habló con la clienta durante la ventana (eco desde el celular), el repaso no contesta: revisa en silencio y lo dudoso queda para Yanaina
     const { count: nEco } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'echo').gt('creado', d.desde || new Date(Date.now() - 12 * 3600e3).toISOString());
     if (sinResp.length && !(nEco && nEco > 0)) {
