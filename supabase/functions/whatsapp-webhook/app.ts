@@ -313,10 +313,14 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   {
     const ACK = /^(ok+|oka+y?|okis|dale+|listo+|genial|perfecto|b+ueno+|gracias+|muchas gracias|mil gracias|gracias bella|gracias a vos|igualmente|un beso|besos?|\[sticker\]|\[reaction\]|[\p{Extended_Pictographic}\uFE0F\u200D\s]+)[\s.!¡]*([\p{Extended_Pictographic}\uFE0F\u200D\s]*)$/iu;
     const soloAck = lote.every((m: any) => !m.media && ACK.test(String(m.texto || '').trim() || '[sticker]'));
+    // 5/11: emojis, stickers y reacciones SOLOS no se contestan nunca (ej. respuestas a un estado de Yanaina con ❤️ o sticker), sin importar qué se dijo antes
+    const EMO = /^(\[sticker\]|\[reaction\]|[\p{Extended_Pictographic}\uFE0F\u200D\s]+)$/u;
+    const COMPLI = /^(hermos[ao]s?|lind[ao]s?|divin[ao]s?|precios[ao]s?|qu[eé] lind[ao]s?|me encant[aó]|amo|bellas?|jaja+|jeje+|😂|wow)[\s.!¡]*[\p{Extended_Pictographic}\uFE0F\u200D\s]*$/iu;
+    if (lote.every((m: any) => !m.media && (EMO.test(String(m.texto || '').trim() || '[sticker]') || COMPLI.test(String(m.texto || '').trim())))) return { respuesta: null, motivo: 'emoji, sticker o comentario suelto: no se contesta' };
     if (soloAck) {
       const { data: ul } = await sb.from('mabel_mensajes').select('texto,creado').eq('tel_key', telKey).in('direccion', ['out', 'echo']).order('creado', { ascending: false }).limit(1);
       const u = ul?.[0];
-      if (u && !String(u.texto || '').includes('?') && Date.now() - Date.parse(u.creado) < 6 * 3600e3) return { respuesta: null, motivo: 'agradecimiento suelto: no se contesta' };
+      if (u && !String(u.texto || '').includes('?')) return { respuesta: null, motivo: 'agradecimiento suelto: no se contesta' };
     }
   }
   // Lo que llegó mientras se preparaba la respuesta entra en el mismo lote (una sola respuesta)
