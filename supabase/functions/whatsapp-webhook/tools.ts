@@ -146,8 +146,8 @@ export async function buscarPedido(ctx: Ctx) {
       ]);
       fotosEquipo = [...(e1 || []).map((x: any) => x.creado), ...(e2 || []).map((x: any) => x.fecha)].map((x) => new Date(x).toISOString());
     }
-    // 7/11: domingo no sale nada; sábado no sale cadetería (sí DAC y Núñez, antes de las 12).
-    const sumarDia = (f: string, ent?: string) => { let d = new Date(new Date(f + 'T12:00:00Z').getTime() + 864e5); while (d.getUTCDay() === 0 || (ent === 'cadeteria' && d.getUTCDay() === 6)) d = new Date(d.getTime() + 864e5); return d.toISOString().slice(0, 10); };
+    // 7/11: domingo no sale nada; sábado sale todo menos Correo.
+    const sumarDia = (f: string, ent?: string) => { let d = new Date(new Date(f + 'T12:00:00Z').getTime() + 864e5); while (d.getUTCDay() === 0) d = new Date(d.getTime() + 864e5); return d.toISOString().slice(0, 10); };
     enviados_recientes = (en || []).map((r) => {
       const p = r.datos, f = p.fechas?.enviado || p.fechas?.listo || null;
       const dias = f ? Math.floor((hoyMs - new Date(f + 'T12:00:00-03:00').getTime()) / 864e5) : null;
