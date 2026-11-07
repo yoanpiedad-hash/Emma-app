@@ -83,6 +83,35 @@ function abiertosDe(cid) {
   return todosPedidos().filter(p => p.clienteId === cid && sinSalir(p))
     .sort((a, b) => (a.fechas.creado || '').localeCompare(b.fechas.creado || '') || a.num - b.num);
 }
+/** 7/11: lo que deja Mabel en el pedido. avisoDespacho = aviso corto para el momento de cerrar ("tiene paquete de Yharol"); retiroCuando = cuándo dijo que pasa a retirar {fecha, hora, texto}. Se ven solo mientras el pedido no salió. */
+const avisosDe = ps => [...new Set(ps.map(p => String(p.avisoDespacho || '').trim()).filter(Boolean))];
+const DIA_CORTO = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+function retiroDiaTxt(fecha) {
+  const h = hoyISO(); if (!fecha) return 'Sin horario';
+  const d = DIA_CORTO[new Date(fecha + 'T12:00:00').getDay()] + ' ' + fechaUY(fecha, 1);
+  return fecha === h ? 'Hoy · ' + d : fecha === sumarDias(h, 1) ? 'Mañana · ' + d : fecha < h ? 'Pasó · ' + d : d;
+}
+/** Texto corto de cuándo pasa: "Hoy 18:00", "vie 7/11 18:00" o lo que escribió la clienta si no se pudo ordenar. */
+function retiroCuandoTxt(p) {
+  const r = p.retiroCuando; if (!r) return '';
+  if (!r.fecha) return r.texto ? String(r.texto) : '';
+  const h = hoyISO(), d = r.fecha === h ? 'Hoy' : r.fecha === sumarDias(h, 1) ? 'Mañana' : DIA_CORTO[new Date(r.fecha + 'T12:00:00').getDay()] + ' ' + fechaUY(r.fecha, 1);
+  return d + (r.hora ? ' ' + r.hora : '');
+}
+const retiroClave = p => { const r = p.retiroCuando; return r && r.fecha ? r.fecha + ' ' + (r.hora || '99:99') : '9999-99-99 99:99'; };
+/** Retiros anotados (pagados o que pagan al llegar), por clienta, ordenados por cuándo dijeron que pasan; los sin horario, al final. */
+function retirosLista() {
+  const G = new Map();
+  for (const p of todosPedidos()) {
+    if (!sinSalir(p) || p.estado === 'guardado' || entregaEf(p) !== 'retiro') continue;
+    if (!G.has(p.clienteId)) G.set(p.clienteId, []);
+    G.get(p.clienteId).push(p);
+  }
+  const creado = ps => ps.map(p => p.fechas.creado || '').sort()[0] || '';
+  return [...G.entries()].map(([cid, ps]) => ({ cid, ps: ps.sort((a, b) => (a.fechas.creado || '').localeCompare(b.fechas.creado || '') || a.num - b.num), k: ps.map(retiroClave).sort()[0] }))
+    .sort((a, b) => a.k.localeCompare(b.k) || creado(a.ps).localeCompare(creado(b.ps)));
+}
+const listaTipo = t => t === 'retiro' ? retirosLista() : (paraArmar()[t] || []);
 /** El pedido "principal" del paquete: el más nuevo (su número y código van en la etiqueta). */
 const principal = ps => [...ps].sort((a, b) => (b.fechas.creado || '').localeCompare(a.fechas.creado || '') || b.num - a.num)[0];
 const numsTxt = ps => ps.map(p => '#' + p.num).join(' · ');
@@ -165,11 +194,13 @@ function resHTML() {
 // ── Inicio: pagados para armar + lo que salió hoy ──
 function inicioHTML() {
   const a = paraArmar(), m = stats();
+  a.retiro = retirosLista();
   const grupo = (tipo, titulo, ayuda) => {
     let gs = a[tipo]; if (!gs.length) return '';
     const agKey = cid => ((cliById(cid) || {}).agencia || '').trim().toUpperCase();
     if (tipo === 'agencia') gs = [...gs].sort((x, y) => (!agKey(x.cid)) - (!agKey(y.cid)) || agKey(x.cid).localeCompare(agKey(y.cid)));
     let agAnt = null;
+    if (tipo === 'retiro') gs = gs.map(g => ({ ...g, dia: (g.ps.map(p => p.retiroCuando && p.retiroCuando.fecha).filter(Boolean).sort()[0]) || '' }));
     return `<div class="card"><div class="card-t">${titulo} <span class="bdg">${gs.length}</span></div>${ayuda ? `<div class="small muted mb">${ayuda}</div>` : ''}
       ${gs.map(({ cid, ps }) => {
         const c = cliById(cid) || { nombre: '?' }, art = ps.reduce((s, p) => s + (p.cambio ? p.cambio.art : calc(p).art), 0);
@@ -177,11 +208,16 @@ function inicioHTML() {
         if (tipo === 'cadeteria' && !(c.direccion || '').trim()) marcas.push('<span class="chip li">⚠️ sin dirección</span>');
         if (tipo === 'agencia' && !(c.agencia || '').trim()) marcas.push('<span class="chip li">⚠️ sin agencia</span>');
         if ((m[cid] || ST0).guardados.length) marcas.push('<span class="chip gu">⏸️ tiene guardado</span>');
+        if (tipo === 'retiro') {
+          if (ps.some(p => !pagado(p))) marcas.push('<span class="chip pe">💵 paga al llegar</span>');
+          if (avisosDe(ps).length) marcas.push('<span class="chip li">📌 tiene aviso</span>');
+        }
         if (ps.some(p => p.cambio)) marcas.push('<span class="chip ac">🔄 cambio</span>');
-        const k = tipo === 'agencia' ? agKey(cid) || 'SIN AGENCIA' : null, cab = k && k !== agAnt ? `<div class="dsp-ag-h">${esc(k)} · ${gs.filter(x => (agKey(x.cid) || 'SIN AGENCIA') === k).length}</div>` : '';
+        const g0 = gs.find(x => x.cid === cid), rcTxt = tipo === 'retiro' ? ps.map(retiroCuandoTxt).filter(Boolean)[0] || '' : '';
+        const k = tipo === 'agencia' ? agKey(cid) || 'SIN AGENCIA' : tipo === 'retiro' ? retiroDiaTxt(g0.dia) : null, cab = k && k !== agAnt ? `<div class="dsp-ag-h">${esc(k)} · ${tipo === 'retiro' ? gs.filter(x => retiroDiaTxt(x.dia) === k).length : gs.filter(x => (agKey(x.cid) || 'SIN AGENCIA') === k).length}</div>` : '';
         if (k) agAnt = k;
         return cab + `<div class="dsp-a" data-act="despArmar" data-cid="${cid}" data-t="${tipo}">
-          <div style="flex:1;min-width:0"><div class="nm">${esc(c.nombre)}</div><div class="small muted">${numsTxt(ps)} · ${art} art. · ${fechaUY(ps[0].fechas.creado, 1)}${tipo === 'agencia' && c.agencia ? ' · ' + esc(c.agencia) : ''}${tipo === 'cadeteria' && c.barrio ? ' · ' + esc(c.barrio) : ''}</div>${marcas.length ? `<div class="pc-sub">${marcas.join(' ')}</div>` : ''}</div>
+          <div style="flex:1;min-width:0"><div class="nm">${esc(c.nombre)}${rcTxt ? ` <span class="chip ac">🕒 ${esc(rcTxt)}</span>` : ''}</div><div class="small muted">${numsTxt(ps)} · ${art} art. · ${fechaUY(ps[0].fechas.creado, 1)}${tipo === 'agencia' && c.agencia ? ' · ' + esc(c.agencia) : ''}${tipo === 'cadeteria' && c.barrio ? ' · ' + esc(c.barrio) : ''}</div>${marcas.length ? `<div class="pc-sub">${marcas.join(' ')}</div>` : ''}</div>
           <span class="muted">›</span></div>`;
       }).join('')}</div>`;
   };
@@ -189,7 +225,7 @@ function inicioHTML() {
   const fil = [['todos', 'Todos', a.cadeteria.length + a.agencia.length + a.retiro.length + a.sin_definir.length], ['cadeteria', '🚴 Cadetería', a.cadeteria.length], ['agencia', '📦 Agencias', a.agencia.length], ['retiro', '🏠 Retiros', a.retiro.length]]
     .map(([t, txt, n]) => `<button class="b${F === t ? ' on' : ''}" data-act="despFiltro" data-t="${t}"><b>${n}</b>${txt}</button>`).join('');
   let h = (ver('cadeteria') ? grupo('cadeteria', '🚴 Pagados para armar · Cadetería') : '') + (ver('agencia') ? grupo('agencia', '📦 Pagados para armar · Agencias') : '')
-    + (ver('retiro') ? grupo('retiro', '🏠 Pagados para retirar') : '')
+    + (ver('retiro') ? grupo('retiro', '🏠 Para retirar', 'Por orden de horario que dijeron: las que pasan antes, arriba. Las que no dijeron hora, al final.') : '')
     + (F === 'todos' ? grupo('sin_definir', '❓ Pagados sin entrega definida', 'Tocá la clienta y elegí cómo sale.') : '');
   if (!h) h = '<div class="empty">No hay pedidos pagados esperando salir 🎉</div>';
   h = `<div class="row mb" style="justify-content:flex-end"><button class="b sm" data-act="tab" data-t="pagos">📊 Pagos del día</button></div><div class="dsp-fil">${fil}</div>` + h;
@@ -236,6 +272,10 @@ function clientaHTML() {
   for (const id of [...D.sel]) if (!ab.some(p => p.id === id)) D.sel.delete(id);
   const alertas = [];
   if (D.aviso) alertas.push(`<div class="alert pe">${D.aviso}</div>`);
+  // 7/11: avisos de Mabel (lo que la clienta le dijo) y cuándo pasa a retirar: arriba de todo, para verlos al cerrar
+  const rcs = [...new Set(ab.filter(p => entregaEf(p) === 'retiro').map(retiroCuandoTxt).filter(Boolean))];
+  if (rcs.length) alertas.unshift(`<div class="alert pe">🕒 Dijo que pasa a retirar: <b>${rcs.map(esc).join(' · ')}</b></div>`);
+  avisosDe(ab).reverse().forEach(t => alertas.unshift(`<div class="alert" style="background:#fff3bf;border:1px solid #e0b400;color:#5a4300;font-weight:700">📌 ${esc(t)}</div>`));
   if (h.deudas.length) { const d = h.deudas[h.deudas.length - 1]; alertas.push(`<div class="alert li">⚠️ DEUDORA: pedido sin pagar del ${fechaUY(d.fecha)} por ${fmt(d.total)}${h.deudas.length > 1 ? ' (+' + (h.deudas.length - 1) + ' más)' : ''}</div>`); }
   if (c.saldoFavor > 0) alertas.push(`<div class="alert ok">💰 Tiene ${fmt(c.saldoFavor)} a favor</div>`);
   const filas = ab.map(p => {
@@ -663,7 +703,7 @@ function abrirPorCodigo(p) {
     cerrarClientaDesp(); render(); focoBuscar(); return;
   }
   const ab = abiertosDe(p.clienteId);
-  if (entregaEf(p) === 'retiro' && !porCobrar(p) && ab.length === 1) {
+  if (entregaEf(p) === 'retiro' && !porCobrar(p) && ab.length === 1 && !avisosDe(ab).length) {
     const k = crearPaquete(c, [p], 'retiro', {}, []);
     D.res = { paqId: k.id };
     cerrarClientaDesp(); render(); focoBuscar(); return;
@@ -699,7 +739,7 @@ Object.assign(ACT, {
     abrirClientaDesp(d.cid, ids, d.t);
     if (ENVIOS.has(d.t)) { elegirSalida(d.t); render(); }   // en el celu abre en "Solo pago": acá queremos la salida
   },
-  despArmar: d => { const a = paraArmar()[d.t] || [], g = a.find(x => x.cid === d.cid); UI.desp.res = null; abrirClientaDesp(d.cid, g ? g.ps.map(p => p.id) : null, d.t); },
+  despArmar: d => { const a = listaTipo(d.t), g = a.find(x => x.cid === d.cid); UI.desp.res = null; abrirClientaDesp(d.cid, g ? g.ps.map(p => p.id) : null, d.t); },
   despAbrir: d => { UI.desp.res = null; abrirClientaDesp(d.cid); },
   despCerrar: () => { cerrarClientaDesp(); render(); focoBuscar(); },
   despTog: (d, el, e) => {

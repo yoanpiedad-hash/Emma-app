@@ -352,8 +352,8 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
       const { data } = await sb.from('pedidos').select('*').eq('id', r.id).single();
       const p = JSON.parse(JSON.stringify(data.datos)); p.entrega = tipo;
       if (s(a.nota_interna) && !String(p.notas || '').includes(s(a.nota_interna))) { const n = '📦 ' + s(a.nota_interna).slice(0, 150); p.notas = p.notas ? String(p.notas) + '\n' + n : n; }
-      if (tipo === 'retiro') { if (!pagado(p)) p.pagaAlRetirar = true; else delete p.pagaAlRetirar; if (s(a.horario_retiro)) { const n = '🕒 Pasa a retirar: ' + s(a.horario_retiro).slice(0, 80) + ' (le dijo a Mabel)'; p.notas = p.notas ? String(p.notas).replace(/🕒 Pasa a retirar:[^\n]*/, '').trim() + (String(p.notas).replace(/🕒 Pasa a retirar:[^\n]*/, '').trim() ? '\n' : '') + n : n; } }
-      else delete p.pagaAlRetirar;
+      if (tipo === 'retiro') { if (!pagado(p)) p.pagaAlRetirar = true; else delete p.pagaAlRetirar; if (s(a.horario_retiro)) { const f = s(a.retiro_fecha), hh = s(a.retiro_hora).match(/^(\d{1,2}):(\d{2})$/); p.retiroCuando = { texto: s(a.horario_retiro).slice(0, 80), ...(/^\d{4}-\d{2}-\d{2}$/.test(f) ? { fecha: f } : {}), ...(hh && +hh[1] < 24 && +hh[2] < 60 ? { hora: hh[1].padStart(2, '0') + ':' + hh[2] } : {}) }; if (!p.retiroCuando.fecha) delete p.retiroCuando.hora; } if (s(a.horario_retiro)) { const n = '🕒 Pasa a retirar: ' + s(a.horario_retiro).slice(0, 80) + ' (le dijo a Mabel)'; p.notas = p.notas ? String(p.notas).replace(/🕒 Pasa a retirar:[^\n]*/, '').trim() + (String(p.notas).replace(/🕒 Pasa a retirar:[^\n]*/, '').trim() ? '\n' : '') + n : n; } }
+      else { delete p.pagaAlRetirar; delete p.retiroCuando; }
       if (tipo === 'cadeteria') {
         p.tipoEnvio = p.tipoEnvio || 'comun';
         if (x >= tarE) { p.cobroEnvio = 'pago'; p.cobroMonto = 0; } else if (x > 0 || cambio) { p.cobroEnvio = 'monto'; p.cobroMonto = tarE - x; } else { p.cobroEnvio = 'cobrar'; p.cobroMonto = 0; }
@@ -375,6 +375,30 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     ...(tipo === 'retiro' ? { paga_al_retirar: objetivo.some((r) => !pagado(r.datos)) } : {}),
     mensaje_de_cierre: tipo === 'cadeteria' ? 'Listo, ya lo tenemos anotado. Cuando salga te avisa la cadetería.' : tipo === 'agencia' ? 'Listo, anotado. Cuando salga te mandamos la foto del comprobante de envío.' : 'Listo, anotado. ¡Te esperamos!',
   };
+}
+
+// ─── dejar_aviso_despacho (7/11) ──────────────────────────────
+// Un aviso corto para quien cierra el paquete en Despacho ("tiene paquete de Yharol, enviar junto"). Va en los pedidos abiertos de la clienta
+// y la app lo muestra arriba mientras el pedido no salió; cuando sale, se olvida con el pedido.
+export async function dejarAvisoDespacho(ctx: Ctx, a: any) {
+  if (!ctx.clienta) return { error: 'No hay ficha de clienta para este número.' };
+  const texto = String(a?.texto ?? '').trim().slice(0, 120);
+  if (!texto) return { error: 'Falta el texto del aviso.' };
+  const { filas } = await abiertos(ctx);
+  const objetivo = filas.filter((r) => ['pendiente', 'listo', 'guardado'].includes(r.datos.estado));
+  if (!objetivo.length) return { ok: false, error: 'No hay pedido abierto para dejarle el aviso.' };
+  await conReintento(async () => {
+    for (const r of objetivo) {
+      const { data } = await sb.from('pedidos').select('*').eq('id', r.id).single();
+      const p = JSON.parse(JSON.stringify(data.datos));
+      const previo = String(p.avisoDespacho || '').trim();
+      if (previo.toLowerCase().includes(texto.toLowerCase())) continue;
+      p.avisoDespacho = (previo ? previo + ' · ' : '') + texto;
+      if (p.avisoDespacho.length > 200) p.avisoDespacho = p.avisoDespacho.slice(0, 200);
+      await guardarPedido(data, p);
+    }
+  });
+  return { ok: true, pedidos: objetivo.map((r) => r.datos.num) };
 }
 
 // ─── vincular_pedido (4/11) ───────────────────────────────────
@@ -570,7 +594,8 @@ export const HERRAMIENTAS = [
     nota_cadete: { type: 'string', description: 'Cadetería: SOLO referencias para llegar (portón verde, apto 2, timbre) o el horario de entrega. Nada más.' }, nota_interna: { type: 'string', description: 'Nota para el equipo de Emma sobre este pedido (va junto con otra cosa, lo de Yharol, armar con otro pedido…). No la ve el cadete.' }, etiqueta: { type: 'string', description: 'Cadetería: nombre de la dirección si la clienta lo dice (casa, trabajo, mamá…)' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio (cobra un envío y medio)' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
-    nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' } }, required: ['tipo'] } },
+    nombre_retira: { type: 'string', description: 'Nombre completo de quien recibe o retira, si es distinto del nombre de la clienta' }, horario_retiro: { type: 'string', description: 'Retiro: en qué horario dice que pasa (ej. "mañana a las 18")' }, retiro_fecha: { type: 'string', description: 'Retiro: la fecha real del día que dice que pasa, AAAA-MM-DD (sacala de HOY; "mañana" es el día siguiente a HOY). Omitila si no dijo día claro.' }, retiro_hora: { type: 'string', description: 'Retiro: la hora a la que dice que pasa, HH:MM en 24 hs ("a las 6 de la tarde" = 18:00; si dice un rango o "tipo 5", la hora aproximada). Omitila si no dijo hora.' } }, required: ['tipo'] } },
+  { name: 'dejar_aviso_despacho', description: 'Deja un aviso corto para quien arma y cierra el paquete en Despacho, cuando la clienta dice algo que cambia cómo se manda (tiene un paquete de Yharol para mandar junto, tiene algo guardado, etc.). Va en sus pedidos abiertos y se olvida cuando el pedido sale.', input_schema: { type: 'object', properties: { texto: { type: 'string', description: 'Aviso de una línea, claro y sin saludos. Ej: "Tiene paquete de Yharol: enviar junto"' } }, required: ['texto'] } },
   { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si la clienta estaba confirmando el pedido' }, prenda: { type: 'string', description: 'Lo que dice que compró, si lo dijo ("conjunto chocolate", "jean")' } } } },
   { name: 'guardar_pedido', description: 'La clienta pide guardar su pedido (que no salga todavía, juntarlo con el próximo live, levantarlo más adelante). Si ya pagó, lo pasa a Guardado. Si no pagó, solo lo guarda si la ficha lo permite (hasta 7 días); si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'Fecha hasta la que lo guarda, AAAA-MM-DD, solo si la clienta dijo una' } } } },
   { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
@@ -585,6 +610,7 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
     case 'marcar_pagado': return await marcarPagado(ctx, input || {});
     case 'guardar_entrega': return await guardarEntrega(ctx, input || {});
     case 'confirmar_pedido': return await confirmarPedido(ctx);
+    case 'dejar_aviso_despacho': return await dejarAvisoDespacho(ctx, input || {});
     case 'vincular_pedido': return await vincularPedido(ctx, input || {});
     case 'guardar_pedido': return await guardarPedidoCli(ctx, input || {});
     case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo, !!input?.en_silencio);
