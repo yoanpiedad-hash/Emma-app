@@ -320,7 +320,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
   if (solo.length && !solo.includes(telKey)) return { respuesta: null, motivo: 'número fuera de mabelSolo' };
   // Abierta a todas: nunca les contesta a los números del equipo (Yoan, Yharol), que hablan en lo personal con Yanaina por este número
-  const ignorar: string[] = Array.isArray(cfg.mabelIgnorar) ? cfg.mabelIgnorar.map((x: string) => telKeyDe(String(x))).filter(Boolean) : []; // 7/11: proveedores, mayoristas, contactos personales: Mabel nunca les contesta ni los repasa
+  const ignorar: string[] = Array.isArray(cfg.mabelIgnorar) ? cfg.mabelIgnorar.map((x: any) => telKeyDe(String(x && typeof x === 'object' ? x.tel : x))).filter(Boolean) : []; // 7/11: proveedores, mayoristas, contactos personales: Mabel nunca les contesta ni los repasa
   if (ignorar.includes(telKey)) return { respuesta: null, motivo: 'número ignorado (mabelIgnorar)' };
   const equipo = ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean);
   if (!solo.length && equipo.includes(telKey)) return { respuesta: null, motivo: 'número del equipo' };
@@ -437,7 +437,7 @@ async function repasarPendientes(soloTel = '') {
   const cfg = await leerConfig();
   if (cfg.mabelActiva === false) return [{ motivo: 'Mabel pausada' }];
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
-  const ignorar: string[] = Array.isArray(cfg.mabelIgnorar) ? cfg.mabelIgnorar.map((x: string) => telKeyDe(String(x))).filter(Boolean) : []; // 7/11: proveedores, mayoristas, contactos personales: Mabel nunca les contesta ni los repasa
+  const ignorar: string[] = Array.isArray(cfg.mabelIgnorar) ? cfg.mabelIgnorar.map((x: any) => telKeyDe(String(x && typeof x === 'object' ? x.tel : x))).filter(Boolean) : []; // 7/11: proveedores, mayoristas, contactos personales: Mabel nunca les contesta ni los repasa
   const equipo = [...ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean), ...ignorar];
   const { data: convs } = await sb.from('conversaciones').select('id,datos').eq('borrado', false).limit(500);
   // Clientas en espera de que aparezca su pedido (vincular_pedido sin resultado durante el vivo)

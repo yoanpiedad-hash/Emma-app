@@ -185,6 +185,11 @@ function montarCfgMabel() {
     <div class="small muted">Mabel usa estos horarios con la fecha real (hoy, mañana, el viernes 6/11). Un día sin horario cargado: no da horario y le pide escribir el día antes. Las fechas pasadas se borran solas.</div>
     <div class="row mt" style="flex-wrap:wrap;gap:6px"><input id="mb-hr-f" type="date" style="width:auto"><input id="mb-hr-d" type="time" value="11:00" style="width:auto"><span class="small">a</span><input id="mb-hr-h" type="time" value="17:00" style="width:auto"><label class="small"><input id="mb-hr-c" type="checkbox"> Sin retiro ese día</label><button class="b sm" data-act="mbHrAdd">+ Agregar</button></div>
     <div id="mb-hr-lista" class="mt"></div>
+    <div class="card-t mt">🔕 Números que Mabel no contesta</div>
+    <div class="small muted">Proveedores, mayoristas, contactos personales. Mabel no les contesta ni los repasa (los mensajes igual te llegan al celular). Pegá uno por línea, con una etiqueta si querés: <b>099 123 456 proveedor Once</b></div>
+    <textarea id="mb-ig-t" rows="3" class="mt" placeholder="099 123 456 proveedor Once&#10;098 765 432 personal"></textarea>
+    <div class="row mt"><button class="b sm" data-act="mbIgAdd">+ Agregar</button></div>
+    <div id="mb-ig-lista" class="mt"></div>
     <div class="grid2 mt">
       <div><label class="lb">Día de otras agencias (no DAC, Núñez ni Correo)</label><select id="mb-dia" data-chg="mbCfg" data-k="diaOtrasAgencias">${DIAS_SEM.slice(1).map(x => `<option>${x}</option>`).join('')}</select></div>
       <div><label class="lb">Recargo Mercado Pago (%)</label><input id="mb-mp" type="number" inputmode="numeric" data-chg="mbCfg" data-k="mpRecargo"></div>
@@ -200,6 +205,13 @@ function pintarHorariosRetiro() {
   const hs = horariosRetiro();
   l.innerHTML = hs.length ? hs.map(x => `<div class="row" style="justify-content:space-between;padding:4px 0"><span>${x.fecha === hoyISO() ? '<b>HOY</b> · ' : ''}${esc(f(x))}: ${x.cerrado ? '<b>sin retiro</b>' : esc(x.desde) + ' a ' + esc(x.hasta) + ' hs'}</span><button class="b sm" data-act="mbHrDel" data-f="${x.fecha}">✕</button></div>`).join('') : '<div class="small muted">Sin horarios cargados.</div>';
 }
+// Números ignorados (7/11): lista [{tel:'099123456', nota}]. Mabel la lee en la nube (config.mabelIgnorar).
+function ignorados() { return (cfgN('mabelIgnorar', []) || []).map(x => typeof x === 'object' ? x : { tel: String(x), nota: '' }).filter(x => x && x.tel); }
+function pintarIgnorados() {
+  const l = $('#mb-ig-lista'); if (!l) return;
+  const hs = ignorados();
+  l.innerHTML = hs.length ? hs.map(x => `<div class="row" style="justify-content:space-between;padding:4px 0"><span>${esc(x.tel)}${x.nota ? ' · ' + esc(x.nota) : ''}</span><button class="b sm" data-act="mbIgDel" data-t="${esc(x.tel)}">✕</button></div>`).join('') + `<div class="small muted mt">${hs.length} número(s) ignorado(s)</div>` : '<div class="small muted">Ninguno cargado.</div>';
+}
 function pintarCfgMabel() {
   montarCfgMabel();
   const n = cfgN('novedadesHoy', null) || {}, a = document.activeElement;
@@ -207,6 +219,7 @@ function pintarCfgMabel() {
   if (a !== $('#mb-vence')) $('#mb-vence').value = n.vence || hoyISO();
   $('#mb-nov-est').innerHTML = n.texto ? (novedadesVigentes() ? '<span class="c-ok">✓ vigente</span>' : '<span class="c-li">vencida: Mabel no la usa</span>') : '';
   pintarHorariosRetiro();
+  pintarIgnorados();
   $('#mb-dia').value = cfgN('diaOtrasAgencias', 'viernes');
   if (a !== $('#mb-mp')) $('#mb-mp').value = cfgN('mpRecargo', 10);
   if (a !== $('#mb-gsp')) $('#mb-gsp').value = cfgN('guardarSinPagarDias', 30);
@@ -251,6 +264,19 @@ Object.assign(ACT, {
     const lista = horariosRetiro().filter(x => x.fecha !== f); lista.push(c ? { fecha: f, cerrado: true } : { fecha: f, desde: d, hasta: h });
     saveConfig({ horariosRetiro: lista }); toast('✓ Horario guardado'); pintarCfgMabel();
   },
+  mbIgAdd: () => {
+    const t = $('#mb-ig-t').value, lista = ignorados(), claves = new Set(lista.map(x => x.tel.replace(/\D/g, '').slice(-8)));
+    let n = 0, mal = 0;
+    t.split('\n').forEach(ln => {
+      const r = ln.match(/^[\s+]*([\d\s().-]{8,})(.*)$/); if (!r) { if (ln.trim()) mal++; return; }
+      const dig = r[1].replace(/\D/g, ''); if (dig.length < 8) { mal++; return; }
+      const k = dig.slice(-8); if (claves.has(k)) return;
+      claves.add(k); lista.push({ tel: r[1].trim().replace(/\s+/g, ' '), nota: r[2].trim() }); n++;
+    });
+    if (!n) return toast(mal ? 'No entendí el número: pegá uno por línea (ej. 099 123 456 proveedor)' : 'Ya estaban cargados o no hay nada para agregar');
+    saveConfig({ mabelIgnorar: lista }); $('#mb-ig-t').value = ''; toast('✓ ' + n + ' número(s) agregado(s)' + (mal ? ' · ' + mal + ' línea(s) sin entender' : '')); pintarCfgMabel();
+  },
+  mbIgDel: d => { saveConfig({ mabelIgnorar: ignorados().filter(x => x.tel !== d.t) }); toast('✓ Quitado: Mabel vuelve a contestarle'); pintarCfgMabel(); },
   mbHrDel: d => { saveConfig({ horariosRetiro: horariosRetiro().filter(x => x.fecha !== d.f) }); toast('✓ Quitado'); pintarCfgMabel(); }
 });
 Object.assign(CHG, {
