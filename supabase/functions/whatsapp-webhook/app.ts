@@ -172,11 +172,23 @@ async function claude(system: any[], messages: any[]) {
 // Se calcula acá para que Mabel nunca diga "mañana" (a las 2 de la mañana se malinterpreta).
 function salidaCadeteria() {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Montevideo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
-  const hoy = new Date(Date.UTC(+p.year, +p.month - 1, +p.day, 12));
-  const dia = (n: number) => { const d = new Date(hoy.getTime() + n * 864e5); return ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1); };
-  return +p.hour >= 20
-    ? `SALIDA DE CADETERÍA: ya pasaron las 20:00, hoy no se cargan más cadeterías. Si paga ahora, saldría el ${dia(2)}, pero eso lo confirma Yanaina (ver regla de cadetería).`
-    : `SALIDA DE CADETERÍA: si el pago y la cadetería quedan anotados antes de las 20:00 de hoy, sale el ${dia(1)}. Decí siempre el día con nombre y fecha ("el ${dia(1)}"), nunca "mañana".`;
+  const hoy = new Date(Date.UTC(+p.year, +p.month - 1, +p.day, 12)), h = +p.hour;
+  const nom = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const fmt = (d: Date) => nom[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1);
+  // Primer día después de `desde` (n días) en que sale ese servicio. Domingo no sale nada; sábado solo DAC y Núñez (antes de las 12).
+  const prox = (desde: number, sab: boolean) => { let n = desde; for (;;) { const d = new Date(hoy.getTime() + n * 864e5); const w = d.getUTCDay(); if (w !== 0 && (w !== 6 || sab)) return d; n++; } };
+  const pasoCorte = h >= 20;
+  const base = pasoCorte ? 2 : 1; // si ya pasaron las 20:00 el pedido entra al corte del día siguiente
+  const cad = prox(base, false), nun = prox(base, true), cor = prox(base, false);
+  const dacHoyOk = h <= 16 && hoy.getUTCDay() >= 1 && hoy.getUTCDay() <= 5;
+  const dac = dacHoyOk ? null : prox(pasoCorte ? 2 : 1, true);
+  const mom = (d: Date) => d.getUTCDay() === 6 ? ' (antes de las 12)' : '';
+  return [
+    pasoCorte
+      ? 'SALIDAS SI PAGA AHORA: ya pasaron las 20:00, el corte de hoy se cerró. NO prometas día: pasá a Yanaina para que lo confirme (ver reglas de cadetería y agencia). Referencia interna: cadetería ' + fmt(cad) + ', Núñez ' + fmt(nun) + mom(nun) + ', Correo ' + fmt(cor) + ', DAC ' + fmt(prox(2, true)) + '.'
+      : 'SALIDAS SI PAGA AHORA (antes de las 20:00 de hoy): cadetería sale el ' + fmt(cad) + '; Núñez sale el ' + fmt(nun) + mom(nun) + '; Correo Uruguayo sale el ' + fmt(cor) + '; DAC ' + (dacHoyOk ? 'sale hoy entre las 17 y las 18 si paga hasta las 16:00 (después de las 16:00 sale el ' + fmt(prox(1, true)) + ')' : 'sale el ' + fmt(dac!) + mom(dac!)) + '. Decí siempre el día con nombre y fecha, nunca "mañana" ni "hoy".',
+    'DÍAS SIN SALIDA: el domingo no sale ningún envío. El sábado solo salen DAC y Núñez, antes de las 12 (con cierre a las 20:00 del viernes); cadetería y Correo Uruguayo no salen los sábados. Lo que se paga el sábado o el domingo sale el lunes.',
+  ].join('\n');
 }
 
 async function atender(telKey: string, wa: string, lote: any[], repaso = false) {

@@ -146,14 +146,15 @@ export async function buscarPedido(ctx: Ctx) {
       ]);
       fotosEquipo = [...(e1 || []).map((x: any) => x.creado), ...(e2 || []).map((x: any) => x.fecha)].map((x) => new Date(x).toISOString());
     }
-    const sumarDia = (f: string) => new Date(new Date(f + 'T12:00:00Z').getTime() + 864e5).toISOString().slice(0, 10);
+    // 7/11: domingo no sale nada; sábado no sale cadetería (sí DAC y Núñez, antes de las 12).
+    const sumarDia = (f: string, ent?: string) => { let d = new Date(new Date(f + 'T12:00:00Z').getTime() + 864e5); while (d.getUTCDay() === 0 || (ent === 'cadeteria' && d.getUTCDay() === 6)) d = new Date(d.getTime() + 864e5); return d.toISOString().slice(0, 10); };
     enviados_recientes = (en || []).map((r) => {
       const p = r.datos, f = p.fechas?.enviado || p.fechas?.listo || null;
       const dias = f ? Math.floor((hoyMs - new Date(f + 'T12:00:00-03:00').getTime()) / 864e5) : null;
       const desdeMs = f ? new Date(f + 'T00:00:00-03:00').getTime() : 0;
       const hayFoto = fotosEquipo.some((x) => new Date(x).getTime() >= desdeMs);
       const confirmada = hayFoto || (dias !== null && dias > 5);
-      const esperada = p.fechas?.listo ? sumarDia(p.fechas.listo) : (f ? sumarDia(f) : null);
+      const ent = entregaEf(p, c), esperada = p.fechas?.listo ? sumarDia(p.fechas.listo, ent) : (f ? sumarDia(f, ent) : null);
       const vencida = !!esperada && (hoyF > esperada || (hoyF === esperada && horaUY >= 12));
       return { numero: p.num, etiqueta_impresa_el: f, dias_desde_la_etiqueta: dias, entrega: entregaEf(p, c), prendas: (p.prendas || []).map((x: any) => x.nombre).filter(Boolean), salida_confirmada: confirmada, ...(confirmada ? {} : { fecha_esperada_de_salida: esperada, fecha_esperada_vencida: vencida, que_decir: vencida ? 'Todavía no figura el comprobante de envío y ya pasó la fecha esperada: decile "Tu pedido ya está pronto para despachar, te paso con Yanaina para que te diga con exactitud" y pasá a Yanaina. NO digas que ya salió.' : 'Todavía no figura el comprobante de envío: NO digas que ya salió; decile que sale en la fecha esperada.' }) };
     }).filter((x) => x.dias_desde_la_etiqueta !== null && (x.dias_desde_la_etiqueta as number) <= 21).sort((a, b) => (a.dias_desde_la_etiqueta as number) - (b.dias_desde_la_etiqueta as number));
