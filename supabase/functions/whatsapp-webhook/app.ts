@@ -196,8 +196,9 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false) 
   const ctx: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [] };
   const cfg = await leerConfig();
   const estado = await buscarPedido(ctx);
-  const desde24 = new Date(Date.now() - 24 * 3600e3).toISOString();
-  const { count: salientes } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'out').gte('creado', desde24);
+  // 8/11: Mabel se presenta en el primer mensaje de cada día (no cada 24 h): una clienta que vuelve otro día puede no acordarse de quién es.
+  const desde24 = new Date(hoyUY() + 'T00:00:00-03:00').toISOString();
+  const { count: salientes } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'out').eq('tipo', 'text').gte('creado', desde24);
   const nov = novedadesVigentes(cfg);
   // 8/11: ¿hay un vivo en curso? Solo si hay un live creado en la app con la fecha de hoy (o de ayer, si son menos de las 6 de la mañana).
   // Sin vivo en curso el total ya se mandó o no corresponde: Mabel atiende normal (registra comprobantes, toma entrega).
@@ -214,7 +215,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false) 
   const devuelta = cv?.datos?.devuelta && (!ult?.[0] || cv.datos.devuelta > new Date(ult[0].creado).toISOString()) ? cv.datos.devuelta : null;
   const dinamico = [
     `HOY: ${ahoraTxtUY()} (hora de Uruguay, ${hoyUY()}).`,
-    salientes ? 'Ya te presentaste con esta clienta en las últimas 24 horas: no vuelvas a presentarte.' : 'Es el primer mensaje tuyo en esta conversación: presentate como indican las instrucciones.',
+    salientes ? 'Ya te presentaste hoy con esta clienta: no vuelvas a presentarte.' : 'Es tu primer mensaje de hoy con esta clienta (aunque ya hayan hablado otro día): arrancá presentándote como indican las instrucciones ("Hola bella, soy Mabel, la asistente virtual de Emma") y después seguí con lo que corresponde.',
     horariosRetiroTexto(cfg),
     nov ? `NOVEDADES DE HOY (vigentes hasta ${nov.vence || 'sin fecha'}): ${nov.texto}` : 'NOVEDADES DE HOY: no hay novedades vigentes.',
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
