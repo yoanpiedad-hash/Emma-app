@@ -186,7 +186,7 @@ function salidaCadeteria() {
   const mom = (d: Date) => d.getUTCDay() === 6 ? ' (antes de las 12)' : '';
   return [
     pasoCorte
-      ? 'SALIDAS SI PAGA AHORA: ya pasaron las 20:00, el corte de hoy se cerró. Si es DAC, decile el día sin pasarla a Yanaina: sale el ' + fmt(dacNoche) + mom(dacNoche) + '. Si es cadetería, Núñez o Correo, NO prometas día: pasá a Yanaina para que lo confirme. Referencia interna: cadetería ' + fmt(cad) + ', Núñez ' + fmt(nun) + mom(nun) + ', Correo ' + fmt(cor) + '.'
+      ? 'SALIDAS SI PAGA AHORA: ya pasaron las 20:00. Si paga ahora NO le digas el día de salida y NO la pases a Yanaina por eso: seguí la regla PAGO PASADAS LAS 20 HS (solo si pregunta cuándo sale, Yanaina se lo confirma). Referencia interna, no se la digas: cadetería ' + fmt(cad) + ', Núñez ' + fmt(nun) + mom(nun) + ', Correo ' + fmt(cor) + ', DAC ' + fmt(dacNoche) + mom(dacNoche) + '.'
       : 'SALIDAS SI PAGA AHORA (antes de las 20:00 de hoy): cadetería sale el ' + fmt(cad) + '; Núñez sale el ' + fmt(nun) + mom(nun) + '; Correo Uruguayo sale el ' + fmt(cor) + '; DAC ' + (dacHoyOk ? 'sale hoy entre las 17 y las 18 si paga hasta las 16:00 (después de las 16:00 sale el ' + fmt(prox(1, true)) + ')' : 'sale el ' + fmt(dac!) + mom(dac!)) + '. Decí siempre el día con nombre y fecha, nunca "mañana" ni "hoy".',
     'DÍAS SIN SALIDA: el domingo no sale ningún envío. El sábado salen cadetería, DAC y Núñez (DAC y Núñez antes de las 12), con cierre a las 20:00 del viernes; Correo Uruguayo no sale los sábados. Lo que se paga el sábado o el domingo sale el lunes.',
   ].join('\n');
