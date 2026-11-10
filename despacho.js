@@ -62,6 +62,7 @@
 UI.desp = { filtro: 'todos', q: '', idx: 0, items: [], cid: null, sel: new Set(), salida: null, f: {}, sinPago: false, aviso: '', res: null };
 
 const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo', 'POS Mercado Pago', 'POS Scantech'];
+const extraCobroCadete = () => { const v = cfg('extraCobroCadete'); return v == null || v === '' ? 70 : (+v || 0); };
 const cuentasPago = () => { const c = cfg('cuentasPago'); return Array.isArray(c) && c.length ? c : CUENTAS_DEF; };
 const SALIDAS = [['retiro', '🏠 Retiro'], ['agencia', '📦 Agencia'], ['cadeteria', '🚴 Cadetería'], ['guardado', '⏸️ Guardado'], ['liberado', '❌ Liberado'], ['pago', '💸 Solo pago']];
 const conPago = t => ENVIOS.has(t) || t === 'pago';
@@ -340,7 +341,7 @@ function salidaHTML(c, ps) {
       <div class="grid2 mt">${campoD('direccion', 'Dirección *', 'Calle, número, apto')}${campoD('barrio', 'Barrio (opcional)', 'Escribí y elegí de la lista')}</div>
       <div class="mt">${campoD('notaCadete', 'Nota para el cadete (opcional)', 'Horario, referencia…')}</div>
       <label class="lb mt">Tipo de envío</label><div class="row">${b('tipo', 'comun', '📦 Común')}${b('tipo', 'cambio', '🔄 Cambio')}</div>
-      <label class="lb mt">Cobro del envío *</label><div class="row">${b('cobro', 'cobrar', 'Cobrar ' + fmt(cfg('tarifaEnvio')))}${b('cobro', 'pago', '✓ Envío pago')}${b('cobro', 'monto', '✏️ Otro monto')}${f.cobro === 'monto' ? `<input id="dsf-monto" type="number" inputmode="numeric" data-inp="despF" data-f="monto" value="${esc(f.monto || '')}" placeholder="$ total" style="width:110px">` : ''}</div>`;
+      <label class="lb mt">Cobro del envío *</label><div class="row">${b('cobro', 'cobrar', 'Cobrar ' + fmt(cfg('tarifaEnvio')))}${b('cobro', 'pago', '✓ Envío pago')}${b('cobro', 'monto', '✏️ Otro monto')}<button class="b sm" data-act="despCobraTodo" title="La clienta le paga todo al cadete (pedido + envío + extra de cobro). Lo autoriza Yanaina.">💵 Cobra todo (+${fmt(extraCobroCadete())})</button>${f.cobro === 'monto' ? `<input id="dsf-monto" type="number" inputmode="numeric" data-inp="despF" data-f="monto" value="${esc(f.monto || '')}" placeholder="$ total" style="width:110px">` : ''}</div>`;
   }
   if (t === 'guardado') form = '<div class="small muted mt">Si no elegís nada abajo, quedan guardados con el plazo normal de 30 días (pestaña Guardados). Si ya pagó, marcá el pago; si todavía no, elegí "Sin pagar · con plazo".</div>';
   if (t === 'liberado') form = '<div class="alert li">La ropa vuelve al stock y el pedido cuenta como ❌ (queda como deuda en la ficha).</div>';
@@ -753,6 +754,14 @@ Object.assign(ACT, {
   despSal: d => {
     elegirSalida(d.k); render();
     setTimeout(() => { const el = d.k === 'agencia' ? $('#dsf-agencia') : d.k === 'cadeteria' ? $('#dsf-direccion') : $('#dsp-go'); if (el) { el.focus(); if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); } }, 30);
+  },
+  // 9/11: la cadetería cobra todo (pedido + envío + extra de cobro, hoy $70) a clientas de confianza que Yanaina autoriza. Sale sin pago marcado y la planilla de Grisal lleva el monto en "Cobrar".
+  despCobraTodo: () => {
+    const f = UI.desp.f, ps = [...UI.desp.sel].map(pedById).filter(p => p && porCobrar(p));
+    if (!ps.length) return toast('Estos pedidos ya tienen el pago marcado');
+    const base = ps.reduce((s, p) => s + calc(p).total, 0), tar = +cfg('tarifaEnvio') || 0;
+    f.cobro = 'monto'; f.monto = String(base + tar + extraCobroCadete()); f.conEnvio = false; f.cuenta = 'sin'; f.transfEdit = false;
+    toast('Cobra la cadetería ' + fmt(base + tar + extraCobroCadete()) + ' (pedido ' + fmt(base) + ' + envío ' + fmt(tar) + ' + extra ' + fmt(extraCobroCadete()) + ')'); render();
   },
   despFv: d => { UI.desp.f[d.f] = d.v; if (d.f === 'cobro' && d.v !== 'pago') UI.desp.f.conEnvio = false; render(); if (d.f === 'cobro' && d.v === 'monto') setTimeout(() => { const el = $('#dsf-monto'); if (el) el.focus(); }, 20); },
   despCuenta: d => {
