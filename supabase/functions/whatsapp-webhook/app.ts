@@ -399,7 +399,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     // 5/11: si Yanaina ya habló con la clienta desde el celular en las últimas 12 h (mensaje, audio, foto o reacción), Mabel no se mete: deriva en silencio
     let equipoActivo = false;
     if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno) {
-      const { data: ec } = await sb.from('mabel_mensajes').select('texto,tipo').eq('tel_key', telKey).eq('direccion', 'echo').gte('creado', [new Date(Date.now() - 12 * 3600e3).toISOString(), cv?.datos?.devuelta || ''].sort().pop()!).limit(30); // 9/11: si Yoan/Yanaina devolvió la conversación a Mabel, lo que el equipo escribió antes de devolverla no cuenta como 'equipo activo'
+      const { data: ec } = await sb.from('mabel_mensajes').select('texto,tipo').eq('tel_key', telKey).eq('direccion', 'echo').gte('creado', [new Date(Date.now() - 12 * 3600e3).toISOString(), conv?.datos?.devuelta || ''].sort().pop()!).limit(30); // 9/11: si Yoan/Yanaina devolvió la conversación a Mabel, lo que el equipo escribió antes de devolverla no cuenta como 'equipo activo'
       equipoActivo = (ec || []).some((e: any) => !['edit', 'revoke', 'system', 'unsupported', 'ephemeral'].includes(String(e.tipo)) && !AUTOMATICO.test(String(e.texto || '')));
     }
     if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || dd.silencio === true || (dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3))) {
