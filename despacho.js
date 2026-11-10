@@ -299,8 +299,24 @@ function clientaHTML() {
       ${alertas.join('')}
     </div>
     <div class="list-h"><span class="t">Sin salida <span class="bdg">${ab.length}</span></span><span class="row" style="gap:6px">${btnPlazo}${todos}</span></div>
-    ${filas || `<div class="empty">No tiene pedidos sin salida${ultimos.length ? '' : ''}</div>${ultimos.map(k => `<div class="small muted" style="text-align:center">Último: ${{ retiro: '🏠 Retiro', agencia: '📦 Agencia', cadeteria: '🚴 Cadetería' }[k.tipo]} el ${fechaUY(localISO(new Date(k.fecha)))} · ${esc(k.nums.map(x => '#' + x).join(' · '))}</div>`).join('')}`}
+    ${filas || `<div class="empty">No tiene pedidos sin salida</div>`}
+    ${salidasRecientesHTML(c)}
     ${D.sel.size ? salidaHTML(c, ab.filter(p => D.sel.has(p.id))) : (ab.length ? '<div class="small muted" style="text-align:center;margin:6px 0 14px">Tildá los pedidos que salen</div>' : '')}`;
+}
+/** 10/11: salidas recientes de la clienta (últimos 14 días): cuándo se marcó, por dónde salió y con qué pago. Con ↩️ Deshacer. */
+function salidasRecientesHTML(c) {
+  const lim = Date.now() - 14 * 864e5, hh = iso => { const x = new Date(iso); return pad2(x.getHours()) + ':' + pad2(x.getMinutes()); };
+  const ks = (DB.paquetes || []).filter(k => k.clienteId === c.id && new Date(k.fecha).getTime() >= lim).sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 4);
+  if (!ks.length) return '';
+  const tipoTxt = { retiro: '🏠 Entregado (retiro)', agencia: '📦 Salió por agencia', cadeteria: '🚴 Salió por cadetería' };
+  return `<div class="list-h"><span class="t">Salidas recientes <span class="bdg">${ks.length}</span></span></div>` + ks.map(k => {
+    const ps = (k.pedidos || []).map(pedById).filter(Boolean);
+    const pagos = ps.map(p => p.pago ? `#${p.num} ✓ ${esc(p.pago.cuenta)}${p.pago.fecha ? ' · pagó ' + fechaUY(localISO(new Date(p.pago.fecha)), 1) + ' ' + hh(p.pago.fecha) : ''}` : `#${p.num} ⏳ sin pago marcado`).join(' · ');
+    const extra = k.tipo === 'cadeteria' ? (k.cobro ? ' · cobra ' + fmt(k.cobro) : ' · envío pago') : k.tipo === 'agencia' && k.envio && k.envio.agencia ? ' · ' + esc(k.envio.agencia) + (k.envio.ciudad ? ' (' + esc(k.envio.ciudad) + ')' : '') : '';
+    return `<div class="card" style="margin:6px 0"><div class="row" style="align-items:flex-start;flex-wrap:nowrap"><div style="flex:1;min-width:0"><div><b>${tipoTxt[k.tipo] || esc(k.tipo)}</b> <span class="small muted">${esc(k.nums.map(x => '#' + x).join(' · '))}</span></div>
+      <div class="small muted">Marcado el ${fechaUY(localISO(new Date(k.fecha)), 1)} a las ${hh(k.fecha)}${extra}</div><div class="small">${pagos}</div></div>
+      ${k.tipo !== 'retiro' ? `<button class="b sm" data-act="despPrint" data-k="${k.id}" title="Reimprimir etiqueta">🖨️</button>` : ''}<button class="b sm gh" data-act="despDeshacer" data-k="${k.id}" title="Deshacer la salida">↩️ Deshacer</button></div></div>`;
+  }).join('');
 }
 /** Último pedido de la clienta (cualquier estado), por fecha y número. */
 function ultimoPedidoDe(cid) {
