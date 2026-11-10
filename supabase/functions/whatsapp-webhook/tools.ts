@@ -113,7 +113,7 @@ export async function buscarPedido(ctx: Ctx) {
     const total = calcTotal(p, live);
     return {
       ...(anteriores.has(r.id) ? { anterior_a_mabel_sin_marcar_pago: true, indicio_en_historial: evidencia[r.id] || null, aviso: 'NO le pidas comprobante de este pedido y no le digas que lo debe: puede estar pagado y sin marcar. Si hace falta, pasalo a Yanaina en silencio.' } : {}),
-      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, fecha_pago: live?.datos?.fechaPagoISO || null, total, estado: p.estado, estado_pago: estadoPago(p, c),
+      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: live?.datos?.fechaPagoISO || null, ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha) } : {}), total, estado: p.estado, estado_pago: estadoPago(p, c),
       entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
@@ -197,6 +197,26 @@ async function conReintento<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 // ─── pasar_a_yanaina ──────────────────────────────────────────
+// 10/11: día de salida del pedido calculado con la hora REAL del pago (p.pago.fecha), no con el plazo del live.
+// Domingo no sale nada; sábado salen cadetería, DAC y Núñez (DAC y Núñez antes de las 12); Correo solo de lunes a viernes.
+// Pago pasadas las 20:00 (DAC: pasadas las 20 también, aunque sale al día siguiente): no se promete día, lo confirma Yanaina.
+export function salidaPrevista(tipo: string, agencia: string, pagoISO: string | null) {
+  if (!pagoISO) return null;
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23', minute: '2-digit' }).formatToParts(new Date(pagoISO)).map((x) => [x.type, x.value]));
+  const h = +p.hour + (+p.minute) / 60, d0 = new Date(Date.UTC(+p.year, +p.month - 1, +p.day, 12));
+  const nom = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const fmt = (d: Date) => nom[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1);
+  const ag = String(agencia || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const kind = tipo === 'cadeteria' ? 'cadeteria' : /\bdac\b/.test(ag) ? 'dac' : /nunez|nunes/.test(ag) ? 'nunez' : /correo/.test(ag) ? 'correo' : null;
+  if (!kind) return { texto: 'No hay salida calculable para esta agencia: que lo confirme Yanaina.', confirmar_yanaina: true };
+  const sab = kind !== 'correo';
+  const sigue = (desde: Date) => { let d = new Date(desde.getTime() + 864e5); while (d.getUTCDay() === 0 || (d.getUTCDay() === 6 && !sab)) d = new Date(d.getTime() + 864e5); return d; };
+  if (h >= 20) return { texto: 'Pagó pasadas las 20 hs: no le prometas día, Yanaina le confirma si sale mañana o al día siguiente.', confirmar_yanaina: true };
+  if (kind === 'dac' && h <= 16 && d0.getUTCDay() >= 1 && d0.getUTCDay() <= 5) return { texto: 'sale hoy (' + fmt(d0) + ') entre las 17 y las 18', dia: fmt(d0) };
+  const d = sigue(d0);
+  const cuando = kind === 'cadeteria' ? '' : (kind === 'dac' ? (d.getUTCDay() === 6 ? ' antes de las 12' : ' entre las 17 y las 18') : (d.getUTCDay() === 6 ? ' antes de las 12' : ' al mediodía'));
+  return { texto: 'sale el ' + fmt(d) + cuando, dia: fmt(d) };
+}
 export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false) {
   // 4/11: cuando deriva Mabel, la conversación vuelve sola a Mabel en 1 hora (si Yanaina contesta desde el celu, el eco la deja más tiempo)
   const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3);
