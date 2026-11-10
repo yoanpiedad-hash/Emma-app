@@ -203,7 +203,10 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false) 
   const c = ctx.clienta;
   const { data: prevCv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
   const prev = prevCv?.datos || {};
-  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(silencio ? { silencio: true } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
+  // 9/11: el repaso tiene que mirar lo que la clienta escribió y nadie contestó: desde el último mensaje nuestro (de Mabel o del equipo) anterior a este pase
+  const { data: ultNuestro } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', ctx.telKey).in('direccion', ['out', 'echo']).not('tipo', 'in', '(edit,revoke,reaction,system,ephemeral,unsupported)').order('creado', { ascending: false }).limit(1);
+  const revisarDesde = ultNuestro?.[0]?.creado ? new Date(ultNuestro[0].creado).toISOString() : null;
+  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
