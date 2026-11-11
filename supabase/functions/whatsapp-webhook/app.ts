@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -362,7 +362,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   catch (e) {
     error = String((e as Error).message || e); console.error('Mabel error:', error);
     const { data: c } = await sb.from('clientas').select('*').eq('tel_key', telKey).eq('borrado', false).limit(1); ctxMin.clienta = c?.[0] || null;
-    await pasarAYanaina(ctxMin, 'Error técnico de Mabel: ' + error.slice(0, 120)).catch(() => {});
+    await pasarAYanaina(ctxMin, 'Error técnico de Mabel: ' + error.slice(0, 120), false, 'otros').catch(() => {});
     respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
   }
   if (!respuesta) respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
@@ -494,6 +494,17 @@ async function repasarPendientes(soloTel = '') {
       if (!conPedido) {
         const { data: cv1 } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
         await sb.from('conversaciones').update({ datos: { ...(cv1?.datos || d), repaso: new Date().toISOString(), repasoNota: 'REPASO: sin pedidos pendientes, en silencio' } }).eq('id', telKey);
+        // 11/11: lo que escribió y nadie contestó también va a la bandeja de la app (pestaña Mabel), para que no quede escondido
+        {
+          const SOLO_ACK = /^(ok+|oka+y?|okis|dale+|listo+|genial|perfecto|b+ueno+|gracias+|muchas gracias|mil gracias|gracias bella|gracias a vos|igualmente|un beso|besos?|\[sticker\]|\[reaction\]|[\p{Extended_Pictographic}\uFE0F\u200D\s]+)[\s.!¡]*([\p{Extended_Pictographic}\uFE0F\u200D\s]*)$/iu;
+          const pend = (ult || []).filter((m: any) => sinResp.includes(m.id)).reverse();
+          const utiles = pend.filter((m: any) => m.tipo !== 'text' || !SOLO_ACK.test(String(m.texto || '').trim()));
+          if (utiles.length) {
+            const txt = utiles.map((m: any) => String(m.texto || '[' + m.tipo + ']').replace(/\s+/g, ' ').trim()).join(' / ').slice(0, 200);
+            const { data: cl1 } = await sb.from('clientas').select('id,datos').eq('tel_key', telKey).eq('borrado', false).limit(1);
+            await registrarDerivado(telKey, cl1?.[0] || null, 'Escribió y nadie le contestó (no tiene pedido pendiente): ' + txt, undefined, true, 'repaso');
+          }
+        }
         hechos.push({ tel: telKey, silencio: 'sin pedidos pendientes' });
         continue;
       }

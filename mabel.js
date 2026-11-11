@@ -120,8 +120,8 @@ function avisosMabelHTML() {
   const venc = gspVencidos(), porCli = new Map();
   venc.forEach(p => { if (!porCli.has(p.clienteId)) porCli.set(p.clienteId, []); porCli.get(p.clienteId).push(p); });
   for (const [cid, ps] of porCli) { const c = cliById(cid) || { nombre: '?' }; h += `<div class="mb-av"><span class="grow">⏰ ${ps[0].guardadoSinPagar.hasta < hoyISO() ? 'Venció' : 'Vence hoy'} el guardado sin pagar de <b>${esc(c.nombre)}</b> (${ps.map(p => '#' + p.num).join(' · ')}): contactala vos</span><button class="b sm" data-act="tab" data-t="guardados">Ver</button></div>`; }
-  const cv = convActivas();
-  if (cv.length) h += `<div class="mb-av az"><span class="grow">🤖 ${cv.length} conversación${cv.length > 1 ? 'es' : ''} de Mabel para Yanaina</span><button class="b sm" data-act="tab" data-t="clientes">Ver</button></div>`;
+  const nd = (DB.derivados || []).filter(d => d && !d.resuelto).length; // 11/11: la bandeja está en la pestaña Mabel
+  if (nd) h += `<div class="mb-av az"><span class="grow">🤖 ${nd} pendiente${nd > 1 ? 's' : ''} de Mabel para Yanaina</span><button class="b sm" data-act="mbIrDerivados">Ver</button></div>`;
   return h;
 }
 function pintarAvisosMabel() {
@@ -163,7 +163,7 @@ renderGuardados = function () {
   l.insertAdjacentHTML('afterbegin', gspHTML());
 };
 const _renderClientes2 = renderClientes;
-renderClientes = function () { _renderClientes2(); const el = $('#cl-deshacer'); if (el) el.insertAdjacentHTML('afterbegin', convsHTML()); };
+renderClientes = function () { _renderClientes2(); }; // 11/11: "Para Yanaina" pasó a la pestaña Mabel → Derivados
 const _itemClienta2 = itemClienta;
 itemClienta = function (c, h) {
   let html = _itemClienta2(c, h);
@@ -175,7 +175,7 @@ itemClienta = function (c, h) {
 };
 // Config: Mabel
 function montarCfgMabel() {
-  const cf = document.getElementById('p-config'); if (!cf || document.getElementById('cf-mabel')) return;
+  const cf = document.getElementById('mbt-aj') || document.getElementById('p-config'); if (!cf || document.getElementById('cf-mabel')) return; // 11/11: va en la pestaña Mabel → Ajustes
   const d = document.createElement('div'); d.className = 'card'; d.id = 'cf-mabel';
   d.innerHTML = `<div class="card-t">🤖 Mabel (agente de WhatsApp)</div>
     <label class="lb">📣 Avisos de hoy (ej. “hoy no hay cadetería”). Los horarios de retiro se cargan más abajo, por fecha.</label>
@@ -195,7 +195,10 @@ function montarCfgMabel() {
       <div><label class="lb">Recargo Mercado Pago (%)</label><input id="mb-mp" type="number" inputmode="numeric" data-chg="mbCfg" data-k="mpRecargo"></div>
       <div><label class="lb">Plazo de guardado sin pagar (días)</label><input id="mb-gsp" type="number" inputmode="numeric" data-chg="mbCfg" data-k="guardarSinPagarDias"></div>
     </div>`;
-  const v = document.getElementById('cf-version'); if (v) cf.insertBefore(d, v); else cf.appendChild(d);
+  const v = document.getElementById('cf-version'); if (v && v.parentNode === cf) cf.insertBefore(d, v); else cf.appendChild(d);
+  // En Config queda un atajo, para quien la busque donde estaba
+  const pc = document.getElementById('p-config');
+  if (pc && cf !== pc && !document.getElementById('cf-mabel-ir')) { const a = document.createElement('div'); a.className = 'card'; a.id = 'cf-mabel-ir'; a.innerHTML = '<div class="row"><span class="grow">🤖 Los ajustes de Mabel (avisos, horarios de retiro, números que no contesta) ahora están en la pestaña <b>Mabel</b>.</span><button class="b sm" data-act="mbIrAjustes">Ir a Ajustes</button></div>'; if (v && v.parentNode === pc) pc.insertBefore(a, v); else pc.appendChild(a); }
 }
 // Horarios de retiro por fecha (5/11): lista [{fecha:'YYYY-MM-DD', desde:'11:00', hasta:'17:00', cerrado:bool}]. Mabel la lee en la nube.
 function horariosRetiro() { return (cfgN('horariosRetiro', []) || []).filter(x => x && x.fecha >= hoyISO()).sort((a, b) => a.fecha.localeCompare(b.fecha)); }

@@ -273,7 +273,40 @@ export function salidaPrevista(tipo: string, agencia: string, pagoISO: string | 
   const cuando = kind === 'cadeteria' ? '' : (kind === 'dac' ? (d.getUTCDay() === 6 ? ' antes de las 12' : ' entre las 17 y las 18') : (d.getUTCDay() === 6 ? ' antes de las 12' : ' al mediodía'));
   return { texto: 'sale el ' + fmt(d) + cuando, dia: fmt(d) };
 }
-export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false) {
+// ─── Bandeja de derivados (pestaña Mabel de la app, 11/11) ─────
+// Cada pase a Yanaina deja una fila en la tabla derivados con su categoría. La app la muestra como pendiente hasta que alguien toca "Resuelto".
+export const CATEGORIAS = ['pedido', 'pago', 'entrega', 'cambio', 'especial', 'yharol', 'otros'];
+/** Categoría por palabras del motivo: se usa cuando Mabel no la manda o manda una que no existe. */
+export function categoriaDe(motivo: string): string {
+  const m = String(motivo || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (/yharol|yarol|maquillaje|perfum|bazar/.test(m)) return 'yharol';
+  if (/\bcambio\b|cambiar (la|el|los|las|de talle)|devoluci|devolver/.test(m)) return 'cambio';
+  if (/desconoce|no (lo |la )?pidio|no es (de ella|suyo|mio)|(prenda|remera|pantalon|short|cosa|algo|una|uno)s? de (mas|menos)|le falta|falta (una|la|el) |equivocad|mal anotad|reclam|no coincide con lo que pidio|numero sin pedido|sin pedido (abierto|de un live)|varios pedidos|dice ser/.test(m)) return 'pedido';
+  if (/comprobante|transfi|pago\b|pagar|pagado|faltan \$|mercado ?pago|\bmp\b|link|cuenta|efectivo|plazo/.test(m)) return 'pago';
+  if (/agencia|cadete|envio|enviar|retir|direccion|barrio|salio|sale |despach|dac\b|nunez|correo|local/.test(m)) return 'entrega';
+  if (/agregar|sumar|guardar|guardad|avis(en|ar) cuando|consulta|pregunta (si|por)|talle|prenda|precio|tene[sn]\b|tienen|queda[n]?\b|\bhay\b|cuanto (sale|cuesta)|proximo vivo/.test(m)) return 'especial';
+  return 'otros';
+}
+export async function registrarDerivado(telKey: string, c: any, motivo: string, categoria: string | undefined, silencio: boolean, origen: string) {
+  try {
+    const cat = CATEGORIAS.includes(String(categoria)) ? String(categoria) : categoriaDe(motivo);
+    const ahora = new Date().toISOString(), mot = String(motivo || 'Sin motivo').slice(0, 300);
+    // Si ya hay un pendiente de esta clienta en la misma categoría, se actualiza (no se llena la bandeja de repetidos)
+    const { data: ab } = await sb.from('derivados').select('id,datos').eq('datos->>telKey', telKey).eq('borrado', false).order('actualizado', { ascending: false }).limit(20);
+    const prev = (ab || []).find((r: any) => !r.datos?.resuelto && r.datos?.categoria === cat);
+    if (prev) {
+      const datos = { ...prev.datos, motivo: mot, ultimo: ahora, veces: (+prev.datos.veces || 1) + 1, clienteId: c?.id || prev.datos.clienteId || null, ...(silencio ? {} : { silencio: false }) };
+      await sb.from('derivados').update({ datos }).eq('id', prev.id);
+      return prev.id;
+    }
+    const id = 'dv' + telKey + Date.now().toString(36);
+    const datos = { id, telKey, tel: c?.datos?.tel || '0' + telKey, clienteId: c?.id || null, categoria: cat, motivo: mot, silencio: !!silencio, origen, creado: ahora, ultimo: ahora, veces: 1, resuelto: null };
+    await sb.from('derivados').insert({ id, datos, borrado: false });
+    return id;
+  } catch (e) { console.error('derivados:', (e as Error).message || e); return null; } // la bandeja nunca frena el pase a Yanaina
+}
+
+export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, categoria?: string) {
   // 4/11: cuando deriva Mabel, la conversación vuelve sola a Mabel en 1 hora (si Yanaina contesta desde el celu, el eco la deja más tiempo)
   const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3);
   const c = ctx.clienta;
@@ -286,6 +319,7 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false) 
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
+  await registrarDerivado(ctx.telKey, c, motivo, categoria, silencio, categoria ? 'mabel' : 'regla');
   if (silencio) return { ok: true, derivado: true, en_silencio: true, instruccion: 'Quedó para Yanaina en silencio: NO le escribas nada a la clienta sobre esto (ni "le aviso a Yanaina").' };
   return { ok: true, derivado: true, mensaje_para_la_clienta: 'Ya le aviso a Yanaina y te escribe enseguida 🫶' };
 }
@@ -305,12 +339,12 @@ export async function actualizarNota(ctx: Ctx, texto: string) {
 // ─── marcar_pagado ───────────────────────────────────────────────
 export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number; fecha_comprobante?: string; destino_coincide?: boolean; nota?: string }) {
   const cfg = await leerConfig(), tar = tarifaDe(cfg), mp = mpDe(cfg);
-  if (!ctx.clienta) return derivar(ctx, 'No hay ficha de clienta para este número (llegó un comprobante)');
+  if (!ctx.clienta) return derivar(ctx, 'No hay ficha de clienta para este número (llegó un comprobante)', 'pago');
   const cuentas = cuentasDe(cfg).filter((x) => medioDe(x) !== 'efectivo');
   const cuenta = cuentas.find((x) => normB(x) === normB(a.cuenta));
   const monto = Math.round(num(a.monto));
-  if (a.destino_coincide === false) return derivar(ctx, 'El comprobante va a una cuenta que no es de Emma');
-  if (!cuenta) return derivar(ctx, `Cuenta "${a.cuenta}" no reconocida en el comprobante`);
+  if (a.destino_coincide === false) return derivar(ctx, 'El comprobante va a una cuenta que no es de Emma', 'pago');
+  if (!cuenta) return derivar(ctx, `Cuenta "${a.cuenta}" no reconocida en el comprobante`, 'pago');
   if (!(monto > 0)) return { error: 'Falta el monto del comprobante: pedile que lo mande de nuevo, más claro.' };
 
   const { filas, lives, cobros } = await abiertos(ctx);
@@ -328,7 +362,7 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
       const cierra = (ps: any[]) => { const b = ps.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0); return [b, b + tar, Math.round(b * (1 + mp / 100)), Math.round((b + tar) * (1 + mp / 100))].some((e) => monto >= e - 2 && monto <= e + 30); };
       if (cierra([ult])) objetivo = [ult];
       else if (cierra(sp)) objetivo = sp;
-      else return derivar(ctx, `Tiene ${sp.length} pedidos sin pagar (${sp.map((r) => '#' + r.datos.num).join(', ')}) y el comprobante de $${monto} no coincide ni con el último ni con todos juntos`);
+      else return derivar(ctx, `Tiene ${sp.length} pedidos sin pagar (${sp.map((r) => '#' + r.datos.num).join(', ')}) y el comprobante de $${monto} no coincide ni con el último ni con todos juntos`, 'pago');
     }
   }
   if (!objetivo.length) return { error: 'No hay ningún pedido sin pagar para marcar. Si dice que ya pagó, pasalo a Yanaina.' };
@@ -337,17 +371,17 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   const f = String(a.fecha_comprobante || '').slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(f)) {
     const fl = objetivo.map((r) => lives.get(r.live_id)?.fecha).filter(Boolean).sort()[0];
-    if (fl && f < String(fl).slice(0, 10)) return derivar(ctx, `Comprobante de fecha ${f}, anterior al live (${String(fl).slice(0, 10)})`);
+    if (fl && f < String(fl).slice(0, 10)) return derivar(ctx, `Comprobante de fecha ${f}, anterior al live (${String(fl).slice(0, 10)})`, 'pago');
   }
   // Comprobante ya usado
   if (ctx.media?.sha256) {
     const { data: dup } = await sb.from('pagos').select('id').eq('borrado', false).filter('datos->>sha256', 'eq', ctx.media.sha256).limit(1);
-    if (dup?.length) return derivar(ctx, 'Ese comprobante ya figura en otro pago');
+    if (dup?.length) return derivar(ctx, 'Ese comprobante ya figura en otro pago', 'pago');
   }
   // Esperado (sin cadetería, salvo cobro agrupado que ya la trae) y faltante
   const base = objetivo.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0);
   const esp = esperadoDe(base, envCobro, cuenta, mp);
-  if (monto < esp.total) return derivar(ctx, `Transfirió de menos (faltan $${esp.total - monto}) · esperado $${esp.total}, transfirió $${monto} por ${cuenta}`);
+  if (monto < esp.total) return derivar(ctx, `Transfirió de menos (faltan $${esp.total - monto}) · esperado $${esp.total}, transfirió $${monto} por ${cuenta}`, 'pago');
 
   // Registrar (misma lógica que registrarPagos de la app)
   const ajuste = monto - esp.total;
@@ -388,11 +422,11 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
       : `Sobran $${ajuste}: preguntale por qué ("Vi que transferiste $${monto} y era $${esp.total}, ¿es por algo en especial?"). Si dice que es por la cadetería (vale $${tar}), guardá la entrega con envio_transferido=${ajuste} y avisale cuánto falta ($${tar - ajuste}) que se lo paga al cadete. Si es por otra cosa o no queda claro, pasalo a Yanaina con la diferencia.`,
   };
 }
-async function derivar(ctx: Ctx, motivo: string) { const r = await pasarAYanaina(ctx, motivo); return { ...r, ok: false, motivo }; }
+async function derivar(ctx: Ctx, motivo: string, categoria?: string) { const r = await pasarAYanaina(ctx, motivo, false, categoria || categoriaDe(motivo)); return { ...r, ok: false, motivo }; }
 
 // ─── guardar_entrega ───────────────────────────────────────────
 export async function guardarEntrega(ctx: Ctx, a: any) {
-  if (!ctx.clienta) return derivar(ctx, 'No hay ficha de clienta para este número (eligió entrega)');
+  if (!ctx.clienta) return derivar(ctx, 'No hay ficha de clienta para este número (eligió entrega)', 'entrega');
   const cfg = await leerConfig(), tar = tarifaDe(cfg);
   const tipo = String(a.tipo || '');
   if (!['retiro', 'cadeteria', 'agencia'].includes(tipo)) return { error: 'tipo tiene que ser retiro, cadeteria o agencia' };
@@ -560,7 +594,7 @@ export async function vincularPedido(ctx: Ctx, a: any) {
     if (xs.length === 1 || (xs.length > 1 && xs[0].sim - xs[1].sim >= 0.15)) elegido = xs[0];
     else if (conPrenda.length === 1) elegido = conPrenda[0];
     else if (libres.length === 1) elegido = libres[0];
-    else if (xs.length > 1) return derivar(ctx, 'Escribe desde un número sin pedido (' + (nombre || '') + (num ? ', pedido #' + num : '') + '): coincide con varios pedidos: ' + xs.slice(0, 4).map((x) => '#' + x.p.datos.num + ' ' + x.c.datos.nombre).join(', '));
+    else if (xs.length > 1) return derivar(ctx, 'Escribe desde un número sin pedido (' + (nombre || '') + (num ? ', pedido #' + num : '') + '): coincide con varios pedidos: ' + xs.slice(0, 4).map((x) => '#' + x.p.datos.num + ' ' + x.c.datos.nombre).join(', '), 'pedido');
   }
   // Por la prenda que dice que compró, entre los pedidos SIN teléfono (ej. "soy Paola, por el conjunto chocolate")
   if (!elegido && prenda) {
@@ -573,7 +607,7 @@ export async function vincularPedido(ctx: Ctx, a: any) {
   if (!elegido) return (await dejarEnEspera(ctx, a)) || { ok: false, no_encontrado: true };
   const telC = String(elegido.c.datos.tel || '').replace(/\D/g, '');
   if (telC && telKeyDe(telC) === ctx.telKey) { await limpiarEspera(ctx); return { ok: true, ya_vinculado: true, pedido: elegido.p.datos.num, que_hacer: 'Ese pedido ya está a su número.' }; }
-  if (telC && telKeyDe(telC) !== ctx.telKey) return derivar(ctx, 'Escribe desde el 0' + ctx.telKey + ' y dice ser ' + (nombre || 'la clienta') + (num ? ' (pedido #' + num + ')' : '') + '. Puede ser el pedido #' + elegido.p.datos.num + ' de ' + elegido.c.datos.nombre + ', pero esa ficha tiene otro teléfono (' + elegido.c.datos.tel + '). Verificar.');
+  if (telC && telKeyDe(telC) !== ctx.telKey) return derivar(ctx, 'Escribe desde el 0' + ctx.telKey + ' y dice ser ' + (nombre || 'la clienta') + (num ? ' (pedido #' + num + ')' : '') + '. Puede ser el pedido #' + elegido.p.datos.num + ' de ' + elegido.c.datos.nombre + ', pero esa ficha tiene otro teléfono (' + elegido.c.datos.tel + '). Verificar.', 'pedido');
   if (ctx.clienta && ctx.clienta.id !== elegido.c.id) {
     // Este número ya tiene ficha: el pedido pasa a esa ficha y el nombre del live queda como alias
     await conReintento(async () => {
@@ -609,20 +643,20 @@ export async function vincularPedido(ctx: Ctx, a: any) {
 // ─── guardar_pedido (3/11) ────────────────────────────────────
 // Pagado → Guardado (con pago). Sin pagar → solo si la ficha tiene puedeGuardarSinPagar, hasta 7 días. Si no, Yanaina.
 export async function guardarPedidoCli(ctx: Ctx, a: any) {
-  if (!ctx.clienta) return derivar(ctx, 'Pide guardar el pedido pero no hay ficha de clienta para este número');
+  if (!ctx.clienta) return derivar(ctx, 'Pide guardar el pedido pero no hay ficha de clienta para este número', 'especial');
   const { filas, cobros } = await abiertos(ctx);
   let objetivo = filas.filter((r) => ['pendiente', 'listo'].includes(r.datos.estado));
   if (cobros.length) { const ids = cobros[0].datos.pedidos || []; objetivo = filas.filter((r) => ids.includes(r.id)); }
   if (!objetivo.length) return { ok: true, ya_guardado: true, que_hacer: 'Sus pedidos ya están guardados: confirmale corto que siguen guardados.' };
   const hoy = hoyUY(), max = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
   const pagos = objetivo.map((r) => pagado(r.datos));
-  if (pagos.some((x) => !x) && pagos.some((x) => x)) return derivar(ctx, 'Pide guardar: tiene pedidos pagos y otros sin pagar');
+  if (pagos.some((x) => !x) && pagos.some((x) => x)) return derivar(ctx, 'Pide guardar: tiene pedidos pagos y otros sin pagar', 'especial');
   const sinPagar = !pagos[0];
   const { data: cli } = await sb.from('clientas').select('datos').eq('id', ctx.clienta.id).single();
-  if (sinPagar && !cli?.datos?.puedeGuardarSinPagar) return derivar(ctx, 'Pide guardar el pedido sin pagar' + (a?.hasta ? ' hasta el ' + a.hasta : '') + ' (no está autorizada a guardar sin pagar)');
+  if (sinPagar && !cli?.datos?.puedeGuardarSinPagar) return derivar(ctx, 'Pide guardar el pedido sin pagar' + (a?.hasta ? ' hasta el ' + a.hasta : '') + ' (no está autorizada a guardar sin pagar)', 'especial');
   let hasta = /^\d{4}-\d{2}-\d{2}$/.test(String(a?.hasta || '')) ? String(a.hasta) : max;
   if (hasta < hoy) hasta = max;
-  if (sinPagar && hasta > max) return derivar(ctx, 'Pide guardar sin pagar hasta el ' + hasta + ' (más de 7 días)');
+  if (sinPagar && hasta > max) return derivar(ctx, 'Pide guardar sin pagar hasta el ' + hasta + ' (más de 7 días)', 'especial');
   const nums: number[] = [];
   for (const r0 of objetivo) {
     await conReintento(async () => {
@@ -680,7 +714,7 @@ export const HERRAMIENTAS = [
   { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si la clienta estaba confirmando el pedido' }, prenda: { type: 'string', description: 'Lo que dice que compró, si lo dijo ("conjunto chocolate", "jean")' } } } },
   { name: 'guardar_pedido', description: 'La clienta pide guardar su pedido (que no salga todavía, juntarlo con el próximo live, levantarlo más adelante). Si ya pagó, lo pasa a Guardado. Si no pagó, solo lo guarda si la ficha lo permite (hasta 7 días); si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'Fecha hasta la que lo guarda, AAAA-MM-DD, solo si la clienta dijo una' } } } },
   { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
-  { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' }, en_silencio: { type: 'boolean', description: 'true = no se le avisa a la clienta (Yanaina lo ve en la bandeja). Usalo para pedidos anteriores a Mabel sin marcar como pagos y cuando el equipo ya habló con la clienta.' } }, required: ['motivo'] } },
+  { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 12 horas o hasta que Yanaina la devuelva.', input_schema: { type: 'object', properties: { motivo: { type: 'string' }, categoria: { type: 'string', enum: CATEGORIAS, description: 'Obligatoria. Ordena el pase en la bandeja del equipo. pedido = problema con el pedido (desconoce la compra, prenda de más o de menos, algo mal anotado, reclamo, número sin pedido que no se pudo vincular) · pago = comprobantes, faltantes, link de Mercado Pago, plazo para pagar, pedidos viejos sin marcar pago · entrega = cadetería, agencia, retiro, día de salida, juntar paquetes · cambio = cambio de talle o de prenda · especial = ya compró y pide algo aparte (sumar una prenda, guardar el pedido, consulta por una prenda o talle, que le avisen cuando haya algo) · yharol = emprendimiento de Yharol (maquillaje, perfumería, bazar) · otros = no entra en ninguna (proveedores, publicidad, audios que no se entienden). Si hay más de un tema, elegí el que frena el pedido.' }, en_silencio: { type: 'boolean', description: 'true = no se le avisa a la clienta (Yanaina lo ve en la bandeja). Usalo para pedidos anteriores a Mabel sin marcar como pagos y cuando el equipo ya habló con la clienta.' } }, required: ['motivo', 'categoria'] } },
   { name: 'actualizar_nota', description: 'Reescribe la nota de la clienta (máximo 3 líneas, solo hechos con fecha, sin opiniones ni datos sensibles). Llamala al cerrar una conversación en la que pasó algo útil para la próxima vez.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
 ];
 
@@ -694,7 +728,7 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
     case 'dejar_aviso_despacho': return await dejarAvisoDespacho(ctx, input || {});
     case 'vincular_pedido': return await vincularPedido(ctx, input || {});
     case 'guardar_pedido': return await guardarPedidoCli(ctx, input || {});
-    case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo, !!input?.en_silencio);
+    case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo, !!input?.en_silencio, CATEGORIAS.includes(String(input?.categoria)) ? String(input.categoria) : categoriaDe(input?.motivo));
     case 'actualizar_nota': return await actualizarNota(ctx, input?.texto);
     default: return { error: 'Herramienta desconocida' };
   }

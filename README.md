@@ -12,6 +12,9 @@ Emma Pedidos y Emma Gestión — Emma Indumentaria.
 7. `python3 herramientas/agregar-gestion.py index.html` (botón a Gestión y `version.js`)
 8. `python3 herramientas/agregar-etapa4.py index.html` (`promos.js` + `pedidos4.js`: talles, escáner de prenda, promos y VIP)
 
+9. `python3 herramientas/agregar-mabel.py index.html` (`mabel.js` + `importar.js`)
+10. `python3 herramientas/agregar-mabeltab.py index.html` (`mabeltab.js`: pestaña Mabel entre Live y Clientes)
+
 ## Emma Gestión
 `gestion.html` es la fuente directa (ya no se genera desde `claude/emma-gestion.html`). Usa el mismo login y el mismo `nube.js`; las compras viajan con la parte privada encriptada con el código de acceso. Los borradores de importación/compra local van en config `gestionBorradores`.
 

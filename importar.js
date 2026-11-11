@@ -16,7 +16,8 @@ function montarImportarLive() {
     <p class="small muted mb">En la app de Chrome: ⚙️ Config → <b>Exportar todos los datos</b>. Cargá ese archivo acá y elegí el live. Se suman el live, sus pedidos y sus clientas; <b>no se toca el stock</b> ni nada de lo que ya está en la nube.</p>
     <input type="file" id="il-file" accept=".json,application/json" data-chg="ilArchivo">
     <div id="il-res"></div>`;
-  const v = document.getElementById('cf-mabel') || document.getElementById('cf-version');
+  // 11/11: la tarjeta de Mabel pasó a la pestaña Mabel; en Config queda su atajo (cf-mabel-ir)
+  const v = [document.getElementById('cf-mabel-ir'), document.getElementById('cf-mabel'), document.getElementById('cf-version')].find(x => x && x.parentNode === cf);
   if (v) cf.insertBefore(d, v); else cf.appendChild(d);
 }
 function leerBackupViejo(txt) {

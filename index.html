@@ -300,6 +300,7 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 <nav class="tabs" id="tabs">
   <button class="tab" data-act="tab" data-t="despacho">🚚 Despacho<span id="bdg-desp"></span></button>
   <button class="tab on" data-act="tab" data-t="live">📦 Live</button>
+  <button class="tab" data-act="tab" data-t="mabel">🤖 Mabel<span id="bdg-mabel"></span></button>
   <button class="tab" data-act="tab" data-t="clientes">👥 Clientes</button>
   <button class="tab" data-act="tab" data-t="guardados">📦 Guardados<span id="bdg-guard"></span></button>
   <button class="tab" data-act="tab" data-t="mostrador">🏪 Mostrador</button>
@@ -350,6 +351,17 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 </section>
 
 <!-- ═════════ CLIENTES ═════════ -->
+<section class="panel" id="p-mabel">
+  <div id="mbt-sub" class="ptabs"></div>
+  <div id="mbt-deriv"></div>
+  <div id="mbt-conv" hidden>
+    <input id="mbt-q" data-inp="mbConvQ" placeholder="🔎 Nombre, usuario o teléfono…" class="mb" autocomplete="off">
+    <div id="mbt-conv-f" class="ptabs"></div>
+    <div id="mbt-conv-l"></div>
+  </div>
+  <div id="mbt-aj" hidden><div id="mbt-pausa"></div></div>
+  <div id="mbt-madre" hidden><div class="card"><div class="card-t">🧠 Chat madre</div><p class="small muted">Todavía no está. La idea: escribirle a Mabel por WhatsApp para preguntarle cosas y darle instrucciones, y ver ese chat acá.</p></div></div>
+</section>
 <section class="panel" id="p-clientes">
   <div class="card">
     <div class="card-t">Agregar clienta</div>
@@ -2879,6 +2891,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 <script src="promos.js"></script>
 <script src="pedidos4.js"></script>
 <script src="mabel.js"></script>
+<script src="mabeltab.js"></script>
 <script src="importar.js"></script>
 </body>
 </html>
