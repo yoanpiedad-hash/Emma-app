@@ -49,12 +49,51 @@ export const novedadesVigentes = (c: any) => { const n = c.novedadesHoy; return 
 // ─── Reglas de la app ───────────────────────────────────────────
 const pagado = (p: any) => !!p.cambio || !!p.pago || p.estado === 'listo';
 const entregaEf = (p: any, cli: any) => (p.entrega && p.entrega !== 'sin_definir') ? p.entrega : (cli && cli.datos?.agencia ? 'agencia' : (p.entrega || 'sin_definir'));
-function calcTotal(p: any, live: any): number {
-  let bruto = 0;
-  for (const pr of p.prendas || []) bruto += (+pr.precio || 0) * (pr.qty || 1);
-  const d = (p.descuento !== null && p.descuento !== undefined && p.descuento !== '') ? +p.descuento : (+(live?.datos?.descuento) || 0);
-  const sub = bruto - Math.round(bruto * d / 100);
-  return sub - Math.min(p.saldoAplicado || 0, sub);
+// Stock → modelo, para las promos del pedido. Se llena con cargarModelos(filas) antes de calcular (10/11).
+const MODELO_DE = new Map<string, string>();
+async function cargarModelos(filas: any[]) {
+  const ids = new Set<string>();
+  for (const r of filas || []) { const p = r?.datos; if (!p || !(p.promoCalc?.promos || []).length) continue; for (const pr of p.prendas || []) if (pr.stockId && !MODELO_DE.has(pr.stockId)) ids.add(pr.stockId); }
+  if (!ids.size) return;
+  const { data } = await sb.from('stock').select('id,datos').in('id', [...ids]);
+  for (const s of data || []) MODELO_DE.set(s.id, s.datos?.modeloId || '');
+}
+// 10/11: mismo cálculo que la app (promos.js calcularPedido): precio especial, combos N por $X y NxM con las promos guardadas en el pedido
+// (promoCalc), descuento del live + VIP solo sobre prendas sin promo, y saldo a favor. Antes no contaba las promos y el total salía de más.
+export function calcTotal(p: any, live: any, modeloDe: (id: string) => string | null | undefined = (id) => MODELO_DE.get(id)): number {
+  const s = p.promoCalc || {}, hoy = s.fecha || hoyUY();
+  const promos = (s.promos || []).filter((x: any) => x && x.activa !== false && !x.borrado && !(x.liveId && x.liveId !== p.liveId) && !(x.desde && hoy < x.desde) && !(x.hasta && hoy > x.hasta));
+  const U: any[] = [];
+  for (const pr of p.prendas || []) {
+    const q = Math.max(1, +pr.qty || 1), lista = +(pr.precioLista ?? pr.precio) || 0;
+    const manual = !!pr.manual || (pr.precioLista != null && +pr.precio !== +pr.precioLista && !pr.promoId);
+    const mid = pr.stockId ? (modeloDe(pr.stockId) || null) : null;
+    for (let k = 0; k < q; k++) U.push({ mid, lista, precio: manual ? +pr.precio || 0 : lista, manual, promoId: null });
+  }
+  let descPromos = 0;
+  for (const x of promos.filter((x: any) => x.tipo === 'especial')) {
+    const set = new Set(x.modelos || []);
+    for (const u of U) if (!u.manual && !u.promoId && u.mid && set.has(u.mid)) {
+      const nuevo = x.modo === 'pct' ? Math.round(u.lista * (1 - (+x.valor || 0) / 100)) : Math.round(+x.valor || 0);
+      if (nuevo < u.lista) { u.precio = nuevo; u.promoId = x.id; }
+    }
+  }
+  for (const x of promos.filter((x: any) => x.tipo === 'combo' || x.tipo === 'nxm')) {
+    const set = new Set(x.modelos || []), n = Math.max(1, +x.n || 0);
+    const el = U.filter((u) => !u.manual && !u.promoId && u.mid && set.has(u.mid)).sort((a, b) => b.precio - a.precio);
+    for (let g = 0; g + n <= el.length; g += n) {
+      const grupo = el.slice(g, g + n), suma = grupo.reduce((t, u) => t + u.precio, 0);
+      let d = 0;
+      if (x.tipo === 'combo') d = Math.max(0, suma - Math.round(+x.x || 0));
+      else { const gratis = Math.max(0, n - Math.max(0, +x.m || 0)); d = grupo.slice(n - gratis).reduce((t, u) => t + u.precio, 0); }
+      if (d > 0) { descPromos += d; grupo.forEach((u) => { u.promoId = x.id; }); }
+    }
+  }
+  const livePct = (p.descuento !== null && p.descuento !== undefined && p.descuento !== '') ? +p.descuento : (+(live?.datos?.descuento) || 0);
+  const vipPct = +s.vipPct || 0;
+  const bruto = U.reduce((t, u) => t + u.precio, 0), baseDesc = U.filter((u) => !u.promoId).reduce((t, u) => t + u.precio, 0);
+  const sub = Math.max(0, bruto - descPromos - Math.round(baseDesc * livePct / 100) - Math.round(baseDesc * vipPct / 100));
+  return sub - Math.min(+p.saldoAplicado || 0, sub);
 }
 function esperadoDe(base: number, env: number, cuenta: string, mp: number) {
   const rec = medioDe(cuenta) === 'mercadopago' ? Math.round((base + env) * mp / 100) : 0;
@@ -79,6 +118,7 @@ async function abiertos(ctx: Ctx) {
   if (!ids.length) return { filas: [] as any[], lives: new Map<string, any>(), cobros: [] as any[] };
   const { data } = await sb.from('pedidos').select('*').in('clienta_id', ids).eq('borrado', false).in('estado', ['pendiente', 'listo', 'guardado']);
   const filas = (data || []).filter((r) => !r.datos?.cambio).sort(porCreado);
+  await cargarModelos(filas);
   const lids = [...new Set(filas.map((r) => r.live_id))];
   const lives = new Map<string, any>();
   if (lids.length) { const { data: ls } = await sb.from('lives').select('id,nombre,fecha,datos').in('id', lids); (ls || []).forEach((l) => lives.set(l.id, l)); }
@@ -298,6 +338,7 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   const res = await conReintento(async () => {
     const frescas: any[] = [];
     for (const r of objetivo) { const { data } = await sb.from('pedidos').select('*').eq('id', r.id).single(); frescas.push(data); }
+    await cargarModelos(frescas);
     if (frescas.some((r) => pagado(r.datos))) throw new Error('Alguno de los pedidos ya figura pagado');
     const orden = [...frescas].sort(porCreado);
     const hoy = hoyUY(), ahora = new Date().toISOString();
