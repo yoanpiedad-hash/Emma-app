@@ -60,7 +60,7 @@ async function cargarModelos(filas: any[]) {
 }
 // 10/11: mismo cálculo que la app (promos.js calcularPedido): precio especial, combos N por $X y NxM con las promos guardadas en el pedido
 // (promoCalc), descuento del live + VIP solo sobre prendas sin promo, y saldo a favor. Antes no contaba las promos y el total salía de más.
-export function calcTotal(p: any, live: any, modeloDe: (id: string) => string | null | undefined = (id) => MODELO_DE.get(id)): number {
+export function calcPedido(p: any, live: any, modeloDe: (id: string) => string | null | undefined = (id) => MODELO_DE.get(id)): { total: number; detalle: string[] } {
   const s = p.promoCalc || {}, hoy = s.fecha || hoyUY();
   const promos = (s.promos || []).filter((x: any) => x && x.activa !== false && !x.borrado && !(x.liveId && x.liveId !== p.liveId) && !(x.desde && hoy < x.desde) && !(x.hasta && hoy > x.hasta));
   const U: any[] = [];
@@ -68,9 +68,10 @@ export function calcTotal(p: any, live: any, modeloDe: (id: string) => string | 
     const q = Math.max(1, +pr.qty || 1), lista = +(pr.precioLista ?? pr.precio) || 0;
     const manual = !!pr.manual || (pr.precioLista != null && +pr.precio !== +pr.precioLista && !pr.promoId);
     const mid = pr.stockId ? (modeloDe(pr.stockId) || null) : null;
-    for (let k = 0; k < q; k++) U.push({ mid, lista, precio: manual ? +pr.precio || 0 : lista, manual, promoId: null });
+    for (let k = 0; k < q; k++) U.push({ i: (p.prendas || []).indexOf(pr), mid, lista, precio: manual ? +pr.precio || 0 : lista, manual, promoId: null });
   }
   let descPromos = 0;
+  const combos: { id: string; txt: string; monto: number }[] = [];
   for (const x of promos.filter((x: any) => x.tipo === 'especial')) {
     const set = new Set(x.modelos || []);
     for (const u of U) if (!u.manual && !u.promoId && u.mid && set.has(u.mid)) {
@@ -81,20 +82,35 @@ export function calcTotal(p: any, live: any, modeloDe: (id: string) => string | 
   for (const x of promos.filter((x: any) => x.tipo === 'combo' || x.tipo === 'nxm')) {
     const set = new Set(x.modelos || []), n = Math.max(1, +x.n || 0);
     const el = U.filter((u) => !u.manual && !u.promoId && u.mid && set.has(u.mid)).sort((a, b) => b.precio - a.precio);
+    let monto = 0;
     for (let g = 0; g + n <= el.length; g += n) {
       const grupo = el.slice(g, g + n), suma = grupo.reduce((t, u) => t + u.precio, 0);
       let d = 0;
       if (x.tipo === 'combo') d = Math.max(0, suma - Math.round(+x.x || 0));
       else { const gratis = Math.max(0, n - Math.max(0, +x.m || 0)); d = grupo.slice(n - gratis).reduce((t, u) => t + u.precio, 0); }
-      if (d > 0) { descPromos += d; grupo.forEach((u) => { u.promoId = x.id; }); }
+      if (d > 0) { descPromos += d; monto += d; grupo.forEach((u) => { u.promoId = x.id; }); }
     }
+    if (monto > 0) combos.push({ id: x.id, txt: x.tipo === 'combo' ? `${+x.n} por ${plata(x.x)}` : `${+x.n}x${+x.m}`, monto });
   }
   const livePct = (p.descuento !== null && p.descuento !== undefined && p.descuento !== '') ? +p.descuento : (+(live?.datos?.descuento) || 0);
   const vipPct = +s.vipPct || 0;
   const bruto = U.reduce((t, u) => t + u.precio, 0), baseDesc = U.filter((u) => !u.promoId).reduce((t, u) => t + u.precio, 0);
   const sub = Math.max(0, bruto - descPromos - Math.round(baseDesc * livePct / 100) - Math.round(baseDesc * vipPct / 100));
-  return sub - Math.min(+p.saldoAplicado || 0, sub);
+  // Desglose en palabras, para explicarle el total a la clienta (11/11)
+  const nom = (i: number, q: number) => `${(p.prendas || [])[i]?.nombre || 'prenda'}${q > 1 ? ' x' + q : ''}`;
+  const cuenta = (us: any[]) => { const m = new Map<number, number>(); us.forEach((u) => m.set(u.i, (m.get(u.i) || 0) + 1)); return [...m].sort((a, b) => a[0] - b[0]); };
+  const detalle: string[] = [];
+  for (const k of combos) { const us = U.filter((u) => u.promoId === k.id), antes = us.reduce((t, u) => t + u.precio, 0); detalle.push(`Promo ${k.txt}: ${cuenta(us).map(([i, q]) => nom(i, q)).join(' + ')} → le queda en ${plata(antes - k.monto)} (sin promo serían ${plata(antes)})`); }
+  const ids = new Set(combos.map((k) => k.id)), fuera = U.filter((u) => !u.promoId || !ids.has(u.promoId));
+  for (const [i, q] of cuenta(fuera)) detalle.push(`${combos.length ? 'Fuera de promo: ' : ''}${nom(i, q)}: ${plata(fuera.filter((u) => u.i === i).reduce((t, u) => t + u.precio, 0))}`);
+  if (livePct && baseDesc) detalle.push(`Descuento del live ${livePct}%: -${plata(Math.round(baseDesc * livePct / 100))}`);
+  if (vipPct && baseDesc) detalle.push(`Descuento VIP ${vipPct}%: -${plata(Math.round(baseDesc * vipPct / 100))}`);
+  const saldo = Math.min(+p.saldoAplicado || 0, sub);
+  if (saldo) detalle.push(`Saldo a favor: -${plata(saldo)}`);
+  return { total: sub - saldo, detalle };
 }
+const plata = (n: any) => '$' + Math.round(+n || 0).toLocaleString('es-UY');
+export function calcTotal(p: any, live: any, modeloDe: (id: string) => string | null | undefined = (id) => MODELO_DE.get(id)): number { return calcPedido(p, live, modeloDe).total; }
 function esperadoDe(base: number, env: number, cuenta: string, mp: number) {
   const rec = medioDe(cuenta) === 'mercadopago' ? Math.round((base + env) * mp / 100) : 0;
   return { base, env, rec, total: base + env + rec };
@@ -150,10 +166,10 @@ export async function buscarPedido(ctx: Ctx) {
   }
   const pedidos = filas.map((r) => {
     const p = r.datos, live = lives.get(r.live_id);
-    const total = calcTotal(p, live);
+    const { total, detalle } = calcPedido(p, live);
     return {
       ...(anteriores.has(r.id) ? { anterior_a_mabel_sin_marcar_pago: true, indicio_en_historial: evidencia[r.id] || null, aviso: 'NO le pidas comprobante de este pedido y no le digas que lo debe: puede estar pagado y sin marcar. Si hace falta, pasalo a Yanaina en silencio.' } : {}),
-      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: live?.datos?.fechaPagoISO || null, ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha) } : {}), total, estado: p.estado, estado_pago: estadoPago(p, c),
+      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: live?.datos?.fechaPagoISO || null, ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
       entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,

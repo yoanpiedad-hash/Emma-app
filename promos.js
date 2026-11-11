@@ -86,4 +86,22 @@ function calcularPedido(pedido, ctx) {
   res.descPromos = descPromos;
   return res;
 }
-if (typeof module !== 'undefined') module.exports = { calcularPedido, promoVigente, promoTxt, esManual, PROMO_TIPOS };
+/**
+ * Desglose para explicarle el total a la clienta: las prendas agrupadas por combo (con lo que queda el grupo) y las que van sueltas.
+ * res = calcularPedido(pedido, ctx). Devuelve { grupos:[{ id, txt, veces, items:[{ i, q }], antes, queda }], sueltas:[{ i, q, tot, lista }] }.
+ */
+function desglosePedido(pedido, res) {
+  const prendas = pedido.prendas || [], G = new Map(), S = new Map();
+  (res.promos || []).forEach(x => G.set(x.id, { id: x.id, txt: x.txt, monto: x.monto, n: 0, items: new Map(), antes: 0 }));
+  for (const u of res.unidades || []) {
+    const g = u.promoId && G.get(u.promoId);
+    if (g) { g.n++; g.antes += u.precio; g.items.set(u.i, (g.items.get(u.i) || 0) + 1); }
+    else { const s = S.get(u.i) || { i: u.i, q: 0, tot: 0 }; s.q++; s.tot += u.precio; S.set(u.i, s); }
+  }
+  const nDe = id => { const m = /^(\d+)/.exec(String((G.get(id) || {}).txt || '')); return m ? +m[1] : 0; };
+  const grupos = [...G.values()].filter(g => g.n > 0).map(g => ({ id: g.id, txt: g.txt, veces: nDe(g.id) ? Math.max(1, Math.round(g.n / nDe(g.id))) : 1,
+    items: [...g.items].map(([i, q]) => ({ i, q })).sort((a, b) => a.i - b.i), antes: g.antes, queda: g.antes - g.monto }));
+  const sueltas = [...S.values()].sort((a, b) => a.i - b.i).map(s => { const pr = prendas[s.i] || {}; return { ...s, lista: (+(pr.precioLista ?? pr.precio) || 0) * s.q }; });
+  return { grupos, sueltas };
+}
+if (typeof module !== 'undefined') module.exports = { calcularPedido, desglosePedido, promoVigente, promoTxt, esManual, PROMO_TIPOS };

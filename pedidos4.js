@@ -126,14 +126,14 @@ function descLineasHTML(t) {
 }
 mensajePedido = function (p) {
   const c = cliById(p.clienteId) || { nombre: '' }, live = liveById(p.liveId), t = calc(p);
-  const porPrenda = new Map(); t.unidades.forEach(u => porPrenda.set(u.i, (porPrenda.get(u.i) || 0) + u.precio));
-  const lineas = p.prendas.map((pr, i) => {
-    const q = pr.qty || 1, x = q > 1 ? ' x' + q : '', tot = porPrenda.has(i) ? porPrenda.get(i) : pr.precio * q, lista = (pr.precioLista ?? pr.precio) * q;
-    return lista > tot ? `- ${pr.nombre}${x}: ~${fmt(lista)}~ *${fmt(tot)}*` : `- ${pr.nombre}${x}: ${fmt(tot)}`;
-  }).join('\n');
-  let msg = `¡Hola ${c.nombre}! ¿Cómo estás? 😊\nTe paso el detalle de tu pedido #${p.num} 🛍️\n\n${lineas}`;
+  // 11/11: las prendas de un combo van juntas con lo que queda el grupo ("Promo 3 por $1.800 → te queda en $1.800"); antes iba la lista
+  // con precios sin promo y abajo "🎁 promo: -$X", y las clientas no lo entendían.
+  const d = desglosePedido(p, t), nom = (i, q) => `- ${(p.prendas[i] || {}).nombre || ''}${q > 1 ? ' x' + q : ''}`;
+  const bloques = d.grupos.map(g => `🎁 *Promo ${g.txt}${g.veces > 1 ? ' (x' + g.veces + ')' : ''}*\n${g.items.map(x => nom(x.i, x.q)).join('\n')}\nTe queda en *${fmt(g.queda)}* (en vez de ~${fmt(g.antes)}~)`);
+  const sueltas = d.sueltas.map(s => s.lista > s.tot ? `${nom(s.i, s.q)}: ~${fmt(s.lista)}~ *${fmt(s.tot)}*` : `${nom(s.i, s.q)}: ${fmt(s.tot)}`).join('\n');
+  if (sueltas) bloques.push((d.grupos.length ? 'Fuera de promo:\n' : '') + sueltas);
+  let msg = `¡Hola ${c.nombre}! ¿Cómo estás? 😊\nTe paso el detalle de tu pedido #${p.num} 🛍️\n\n${bloques.join('\n\n')}`;
   const desc = [];
-  t.promos.forEach(x => desc.push(`🎁 ${x.nombre}: -${fmt(x.monto)}`));
   if (t.descLive) desc.push(`🎉 Descuento live ${t.livePct}%: -${fmt(t.descLive)}`);
   if (t.descVip) desc.push(`⭐ Descuento VIP ${t.vipPct}%: -${fmt(t.descVip)}`);
   if (desc.length) msg += '\n\n' + desc.join('\n');
