@@ -425,6 +425,7 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
 async function derivar(ctx: Ctx, motivo: string, categoria?: string) { const r = await pasarAYanaina(ctx, motivo, false, categoria || categoriaDe(motivo)); return { ...r, ok: false, motivo }; }
 
 // ─── guardar_entrega ───────────────────────────────────────────
+const AVISO_BARRIO = 'Falta el barrio de la cadetería';
 export async function guardarEntrega(ctx: Ctx, a: any) {
   if (!ctx.clienta) return derivar(ctx, 'No hay ficha de clienta para este número (eligió entrega)', 'entrega');
   const cfg = await leerConfig(), tar = tarifaDe(cfg);
@@ -440,15 +441,14 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   const s = (v: any) => String(v ?? '').trim();
   const cambiosCli: Record<string, string> = {};
   const hint: any = {};
+  // 11/11 (Yoan, caso Xime): el barrio ya no frena la carga. Si falta o no se reconoce, la cadetería se carga igual con la dirección,
+  // queda el aviso "Falta el barrio" en Despacho y Mabel lo pregunta una sola vez; si la clienta contesta, se vuelve a llamar con el barrio.
+  let faltaBarrio = false, opBarrio: string[] = [];
   if (tipo === 'cadeteria') {
     if (!s(a.direccion)) return { error: 'Falta la dirección.' };
     const barrio = barrioCanon(s(a.barrio));
-    if (!barrio) {
-      const op = barrioOpciones(s(a.barrio));
-      if (op.length) return { ok: false, preguntar_barrio: true, opciones: op, que_hacer: 'El barrio no es exacto. Preguntale a la clienta cuál de estas opciones es (sin decir que es una lista) y volvé a llamar guardar_entrega con el que elija.' };
-      return { ok: false, preguntar_barrio: true, que_hacer: 'Ese barrio no está en la lista de GrisalExpress. Preguntale el barrio de nuevo (puede estar mal escrito o ser otro nombre). Si la segunda vez tampoco está, pasá a Yanaina con la dirección y el barrio.' };
-    }
-    cambiosCli.direccion = s(a.direccion); cambiosCli.barrio = barrio;
+    if (!barrio) { faltaBarrio = true; opBarrio = s(a.barrio) ? barrioOpciones(s(a.barrio)) : []; }
+    cambiosCli.direccion = s(a.direccion); if (barrio) cambiosCli.barrio = barrio;
     if (s(a.nombre_retira)) cambiosCli.nombreEnvio = s(a.nombre_retira);
     if (s(a.nota_cadete)) cambiosCli.notaCadete = s(a.nota_cadete);
   } else if (tipo === 'agencia') {
@@ -462,13 +462,28 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   const cambio = !!a.con_cambio, tarE = cambio ? Math.round(tar * 1.5) : tar; // 4/11: si el cadete además lleva/retira un cambio, cobra un envío y medio
   const x = Math.max(0, Math.min(tarE, Math.round(num(a.envio_transferido))));
   await conReintento(async () => {
-    if (Object.keys(cambiosCli).length) { const { data } = await sb.from('clientas').select('*').eq('id', ctx.clienta.id).single(); const extra: any = tipo === 'cadeteria' ? { direcciones: sumarDireccion(data.datos, cambiosCli.direccion, cambiosCli.barrio, s(a.etiqueta).toLowerCase()) } : {}; await guardarClienta(data, { ...data.datos, ...cambiosCli, ...extra }); }
+    if (Object.keys(cambiosCli).length) {
+      const { data } = await sb.from('clientas').select('*').eq('id', ctx.clienta.id).single();
+      if (tipo === 'cadeteria' && !cambiosCli.barrio) {
+        // Sin barrio nuevo: si es la misma dirección de la ficha y ya tenía barrio, vale ese; si es otra dirección, el barrio viejo no corresponde
+        const guardada = (Array.isArray(data.datos.direcciones) ? data.datos.direcciones : []).find((x: any) => normD(x.direccion) === normD(cambiosCli.direccion));
+        const conocido = (normD(data.datos.direccion) === normD(cambiosCli.direccion) && s(data.datos.barrio)) || s(guardada?.barrio);
+        if (conocido) { cambiosCli.barrio = conocido; faltaBarrio = false; } else cambiosCli.barrio = '';
+      }
+      const extra: any = tipo === 'cadeteria' ? { direcciones: sumarDireccion(data.datos, cambiosCli.direccion, cambiosCli.barrio, s(a.etiqueta).toLowerCase()) } : {};
+      await guardarClienta(data, { ...data.datos, ...cambiosCli, ...extra });
+    }
     for (const r of objetivo) {
       const { data } = await sb.from('pedidos').select('*').eq('id', r.id).single();
       const p = JSON.parse(JSON.stringify(data.datos)); p.entrega = tipo;
       if (s(a.nota_interna) && !String(p.notas || '').includes(s(a.nota_interna))) { const n = '📦 ' + s(a.nota_interna).slice(0, 150); p.notas = p.notas ? String(p.notas) + '\n' + n : n; }
       if (tipo === 'retiro') { if (!pagado(p)) p.pagaAlRetirar = true; else delete p.pagaAlRetirar; if (s(a.horario_retiro)) { const f = s(a.retiro_fecha), hh = s(a.retiro_hora).match(/^(\d{1,2}):(\d{2})$/); p.retiroCuando = { texto: s(a.horario_retiro).slice(0, 80), ...(/^\d{4}-\d{2}-\d{2}$/.test(f) ? { fecha: f } : {}), ...(hh && +hh[1] < 24 && +hh[2] < 60 ? { hora: hh[1].padStart(2, '0') + ':' + hh[2] } : {}) }; if (!p.retiroCuando.fecha) delete p.retiroCuando.hora; } if (s(a.horario_retiro)) { const n = '🕒 Pasa a retirar: ' + s(a.horario_retiro).slice(0, 80) + ' (le dijo a Mabel)'; p.notas = p.notas ? String(p.notas).replace(/🕒 Pasa a retirar:[^\n]*/, '').trim() + (String(p.notas).replace(/🕒 Pasa a retirar:[^\n]*/, '').trim() ? '\n' : '') + n : n; } }
       else { delete p.pagaAlRetirar; delete p.retiroCuando; }
+      { // aviso de Despacho por el barrio: se pone si falta y se saca cuando se completa o cambia la entrega
+        const partes = String(p.avisoDespacho || '').split(' · ').map((t: string) => t.trim()).filter((t: string) => t && t !== AVISO_BARRIO);
+        if (tipo === 'cadeteria' && faltaBarrio) partes.unshift(AVISO_BARRIO);
+        const av = partes.join(' · ').slice(0, 200); if (av) p.avisoDespacho = av; else delete p.avisoDespacho;
+      }
       if (tipo === 'cadeteria') {
         p.tipoEnvio = p.tipoEnvio || 'comun';
         if (x >= tarE) { p.cobroEnvio = 'pago'; p.cobroMonto = 0; } else if (x > 0 || cambio) { p.cobroEnvio = 'monto'; p.cobroMonto = tarE - x; } else { p.cobroEnvio = 'cobrar'; p.cobroMonto = 0; }
@@ -488,7 +503,8 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     ok: true, tipo, pedidos: objetivo.map((r) => r.datos.num), ...hint,
     ...(cadete !== null ? { el_cadete_cobra: cadete } : {}),
     ...(tipo === 'retiro' ? { paga_al_retirar: objetivo.some((r) => !pagado(r.datos)) } : {}),
-    mensaje_de_cierre: tipo === 'cadeteria' ? 'Listo, ya lo tenemos anotado. Cuando salga te avisa la cadetería.' : tipo === 'agencia' ? 'Listo, anotado. Cuando salga te mandamos la foto del comprobante de envío.' : 'Listo, anotado. ¡Te esperamos!',
+    ...(tipo === 'cadeteria' && faltaBarrio ? { falta_barrio: true, ...(opBarrio.length ? { opciones: opBarrio } : {}), que_hacer: 'La cadetería YA quedó cargada con la dirección y sale igual. ' + (opBarrio.length ? 'El barrio no es exacto: preguntale cuál de estas opciones es (sin decir que es una lista).' : s(a.barrio) ? 'Ese barrio no está en la lista de GrisalExpress: preguntáselo una vez más (puede estar mal escrito).' : 'Preguntale el barrio.') + ' Una sola vez y en el mismo mensaje del cierre. Si lo contesta, volvé a llamar guardar_entrega con la misma dirección y el barrio. Si no contesta, no insistas ni lo repitas en otro mensaje: el equipo lo completa.' } : {}),
+    mensaje_de_cierre: tipo === 'cadeteria' && faltaBarrio ? 'Listo, ya lo tenemos anotado. ¿Me pasás el barrio así queda completo? Cuando salga te avisa la cadetería.' : tipo === 'cadeteria' ? 'Listo, ya lo tenemos anotado. Cuando salga te avisa la cadetería.' : tipo === 'agencia' ? 'Listo, anotado. Cuando salga te mandamos la foto del comprobante de envío.' : 'Listo, anotado. ¡Te esperamos!',
   };
 }
 
@@ -705,7 +721,7 @@ export const HERRAMIENTAS = [
     nota: { type: 'string', description: 'Nota corta opcional (ejemplo: "transfirió $1.200")' } }, required: ['cuenta', 'monto', 'destino_coincide'] } },
   { name: 'guardar_entrega', description: 'Carga cómo recibe el pedido: retiro, cadeteria (Montevideo) o agencia.', input_schema: { type: 'object', properties: {
     tipo: { type: 'string', enum: ['retiro', 'cadeteria', 'agencia'] },
-    direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio (tiene que estar en la lista de GrisalExpress)' },
+    direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio tal como lo dijo la clienta. Si todavía no lo dijo, llamá igual SIN barrio: la cadetería queda cargada con la dirección y después se lo preguntás una vez.' },
     nota_cadete: { type: 'string', description: 'Cadetería: SOLO referencias para llegar (portón verde, apto 2, timbre) o el horario de entrega. Nada más.' }, nota_interna: { type: 'string', description: 'Nota para el equipo de Emma sobre este pedido (va junto con otra cosa, lo de Yharol, armar con otro pedido…). No la ve el cadete.' }, etiqueta: { type: 'string', description: 'Cadetería: nombre de la dirección si la clienta lo dice (casa, trabajo, mamá…)' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio (cobra un envío y medio)' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto de los $250 ya transfirió (0 si lo paga al cadete, 250 si lo transfirió completo)' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
