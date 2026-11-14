@@ -25,7 +25,36 @@ const graph = () => (ENV('WHATSAPP_API_BASE') || GRAPH_DEF).replace(/\/+$/, '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
 const b64 = (u: Uint8Array) => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
-const UNSUP_TXT = '[Mandó un mensaje o archivo que no llegó al sistema: puede ser un comprobante en un formato que no se recibe]';
+// ─── Modo ausente (14/11, OPE-05) ─────────────────────────────
+// config.mabelAusente = { activo, hasta (AAAA-MM-DD), texto, desde (ISO), apagado (ISO) }. Se prende y apaga en Mabel → Ajustes.
+// Prendido (y hasta el final del día "hasta"): a cada clienta le contesta UNA sola vez el texto fijo y nada más
+// (no marca pagos, no toma entregas, no deriva, no repasa). Los mensajes quedan guardados en mabel_mensajes.
+// Al apagarlo, el repaso no contesta lo que llegó durante la ausencia (ventanaAusente).
+const DIAS_AU = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const fechaAu = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? String(s) : '';
+function ausenteActivo(cfg: any) {
+  const a = cfg?.mabelAusente;
+  return !!a && typeof a === 'object' && a.activo === true && (!fechaAu(a.hasta) || hoyUY() <= fechaAu(a.hasta));
+}
+function textoAusente(a: any) {
+  const t = String(a?.texto || '').trim();
+  if (t) return t;
+  const h = fechaAu(a?.hasta);
+  const d = h ? new Date(h + 'T12:00:00Z') : null;
+  const dia = d ? DIAS_AU[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1) : 'la semana que viene';
+  return `Hola bella, estamos de viaje hasta el ${dia}. Escribinos a partir de ahí y te respondemos. ¡Gracias!`;
+}
+// [desde, fin] de la última ausencia (ISO), o null. Lo que llegó en ese rango no lo contesta el repaso.
+function ventanaAusente(cfg: any): [string, string] | null {
+  const a = cfg?.mabelAusente;
+  if (!a || typeof a !== 'object' || !a.desde) return null;
+  const finFecha = fechaAu(a.hasta) ? new Date(fechaAu(a.hasta) + 'T23:59:59-03:00').toISOString() : '9999-12-31T00:00:00Z';
+  const fin = a.activo === true ? finFecha : String(a.apagado || finFecha);
+  return [String(a.desde), [fin, finFecha].sort()[0]];
+}
+const enVentana = (v: [string, string] | null, creado: string) => !!v && new Date(creado).toISOString() >= v[0] && new Date(creado).toISOString() <= v[1];
+
+const UNSUP_TXT ='[Mandó un mensaje o archivo que no llegó al sistema: puede ser un comprobante en un formato que no se recibe]';
 const AUTOMATICO = /Gracias por elegir Emma Indumentaria|mensaje autom[aá]tico de Emma|me confirm[aá]s con un S[ÍI]|Formas de pago/i;
 
 // ─── Seguridad del webhook ────────────────────────────────────
@@ -331,7 +360,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   const ignorar: string[] = Array.isArray(cfg.mabelIgnorar) ? cfg.mabelIgnorar.map((x: any) => telKeyDe(String(x && typeof x === 'object' ? x.tel : x))).filter(Boolean) : []; // 7/11: proveedores, mayoristas, contactos personales: Mabel nunca les contesta ni los repasa
   if (ignorar.includes(telKey)) return { respuesta: null, motivo: 'número ignorado (mabelIgnorar)' };
   const equipo = ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean);
-  if (!solo.length && equipo.includes(telKey)) return { respuesta: null, motivo: 'número del equipo' };
+  if (!solo.length && equipo.includes(telKey) && !opts.dry) return { respuesta: null, motivo: 'número del equipo' }; // 14/11: en el modo prueba (dry) se puede probar con un número del equipo
   const { data: conv } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
   if (conv?.datos?.estado === 'yanaina' && conv.datos.hasta > new Date().toISOString()) return { respuesta: null, motivo: 'conversación para Yanaina' };
   const { count } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').gte('creado', new Date(Date.now() - 3600e3).toISOString());
@@ -351,8 +380,21 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
       if (u && !String(u.texto || '').includes('?')) return { respuesta: null, motivo: 'agradecimiento suelto: no se contesta' };
     }
   }
+  // 14/11: modo ausente. Una sola respuesta fija por clienta desde que se prendió; nada de herramientas ni de Claude.
+  if (ausenteActivo(cfg)) {
+    await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false);
+    const a = cfg.mabelAusente, desdeA = String(a.desde || new Date(Date.now() - 7 * 864e5).toISOString());
+    const { count: ya } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'out').eq('tipo', 'ausente').gte('creado', desdeA);
+    if (ya) return { respuesta: null, motivo: 'modo ausente: ya se le avisó', ...(opts.dry ? { prueba: true } : {}) };
+    const txt = textoAusente(a);
+    try {
+      const id = opts.dry ? uid('dryout') : await enviar(wa, txt);
+      await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'ausente', texto: txt, procesado: true });
+    } catch (e) { console.error('ausente:', (e as Error).message); return { respuesta: null, motivo: 'modo ausente: no se pudo enviar', error: String((e as Error).message || e) }; }
+    return { respuesta: txt, motivo: 'modo ausente', ...(opts.dry ? { prueba: true } : {}) };
+  }
   // Lo que llegó mientras se preparaba la respuesta entra en el mismo lote (una sola respuesta)
-  const { data: mas } = await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
+  const { data: mas } =await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
   if (mas?.length) { lote.push(...mas); lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado))); }
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: lote.map((m: any) => String(m.id)) });
   let respuesta = '', error: string | null = null;
@@ -444,6 +486,8 @@ async function repasarPendientes(soloTel = '') {
   const ahora = new Date().toISOString(), hechos: any[] = [];
   const cfg = await leerConfig();
   if (cfg.mabelActiva === false) return [{ motivo: 'Mabel pausada' }];
+  if (ausenteActivo(cfg)) return [{ motivo: 'modo ausente: no se repasa' }]; // 14/11
+  const va = ventanaAusente(cfg); // lo que llegó durante la ausencia no lo contesta el repaso al volver
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
   const ignorar: string[] = Array.isArray(cfg.mabelIgnorar) ? cfg.mabelIgnorar.map((x: any) => telKeyDe(String(x && typeof x === 'object' ? x.tel : x))).filter(Boolean) : []; // 7/11: proveedores, mayoristas, contactos personales: Mabel nunca les contesta ni los repasa
   const equipo = [...ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean), ...ignorar];
@@ -483,7 +527,7 @@ async function repasarPendientes(soloTel = '') {
     // contesta si puede, o deriva (en silencio si ya la había derivado hace poco)
     const { data: ult } = await sb.from('mabel_mensajes').select('id,direccion,creado,tipo,texto').eq('tel_key', telKey).order('creado', { ascending: false }).limit(15);
     const sinResp: string[] = [];
-    for (const m of ult || []) { if (m.direccion === 'echo' && m.tipo === 'reaction') break; /* 5/11: Yanaina reaccionó = lo vio y lo atendió */ if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo)) && !(m.direccion === 'in' && m.tipo === 'unsupported' && m.texto === UNSUP_TXT)) continue; if (m.direccion !== 'in') break; if (m.creado > desde) sinResp.push(m.id); }
+    for (const m of ult || []) { if (m.direccion === 'echo' && m.tipo === 'reaction') break; /* 5/11: Yanaina reaccionó = lo vio y lo atendió */ if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo)) && !(m.direccion === 'in' && m.tipo === 'unsupported' && m.texto === UNSUP_TXT)) continue; if (m.direccion !== 'in') break; if (enVentana(va, m.creado)) break; /* 14/11: llegó en el modo ausente */ if (m.creado > desde) sinResp.push(m.id); }
     // 5/11: si Yanaina habló con la clienta durante la ventana (eco desde el celular), el repaso no contesta: revisa en silencio y lo dudoso queda para Yanaina
     const { count: nEco } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'echo').gt('creado', d.desde || new Date(Date.now() - 12 * 3600e3).toISOString());
     if (sinResp.length && !(nEco && nEco > 0)) {
@@ -520,7 +564,7 @@ async function repasarPendientes(soloTel = '') {
     let nota = '';
     try {
       const { data: msgs } = await sb.from('mabel_mensajes').select('*').eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', true).gt('creado', desde).order('creado').limit(15);
-      const utiles = (msgs || []).filter((m: any) => m.media || String(m.texto || '').trim().length > 2);
+      const utiles = (msgs || []).filter((m: any) => !enVentana(va, m.creado) && (m.media || String(m.texto || '').trim().length > 2));
       if (!utiles.length) nota = 'REPASO: sin mensajes nuevos';
       else nota = await atender(telKey, wa, utiles, true);
     } catch (e) { nota = 'REPASO: error ' + String((e as Error).message || e).slice(0, 200); }
@@ -553,7 +597,9 @@ Deno.serve(async (req) => {
   // Modo prueba (sin Meta): corre el agente con el texto/imagen que mandes y devuelve la respuesta sin enviarla por WhatsApp
   const tk = req.headers.get('x-mabel-test');
   if (tk) {
-    if (!ENV('MABEL_TEST_KEY') || tk !== ENV('MABEL_TEST_KEY')) return new Response('forbidden', { status: 403 });
+    // 14/11: la clave puede estar en los secretos o en mabel_ajustes (solo la lee la función; ahí, mínimo 24 caracteres)
+    const kEnv = Deno.env.get('MABEL_TEST_KEY') || '', kAj = AJ['MABEL_TEST_KEY'] || '';
+    if (!((kEnv && tk === kEnv) || (kAj.length >= 24 && tk === kAj))) return new Response('forbidden', { status: 403 });
     try {
       const b = JSON.parse(raw), wa = '598' + telKeyDe(b.tel), telKey = telKeyDe(b.tel);
       if (b.tool) { // prueba directa de una herramienta, sin pasar por Claude
