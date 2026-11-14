@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, FRASE_PASE, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -238,7 +238,7 @@ function salidaCadeteria() {
 }
 
 async function atender(telKey: string, wa: string, lote: any[], repaso = false, tr: Traza = nuevaTraza()) {
-  const ctx: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [] };
+  const ctx: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [], inicio: new Date().toISOString() };
   const cfg = await leerConfig();
   const estado = await buscarPedido(ctx);
   // 8/11: Mabel se presenta en el primer mensaje de cada día (no cada 24 h): una clienta que vuelve otro día puede no acordarse de quién es.
@@ -427,10 +427,10 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   catch (e) {
     error = String((e as Error).message || e); console.error('Mabel error:', error);
     const { data: c } = await sb.from('clientas').select('*').eq('tel_key', telKey).eq('borrado', false).limit(1); ctxMin.clienta = c?.[0] || null;
-    await pasarAYanaina(ctxMin, 'Error técnico de Mabel: ' + error.slice(0, 120), false, 'otros').catch(() => {});
-    respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
+    const rp: any = await pasarAYanaina(ctxMin, 'Error técnico de Mabel: ' + error.slice(0, 120), false, 'otros').catch(() => null);
+    respuesta = rp?.derivado ? FRASE_PASE : '(sin mensaje: no se pudo dejar el pase)'; // 14/11 (MAC-07): sin pendiente guardado no se promete nada
   }
-  if (!respuesta) respuesta = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
+  if (!respuesta) respuesta = FRASE_PASE;
   // 4/11: si mientras armaba la respuesta la clienta mandó más mensajes, no contesta por partes: vuelve a armar una sola respuesta con todo
   if (!error && !opts.dry && !opts.reintento) {
     const { count: nuevos } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false);
@@ -467,7 +467,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
       const { data: ec } = await sb.from('mabel_mensajes').select('texto,tipo').eq('tel_key', telKey).eq('direccion', 'echo').gte('creado', [new Date(Date.now() - 12 * 3600e3).toISOString(), conv?.datos?.devuelta || ''].sort().pop()!).limit(30); // 9/11: si Yoan/Yanaina devolvió la conversación a Mabel, lo que el equipo escribió antes de devolverla no cuenta como 'equipo activo'
       equipoActivo = (ec || []).some((e: any) => !['edit', 'revoke', 'system', 'unsupported', 'ephemeral'].includes(String(e.tipo)) && !AUTOMATICO.test(String(e.texto || '')));
     }
-    if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || dd.silencio === true || (dd.derivadoAntes && (Date.parse(dd.derivadoEn) - Date.parse(dd.derivadoAntes)) < 6 * 3600e3))) {
+    if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || dd.silencio === true || dd.repetido === true)) { // 14/11: ya no por "otro pase en 6 h"; solo si el mismo tema ya estaba pendiente (repetido)
       // Si además respondió algo útil (ej. el horario), se manda eso sin la frase de "le aviso a Yanaina"
       const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*ya le aviso a yanaina[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
       if ((equipoActivo || dd.silencio === true) || resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) { // 5/11: con el equipo activo o pase en silencio NUNCA se manda nada

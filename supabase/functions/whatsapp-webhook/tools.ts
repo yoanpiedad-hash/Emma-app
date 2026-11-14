@@ -31,7 +31,7 @@ const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efecti
 const medioDe = (c: string) => /mercado\s*pago/i.test(c || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(c || '') ? 'efectivo' : 'transferencia';
 const esHabitual = (a: string) => /^(dac|nu[nñ]ez|correo)/.test(normB(a));
 
-export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean };
+export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string };
 
 // ─── Config ───────────────────────────────────────────────────────
 export async function leerConfig(): Promise<Record<string, any>> {
@@ -287,41 +287,73 @@ export function categoriaDe(motivo: string): string {
   if (/agregar|sumar|guardar|guardad|avis(en|ar) cuando|consulta|pregunta (si|por)|talle|prenda|precio|tene[sn]\b|tienen|queda[n]?\b|\bhay\b|cuanto (sale|cuesta)|proximo vivo/.test(m)) return 'especial';
   return 'otros';
 }
-export async function registrarDerivado(telKey: string, c: any, motivo: string, categoria: string | undefined, silencio: boolean, origen: string) {
+// 14/11 (MAC-07, MAC-08): UN solo pendiente por clienta. Los motivos se suman como lista con fecha (motivos[]) y `motivo`
+// queda como texto armado para la app (lo más nuevo arriba). La categoría es la más urgente (orden de CATEGORIAS),
+// salvo que la hayan puesto a mano en la app (categoriaManual). Si había varias filas pendientes, se unen en una y las
+// otras quedan resueltas con "unido a …". "Resuelto" en la app resuelve así a la clienta entera.
+// Devuelve null si no se pudo guardar (se reintenta una vez): en ese caso NO se le promete a la clienta que le escriben.
+// repetido = ya había un motivo pendiente de la MISMA categoría de antes de `antesDe` (inicio del turno): el pase va en silencio.
+const urg = (c: string) => { const i = CATEGORIAS.indexOf(c); return i < 0 ? 99 : i; };
+const fechaCorta = (iso: string) => { try { return new Intl.DateTimeFormat('es-UY', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso)).replace(',', ''); } catch (_) { return ''; } };
+const motivosDe = (d: any): any[] => Array.isArray(d?.motivos) && d.motivos.length ? d.motivos : [{ fecha: d?.ultimo || d?.creado || new Date().toISOString(), categoria: d?.categoria || 'otros', motivo: String(d?.motivo || 'Sin motivo'), ...(d?.silencio ? { silencio: true } : {}) }];
+const textoMotivos = (ms: any[]) => ms.slice(-6).reverse().map((m) => fechaCorta(m.fecha) + ' · ' + m.motivo).join('\n') + (ms.length > 6 ? '\n(+' + (ms.length - 6) + ' anteriores)' : '');
+async function dosVeces<T>(f: () => PromiseLike<{ data?: T; error: any }>) { let r = await f(); if (r.error) { await new Promise((x) => setTimeout(x, 400)); r = await f(); } return r; }
+export async function registrarDerivado(telKey: string, c: any, motivo: string, categoria: string | undefined, silencio: boolean, origen: string, antesDe?: string): Promise<{ id: string; repetido: boolean } | null> {
   try {
     const cat = CATEGORIAS.includes(String(categoria)) ? String(categoria) : categoriaDe(motivo);
-    const ahora = new Date().toISOString(), mot = String(motivo || 'Sin motivo').slice(0, 300);
-    // Si ya hay un pendiente de esta clienta en la misma categoría, se actualiza (no se llena la bandeja de repetidos)
-    const { data: ab } = await sb.from('derivados').select('id,datos').eq('datos->>telKey', telKey).eq('borrado', false).order('actualizado', { ascending: false }).limit(20);
-    const prev = (ab || []).find((r: any) => !r.datos?.resuelto && r.datos?.categoria === cat);
-    if (prev) {
-      const datos = { ...prev.datos, motivo: mot, ultimo: ahora, veces: (+prev.datos.veces || 1) + 1, clienteId: c?.id || prev.datos.clienteId || null, ...(silencio ? {} : { silencio: false }) };
-      await sb.from('derivados').update({ datos }).eq('id', prev.id);
-      return prev.id;
+    const ahora = new Date().toISOString(), mot = String(motivo || 'Sin motivo').replace(/\s+/g, ' ').trim().slice(0, 300);
+    const corte = antesDe || ahora;
+    const { data: ab, error: e0 } = await dosVeces(() => sb.from('derivados').select('id,datos').eq('datos->>telKey', telKey).eq('borrado', false).order('actualizado', { ascending: false }).limit(30));
+    if (e0) { console.error('derivados (leer):', e0.message); return null; }
+    const pend = ((ab || []) as any[]).filter((r) => r.datos && !r.datos.resuelto);
+    const previos = pend.flatMap((r) => motivosDe(r.datos));
+    const repetido = previos.some((m) => m.categoria === cat && String(m.fecha) < corte);
+    const nuevo = { fecha: ahora, categoria: cat, motivo: mot, origen, ...(silencio || repetido ? { silencio: true } : {}) };
+    if (!pend.length) {
+      const id = 'dv' + telKey + Date.now().toString(36);
+      const datos = { id, telKey, tel: c?.datos?.tel || '0' + telKey, clienteId: c?.id || null, categoria: cat, motivo: textoMotivos([nuevo]), motivos: [nuevo], silencio: !!nuevo.silencio, origen, creado: ahora, ultimo: ahora, veces: 1, resuelto: null };
+      const { error } = await dosVeces(() => sb.from('derivados').insert({ id, datos, borrado: false }));
+      if (error) { console.error('derivados (crear):', error.message); return null; }
+      return { id, repetido: false };
     }
-    const id = 'dv' + telKey + Date.now().toString(36);
-    const datos = { id, telKey, tel: c?.datos?.tel || '0' + telKey, clienteId: c?.id || null, categoria: cat, motivo: mot, silencio: !!silencio, origen, creado: ahora, ultimo: ahora, veces: 1, resuelto: null };
-    await sb.from('derivados').insert({ id, datos, borrado: false });
-    return id;
-  } catch (e) { console.error('derivados:', (e as Error).message || e); return null; } // la bandeja nunca frena el pase a Yanaina
+    // Se queda la fila con categoría puesta a mano; si no, la más urgente; si empatan, la más vieja.
+    const keep = [...pend].sort((x, y) => (y.datos.categoriaManual ? 1 : 0) - (x.datos.categoriaManual ? 1 : 0) || urg(x.datos.categoria) - urg(y.datos.categoria) || String(x.datos.creado).localeCompare(String(y.datos.creado)))[0];
+    const vistos = new Set<string>();
+    const todos = [...previos, nuevo].filter((m) => { const k = m.fecha + '|' + m.motivo; if (vistos.has(k)) return false; vistos.add(k); return true; }).sort((x, y) => String(x.fecha).localeCompare(String(y.fecha))).slice(-15);
+    const categoriaFinal = keep.datos.categoriaManual ? keep.datos.categoria : [...todos].sort((x, y) => urg(x.categoria) - urg(y.categoria))[0].categoria;
+    const veces = pend.reduce((n, r) => n + (+r.datos.veces || 1), 0) + 1;
+    const datos = { ...keep.datos, categoria: categoriaFinal, motivos: todos, motivo: textoMotivos(todos), ultimo: ahora, veces, clienteId: c?.id || keep.datos.clienteId || null, silencio: todos.every((m) => m.silencio) };
+    const { error } = await dosVeces(() => sb.from('derivados').update({ datos }).eq('id', keep.id));
+    if (error) { console.error('derivados (sumar):', error.message); return null; }
+    for (const r of pend) if (r.id !== keep.id) {
+      const { error: e2 } = await sb.from('derivados').update({ datos: { ...r.datos, resuelto: ahora, resueltoPor: 'Mabel: unido a ' + keep.id, unidoA: keep.id } }).eq('id', r.id);
+      if (e2) console.error('derivados (unir):', e2.message);
+    }
+    return { id: keep.id, repetido };
+  } catch (e) { console.error('derivados:', (e as Error).message || e); return null; }
 }
 
+export const FRASE_PASE = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
 export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, categoria?: string) {
   // 4/11: cuando deriva Mabel, la conversación vuelve sola a Mabel en 1 hora (si Yanaina contesta desde el celu, el eco la deja más tiempo)
   const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3);
   const c = ctx.clienta;
+  // 14/11 (MAC-07): primero el pendiente de la bandeja. Si no se pudo guardar, no se cambia la conversación ni se promete nada.
+  const dv = await registrarDerivado(ctx.telKey, c, motivo, categoria, silencio, categoria ? 'mabel' : 'regla', ctx.inicio);
+  if (!dv) return { ok: false, derivado: false, error: 'No se pudo dejar el pase para Yanaina (falla al guardar).', instruccion: 'NO le digas que le avisás a Yanaina ni que alguien le escribe. Contestale solo lo que puedas resolver vos; si no hay nada para contestar, respondé exactamente "(sin mensaje)".' };
   const { data: prevCv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
   const prev = prevCv?.datos || {};
   // 9/11: el repaso tiene que mirar lo que la clienta escribió y nadie contestó: desde el último mensaje nuestro (de Mabel o del equipo) anterior a este pase
   const { data: ultNuestro } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', ctx.telKey).in('direccion', ['out', 'echo']).not('tipo', 'in', '(edit,revoke,reaction,system,ephemeral,unsupported)').order('creado', { ascending: false }).limit(1);
   const revisarDesde = ultNuestro?.[0]?.creado ? new Date(ultNuestro[0].creado).toISOString() : null;
-  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
+  // 14/11 (punto 8): ya no se calla por "otro pase en las últimas 6 h". Solo se calla si ya había un pendiente del MISMO tema (repetido).
+  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(dv.repetido && !silencio ? { repetido: true } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
-  await registrarDerivado(ctx.telKey, c, motivo, categoria, silencio, categoria ? 'mabel' : 'regla');
   if (silencio) return { ok: true, derivado: true, en_silencio: true, instruccion: 'Quedó para Yanaina en silencio: NO le escribas nada a la clienta sobre esto (ni "le aviso a Yanaina").' };
-  return { ok: true, derivado: true, mensaje_para_la_clienta: 'Ya le aviso a Yanaina y te escribe enseguida 🫶' };
+  if (dv.repetido) return { ok: true, derivado: true, ya_estaba_pendiente: true, instruccion: 'Ya había un pase de este mismo tema esperando a Yanaina: quedó sumado. NO le repitas que le avisás a Yanaina. Si la clienta preguntó otra cosa que podés contestar, contestala; si no, respondé exactamente "(sin mensaje)".' };
+  return { ok: true, derivado: true, mensaje_para_la_clienta: FRASE_PASE };
 }
 
 // ─── actualizar_nota ──────────────────────────────────────────
