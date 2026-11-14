@@ -524,7 +524,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
       const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s)[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
       if ((equipoActivo || dd.silencio === true) || resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) { // 5/11: con el equipo activo o pase en silencio NUNCA se manda nada
         await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
-        return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado o Yanaina ya habló con ella)', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
+        return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado o Yanaina ya habló con ella)', silencio: respuesta, ...(error ? { error } : {}), ...(opts.dry ? { prueba: true } : {}) };
       }
       respuesta = resto;
     }
@@ -532,7 +532,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   // 5/11: si el modelo escribió una nota interna en vez de un mensaje ("(Sin mensaje a la clienta: …)"), no se manda nunca
   if (/^\s*[\(\[]\s*(sin mensaje|nota interna|silencio|no le escrib|no se env)/i.test(respuesta) || /^\s*\[?silencio\]?\s*$/i.test(respuesta)) {
     await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
-    return { respuesta: null, motivo: 'nota interna del modelo: no se envía', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
+    return { respuesta: null, motivo: 'nota interna del modelo: no se envía', silencio: respuesta, ...(error ? { error } : {}), ...(opts.dry ? { prueba: true } : {}) };
   }
   if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id)); // 14/11: leído solo si de verdad se le contesta (lo demás queda sin leer para Yanaina)
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
