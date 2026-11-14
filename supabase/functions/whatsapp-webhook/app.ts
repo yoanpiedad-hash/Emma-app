@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, FRASE_PASE, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, FRASE_PASE, RE_PASE, categoriaDe, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -150,6 +150,7 @@ async function ingestarEco(e: any) {
   const { data: cl } = await sb.from('clientas').select('id,datos').eq('tel_key', telKey).eq('borrado', false).limit(1);
   const { data: ex } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
   const vigente = ex?.datos?.estado === 'yanaina' && ex.datos.hasta > ahora.toISOString();
+  if (ex?.datos?.espera) delete ex.datos.espera; // 14/11: Yanaina ya le escribió: la próxima respuesta de la clienta la puede atender Mabel
   const datos = vigente ? { ...ex!.datos, hasta } : { id: telKey, tel: cl?.[0]?.datos?.tel || '0' + telKey, clienteId: cl?.[0]?.id || null, estado: 'yanaina', motivo: 'Contestó una persona del equipo desde el celular', desde: ahora.toISOString(), hasta };
   await sb.from('conversaciones').upsert({ id: telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
 }
@@ -307,7 +308,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
         throw new Error('respuesta vacía: stop_reason=' + j.stop_reason + ' content=' + JSON.stringify(j.content || []).slice(0, 200));
       }
       // Guardia (3/11): dijo que le avisa a Yanaina sin haber derivado (copia la frase del historial). Se le pide que decida de verdad.
-      if (/aviso a yanaina/i.test(txt) && !ctx.derivado && !corregido) {
+      if ((/aviso a yanaina/i.test(txt) || RE_PASE.test(txt)) && !ctx.derivado && !corregido) {
         corregido = true;
         messages.push({ role: 'user', content: [{ type: 'text', text: '(Nota interna, no es de la clienta) Dijiste que le avisás a Yanaina pero no llamaste pasar_a_yanaina. Si de verdad hay que pasarla, llamala con el motivo. Si no, contestá lo que la clienta pidió usando las herramientas que hagan falta. No uses esa frase sin derivar.' }] });
         continue;
@@ -386,6 +387,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   if (!solo.length && equipo.includes(telKey) && !opts.dry) return { respuesta: null, motivo: 'número del equipo' }; // 14/11: en el modo prueba (dry) se puede probar con un número del equipo
   const { data: conv } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
   if (conv?.datos?.estado === 'yanaina' && conv.datos.hasta > new Date().toISOString()) return { respuesta: null, motivo: 'conversación para Yanaina' };
+  const esperaVigente = (d: any) => !!d?.espera && d.espera > new Date(Date.now() - 12 * 3600e3).toISOString() && !(d.devuelta && d.devuelta > d.espera);
   const { count } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').gte('creado', new Date(Date.now() - 3600e3).toISOString());
   if ((count || 0) > 40) return { respuesta: null, motivo: 'demasiados mensajes en una hora' };
 
@@ -416,6 +418,26 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     } catch (e) { console.error('ausente:', (e as Error).message); return { respuesta: null, motivo: 'modo ausente: no se pudo enviar', error: String((e as Error).message || e) }; }
     return { respuesta: txt, motivo: 'modo ausente', ...(opts.dry ? { prueba: true } : {}) };
   }
+  // 14/11 (MAC-01): primera respuesta de la clienta después de un pase con frase ("Contame en un mensaje qué necesitás…").
+  // Mabel no la contesta, aunque haya pasado la hora: queda SIN LEER en el celular de Yanaina y se suma al pendiente de la bandeja.
+  // Si trae un archivo, Mabel lo revisa en silencio (registra el comprobante o la entrega si cierra). Vale mientras el pendiente
+  // siga abierto, hasta 12 h, y se corta si Yanaina le escribe desde el celular o le devuelve la conversación a Mabel.
+  if (esperaVigente(conv?.datos)) {
+    const { data: pd } = await sb.from('derivados').select('id,datos').eq('datos->>telKey', telKey).eq('borrado', false).order('actualizado', { ascending: false }).limit(10);
+    const abierto = (pd || []).some((r: any) => r.datos && !r.datos.resuelto);
+    { const { data: cvE } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle(); if (cvE?.datos?.espera) { const nd = { ...cvE.datos }; delete nd.espera; await sb.from('conversaciones').update({ datos: nd }).eq('id', telKey); } }
+    if (abierto) {
+      const { data: mas0 } = await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
+      if (mas0?.length) { lote.push(...mas0); lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado))); tr.ids = lote.map((m: any) => String(m.id)); }
+      const txt = lote.map((m: any) => (m.media ? '[' + (m.tipo || 'archivo') + '] ' : '') + String(m.texto || '')).join(' / ').replace(/\s+/g, ' ').trim().slice(0, 220) || '[archivo]';
+      const { data: c1 } = await sb.from('clientas').select('id,datos').eq('tel_key', telKey).eq('borrado', false).limit(1);
+      await registrarDerivado(telKey, c1?.[0] || null, 'Contestó después del pase: ' + txt, categoriaDe(txt), true, 'respuesta', new Date().toISOString());
+      let nota = '';
+      if (lote.some((m: any) => m.media)) { try { nota = await atender(telKey, wa, lote, true, tr); } catch (e) { nota = 'REPASO: error ' + String((e as Error).message || e).slice(0, 200); } }
+      await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
+      return { respuesta: null, motivo: 'primera respuesta después del pase: queda sin leer para Yanaina', ...(nota ? { nota } : {}), ...(opts.dry ? { prueba: true } : {}) };
+    }
+  }
   // Lo que llegó mientras se preparaba la respuesta entra en el mismo lote (una sola respuesta)
   const { data: mas } =await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
   if (mas?.length) { lote.push(...mas); lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado))); tr.ids = lote.map((m: any) => String(m.id)); }
@@ -442,7 +464,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   }
   // 4/11: una sola frase de pase a Yanaina (si ya lo dijo con otras palabras, se saca la frase fija)
   {
-    const FIJA = /\s*ya le aviso a yanaina y te escribe enseguida[.!]?\s*/i;
+    const FIJA = /\s*(ya le aviso a yanaina y te escribe enseguida|ya se lo paso a yanaina\. contame en un mensaje qu[eé] necesit[aá]s y ella te contesta)[.!]?\s*/i;
     const sinFija = respuesta.replace(FIJA, ' ');
     if (FIJA.test(respuesta) && /(le paso a yanaina|se lo paso a yanaina|le aviso a yanaina|lo ve yanaina|lo revisa yanaina|te escribe yanaina|lo confirma yanaina|lo define yanaina|yanaina te confirma|yanaina te escribe|yanaina lo)/i.test(sinFija)) {
       const emo = (respuesta.match(/(\p{Extended_Pictographic}\uFE0F?)\s*$/u) || [])[1] || '';
@@ -469,7 +491,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     }
     if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || dd.silencio === true || dd.repetido === true)) { // 14/11: ya no por "otro pase en 6 h"; solo si el mismo tema ya estaba pendiente (repetido)
       // Si además respondió algo útil (ej. el horario), se manda eso sin la frase de "le aviso a Yanaina"
-      const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*ya le aviso a yanaina[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
+      const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s)[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
       if ((equipoActivo || dd.silencio === true) || resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) { // 5/11: con el equipo activo o pase en silencio NUNCA se manda nada
         await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
         return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado o Yanaina ya habló con ella)', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
@@ -477,12 +499,12 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
       respuesta = resto;
     }
   }
-  if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
   // 5/11: si el modelo escribió una nota interna en vez de un mensaje ("(Sin mensaje a la clienta: …)"), no se manda nunca
   if (/^\s*[\(\[]\s*(sin mensaje|nota interna|silencio|no le escrib|no se env)/i.test(respuesta) || /^\s*\[?silencio\]?\s*$/i.test(respuesta)) {
     await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
     return { respuesta: null, motivo: 'nota interna del modelo: no se envía', silencio: respuesta, ...(opts.dry ? { prueba: true } : {}) };
   }
+  if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id)); // 14/11: leído solo si de verdad se le contesta (lo demás queda sin leer para Yanaina)
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
   await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true, ...(error ? { media: { error: error.slice(0, 500) } } : {}) });
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });

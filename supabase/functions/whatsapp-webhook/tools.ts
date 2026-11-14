@@ -333,7 +333,11 @@ export async function registrarDerivado(telKey: string, c: any, motivo: string, 
   } catch (e) { console.error('derivados:', (e as Error).message || e); return null; }
 }
 
-export const FRASE_PASE = 'Ya le aviso a Yanaina y te escribe enseguida 🫶';
+// 14/11 (MAC-01): la frase de pase le pide a la clienta que escriba. Esa respuesta queda SIN LEER en el celular de Yanaina
+// (con notificación) y Mabel no la contesta mientras el pendiente siga abierto (conversaciones.datos.espera).
+export const FRASE_PASE = 'Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶';
+// Frases de pase (la vieja sigue en el historial): para no repetirla y para sacarla cuando el pase va en silencio.
+export const RE_PASE = /(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s)/i;
 export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, categoria?: string) {
   // 4/11: cuando deriva Mabel, la conversación vuelve sola a Mabel en 1 hora (si Yanaina contesta desde el celu, el eco la deja más tiempo)
   const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3);
@@ -347,7 +351,7 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, 
   const { data: ultNuestro } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', ctx.telKey).in('direccion', ['out', 'echo']).not('tipo', 'in', '(edit,revoke,reaction,system,ephemeral,unsupported)').order('creado', { ascending: false }).limit(1);
   const revisarDesde = ultNuestro?.[0]?.creado ? new Date(ultNuestro[0].creado).toISOString() : null;
   // 14/11 (punto 8): ya no se calla por "otro pase en las últimas 6 h". Solo se calla si ya había un pendiente del MISMO tema (repetido).
-  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(dv.repetido && !silencio ? { repetido: true } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
+  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(dv.repetido && !silencio ? { repetido: true } : {}), ...(!silencio && !dv.repetido ? { espera: ahora.toISOString() } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
