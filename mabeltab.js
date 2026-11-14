@@ -41,7 +41,7 @@ const MB_CATS = [
 ];
 const mbCat = k => MB_CATS.find(c => c[0] === k) || MB_CATS[MB_CATS.length - 1];
 const mbCatIdx = k => MB_CATS.indexOf(mbCat(k));
-UI.mb = { sub: 'derivados', cat: 'todas', sinPed: false, verRes: false, q: '', convF: 'todas', vincTel: '' };
+UI.mb = { sub: 'derivados', cat: 'todas', sinPed: false, verRes: false, q: '', dq: '', convF: 'todas', vincTel: '' };
 
 // ─── Nombre de la clienta a partir del teléfono ───────────────
 /** Índice por render: pedidos abiertos y último pedido de cada clienta. */
@@ -95,21 +95,30 @@ function dvItemHTML(d, ix) {
       ${conYana && !d.resuelto ? `<button class="b sm gh" data-act="convDevolver" data-id="${esc(cv.id)}" title="Mabel vuelve a atender esta conversación ya">↩️ Devolver a Mabel</button>` : ''}</div>
   </div>`;
 }
+/** 14/11: buscador de Derivados. Busca por nombre, alias o usuario de la ficha y por teléfono (3 dígitos o más). */
+function dvCoincide(d, ix, q, qd) {
+  if (!q) return true;
+  if (qd.length >= 3 && String(d.tel || d.telKey || '').replace(/\D/g, '').includes(qd)) return true;
+  const k = telKey(d.tel || d.telKey);
+  return (DB.clientes || []).some(c => c.telKey === k && [c.nombre, c.ref, ...(c.alias || [])].some(s => norm(s).includes(q)));
+}
 function renderDerivados() {
   const ix = mbIndice(), pend = dvPendientes(), sinPed = d => { const f = mbFicha(d.tel || d.telKey, ix); return !f || !f.abiertos.length; };
+  const q = norm(UI.mb.dq), qd = q.replace(/\D/g, '');
   const cuenta = {}; pend.forEach(d => { const k = mbCat(d.categoria)[0]; cuenta[k] = (cuenta[k] || 0) + 1; });
   const nSin = pend.filter(sinPed).length;
   if (UI.mb.cat !== 'todas' && !MB_CATS.some(c => c[0] === UI.mb.cat)) UI.mb.cat = 'todas';
-  let lista = pend.filter(d => (UI.mb.cat === 'todas' || mbCat(d.categoria)[0] === UI.mb.cat) && (!UI.mb.sinPed || sinPed(d)))
+  // Con algo escrito en el buscador se busca en todos los pendientes (sin filtro de categoría) y también en los resueltos.
+  let lista = pend.filter(d => q ? dvCoincide(d, ix, q, qd) : (UI.mb.cat === 'todas' || mbCat(d.categoria)[0] === UI.mb.cat) && (!UI.mb.sinPed || sinPed(d)))
     .sort((a, b) => mbCatIdx(a.categoria) - mbCatIdx(b.categoria) || String(a.creado).localeCompare(String(b.creado)));
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
-  const res = (DB.derivados || []).filter(d => d.resuelto && new Date(d.resuelto) >= hoy).sort((a, b) => String(b.resuelto).localeCompare(String(a.resuelto)));
+  const res = (DB.derivados || []).filter(d => d.resuelto && (q ? dvCoincide(d, ix, q, qd) && !d.unidoA : new Date(d.resuelto) >= hoy)).sort((a, b) => String(b.resuelto).localeCompare(String(a.resuelto))).slice(0, q ? 20 : 999);
   let h = `<div class="ptabs"><button class="ptab${UI.mb.cat === 'todas' ? ' on' : ''}" data-act="dvFiltro" data-k="todas">Todos<span class="n">${pend.length}</span></button>`
     + MB_CATS.map(c => `<button class="ptab${UI.mb.cat === c[0] ? ' on' : ''}${cuenta[c[0]] ? '' : ' vac'}" data-act="dvFiltro" data-k="${c[0]}">${c[1]} ${esc(c[2])}<span class="n">${cuenta[c[0]] || 0}</span></button>`).join('')
     + `<button class="ptab${UI.mb.sinPed ? ' on' : ''}${nSin ? '' : ' vac'}" data-act="dvSinPed" title="Solo las que no tienen pedido abierto">Sin pedido<span class="n">${nSin}</span></button></div>`;
   h += lista.length ? lista.map(d => dvItemHTML(d, ix)).join('')
-    : `<div class="empty">${pend.length ? 'No hay pendientes con este filtro' : '🎉 No hay nada pendiente: Mabel no te pasó nada o ya está todo resuelto'}</div>`;
-  if (res.length) h += `<div class="row mt" data-act="dvVerRes" style="cursor:pointer"><span class="small muted">Resueltos hoy (${res.length})</span><span class="grow"></span><span class="muted">${UI.mb.verRes ? '▲' : '▼'}</span></div>`
+    : `<div class="empty">${q ? 'Ningún pendiente con esa búsqueda' : pend.length ? 'No hay pendientes con este filtro' : '🎉 No hay nada pendiente: Mabel no te pasó nada o ya está todo resuelto'}</div>`;
+  if (res.length) h += `<div class="row mt" data-act="dvVerRes" style="cursor:pointer"><span class="small muted">${q ? 'Resueltos' : 'Resueltos hoy'} (${res.length})</span><span class="grow"></span><span class="muted">${UI.mb.verRes ? '▲' : '▼'}</span></div>`
     + (UI.mb.verRes ? '<div class="mt">' + res.map(d => dvItemHTML(d, ix)).join('') + '</div>' : '');
   $('#mbt-deriv').innerHTML = h;
 }
@@ -203,6 +212,8 @@ function renderMabel() {
   dvLimpiar();
   const n = dvPendientes().length;
   $('#mbt-sub').innerHTML = MB_SUBS.map(([k, t]) => `<button class="ptab${UI.mb.sub === k ? ' on' : ''}" data-act="mbSub" data-k="${k}">${t}${k === 'derivados' ? `<span class="n">${n}</span>` : ''}</button>`).join('');
+  if (!$('#mbt-dq')) { const i = document.createElement('input'); i.id = 'mbt-dq'; i.className = 'mb'; i.autocomplete = 'off'; i.dataset.inp = 'mbDerQ'; i.placeholder = '🔎 Buscar por nombre, alias o teléfono…'; $('#mbt-deriv').before(i); }
+  $('#mbt-dq').hidden = UI.mb.sub !== 'derivados';
   $('#mbt-deriv').hidden = UI.mb.sub !== 'derivados'; $('#mbt-conv').hidden = UI.mb.sub !== 'conversaciones';
   $('#mbt-aj').hidden = UI.mb.sub !== 'ajustes'; $('#mbt-madre').hidden = UI.mb.sub !== 'madre';
   if (UI.mb.sub === 'derivados') renderDerivados();
@@ -263,5 +274,6 @@ Object.assign(CHG, {
 });
 Object.assign(INP, {
   mbConvQ: el => { UI.mb.q = el.value; renderConversaciones(); },
+  mbDerQ: el => { UI.mb.dq = el.value; renderDerivados(); },
   mbVincQ: () => mbVincPintar()
 });
