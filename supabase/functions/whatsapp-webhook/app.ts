@@ -693,7 +693,7 @@ async function levantarSinRespuesta(excluir: string[], solo: string[], va: [stri
   let n = 0;
   for (const [tel, m] of porTel) {
     if (n >= 10) break;
-    if (excluir.includes(tel) || (solo.length && !solo.includes(tel)) || enVentana(va, m.creado)) continue;
+    if (excluir.includes(tel) || /^990000/.test(tel) || (solo.length && !solo.includes(tel)) || enVentana(va, m.creado)) continue; // 0990000xx = números de prueba
     if (m.tipo === 'text' && (esAck(m.texto) || String(m.texto || '').trim().length < 4)) continue;
     const t = new Date(m.creado).toISOString();
     if ((ultResp.get(tel) || '') > t) continue; // alguien le contestó (Mabel, el equipo o una reacción de Yanaina)
