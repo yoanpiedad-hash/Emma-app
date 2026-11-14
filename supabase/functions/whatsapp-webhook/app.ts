@@ -54,6 +54,22 @@ function ventanaAusente(cfg: any): [string, string] | null {
 }
 const enVentana = (v: [string, string] | null, creado: string) => !!v && new Date(creado).toISOString() >= v[0] && new Date(creado).toISOString() <= v[1];
 
+// ─── Registro de turnos (14/11, MAC-12) ───────────────────────
+// Una fila en mabel_registro por cada turno: mensajes atendidos, herramientas (datos y resultado), tokens, resultado y motivo.
+// VERSION sale del commit al que apunta index.ts (la URL de este archivo).
+const VERSION = ((import.meta.url.match(/Emma-app\/([0-9a-f]{7,40})\//i) || [])[1] || 'local').slice(0, 7);
+type Traza = { ids: string[]; herr: any[]; tok: { entrada: number; salida: number; cache_lee: number; cache_escribe: number; llamadas: number } };
+const nuevaTraza = (): Traza => ({ ids: [], herr: [], tok: { entrada: 0, salida: 0, cache_lee: 0, cache_escribe: 0, llamadas: 0 } });
+const corto = (x: unknown, n = 800) => { try { const t = typeof x === 'string' ? x : JSON.stringify(x); return t.length > n ? t.slice(0, n) + '…' : t; } catch (_) { return String(x).slice(0, n); } };
+async function registrarTurno(telKey: string, origen: string, r: any, tr: Traza, t0: number) {
+  try {
+    if (!r || r.motivo === 'sin mensajes pendientes' || r.motivo === 'otra invocación está atendiendo esta conversación') return;
+    const resultado = r.error ? 'error' : r.respuesta ? 'respondio' : r.reintentar ? 'reintento' : tr.tok.llamadas ? 'silencio' : 'filtro';
+    const { error } = await sb.from('mabel_registro').insert({ tel_key: telKey, origen, version: VERSION, mensajes: tr.ids, resultado, motivo: r.motivo ? String(r.motivo).slice(0, 300) : null, respuesta: corto(r.respuesta || r.silencio || r.nota || '', 1500) || null, herramientas: tr.herr, tokens: tr.tok.llamadas ? tr.tok : null, error: r.error ? String(r.error).slice(0, 500) : null, ms: Date.now() - t0 });
+    if (error) console.error('registro:', error.message);
+  } catch (e) { console.error('registro:', (e as Error).message); }
+}
+
 const UNSUP_TXT ='[Mandó un mensaje o archivo que no llegó al sistema: puede ser un comprobante en un formato que no se recibe]';
 const AUTOMATICO = /Gracias por elegir Emma Indumentaria|mensaje autom[aá]tico de Emma|me confirm[aá]s con un S[ÍI]|Formas de pago/i;
 
@@ -221,7 +237,7 @@ function salidaCadeteria() {
   ].join('\n');
 }
 
-async function atender(telKey: string, wa: string, lote: any[], repaso = false) {
+async function atender(telKey: string, wa: string, lote: any[], repaso = false, tr: Traza = nuevaTraza()) {
   const ctx: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [] };
   const cfg = await leerConfig();
   const estado = await buscarPedido(ctx);
@@ -278,6 +294,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false) 
   let corregido = false, vacio = false;
   for (let vuelta = 0; vuelta < 7; vuelta++) {
     const j = await claude(system, messages);
+    { const u = j.usage || {}; tr.tok.llamadas++; tr.tok.entrada += +u.input_tokens || 0; tr.tok.salida += +u.output_tokens || 0; tr.tok.cache_lee += +u.cache_read_input_tokens || 0; tr.tok.cache_escribe += +u.cache_creation_input_tokens || 0; }
     messages.push({ role: 'assistant', content: j.content });
     const usos = (j.content || []).filter((b: any) => b.type === 'tool_use');
     // Cortada por largo con una herramienta a medio escribir: se descarta y se vuelve a pedir (3/11)
@@ -300,6 +317,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false) 
     const res: any[] = [];
     for (const u of usos) {
       let out: any; try { out = await ejecutar(u.name, u.input, ctx); } catch (e) { out = { error: String((e as Error).message || e) }; }
+      tr.herr.push({ nombre: u.name, datos: u.input, resultado: corto(out) });
       res.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(out) });
     }
     messages.push({ role: 'user', content: res });
@@ -317,7 +335,7 @@ async function pendienteMasNuevo(telKey: string) {
   const { data } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).order('creado', { ascending: false }).limit(1);
   return data?.[0] ? Date.parse(data[0].creado) : 0;
 }
-async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esperar?: boolean } = {}) {
+async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esperar?: boolean; desdeRepaso?: boolean } = {}) {
   if (opts.esperar !== false) {
     await sleep(4000);
     for (let i = 0; i < 6; i++) {
@@ -336,7 +354,11 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
     try {
       let reint = false;
       for (let ronda = 0; ronda < 4; ronda++) {
-        const r: any = await procesarUna(telKey, wa, { ...opts, reintento: reint });
+        const tr = nuevaTraza(), t0 = Date.now();
+        let r: any;
+        try { r = await procesarUna(telKey, wa, { ...opts, reintento: reint }, tr); }
+        catch (e) { r = { respuesta: null, motivo: 'falla del turno', error: String((e as Error).message || e) }; await registrarTurno(telKey, opts.dry ? 'prueba' : opts.desdeRepaso ? 'repaso' : 'webhook', r, tr, t0); throw e; }
+        await registrarTurno(telKey, opts.dry ? 'prueba' : opts.desdeRepaso ? 'repaso' : 'webhook', r, tr, t0);
         if (r.reintentar) { reint = true; continue; } // una sola vez por invocación
         if (!r.respuesta) break;
         ultima = r;
@@ -347,11 +369,12 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
   return ultima;
 }
 
-async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; reintento?: boolean } = {}) {
+async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; reintento?: boolean; desdeRepaso?: boolean } = {}, tr: Traza = nuevaTraza()) {
   // Reclama los mensajes pendientes de esta conversación
   const { data: lote } = await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
   if (!lote?.length) return { respuesta: null, motivo: 'sin mensajes pendientes' };
   lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado)));
+  tr.ids = lote.map((m: any) => String(m.id));
   const cfg = await leerConfig();
   if (cfg.mabelActiva === false) return { respuesta: null, motivo: 'Mabel pausada (config.mabelActiva=false)' };
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
@@ -395,12 +418,12 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   }
   // Lo que llegó mientras se preparaba la respuesta entra en el mismo lote (una sola respuesta)
   const { data: mas } =await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false).select('*');
-  if (mas?.length) { lote.push(...mas); lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado))); }
+  if (mas?.length) { lote.push(...mas); lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado))); tr.ids = lote.map((m: any) => String(m.id)); }
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: lote.map((m: any) => String(m.id)) });
   let respuesta = '', error: string | null = null;
   const inicioTurno = new Date().toISOString();
   const ctxMin: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [] };
-  try { respuesta = await atender(telKey, wa, lote); }
+  try { respuesta = await atender(telKey, wa, lote, false, tr); }
   catch (e) {
     error = String((e as Error).message || e); console.error('Mabel error:', error);
     const { data: c } = await sb.from('clientas').select('*').eq('tel_key', telKey).eq('borrado', false).limit(1); ctxMin.clienta = c?.[0] || null;
@@ -555,20 +578,21 @@ async function repasarPendientes(soloTel = '') {
       await sb.from('mabel_mensajes').update({ procesado: false }).in('id', sinResp);
       const { data: cv0 } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
       await sb.from('conversaciones').update({ datos: { ...(cv0?.datos || d), repaso: new Date().toISOString() } }).eq('id', telKey);
-      const r: any = await procesar(telKey, wa, { esperar: false });
+      const r: any = await procesar(telKey, wa, { esperar: false, desdeRepaso: true });
       hechos.push({ tel: telKey, sin_respuesta: sinResp.length, respuesta: r?.respuesta || null });
       continue;
     }
     const { data: t } = await sb.rpc('mabel_tomar_turno', { p_tel: telKey, p_seg: 150 });
     if (!t?.ok) { hechos.push({ tel: telKey, motivo: 'ocupada' }); continue; }
-    let nota = '';
+    let nota = ''; const trR = nuevaTraza(), t0R = Date.now();
     try {
       const { data: msgs } = await sb.from('mabel_mensajes').select('*').eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', true).gt('creado', desde).order('creado').limit(15);
       const utiles = (msgs || []).filter((m: any) => !enVentana(va, m.creado) && (m.media || String(m.texto || '').trim().length > 2));
       if (!utiles.length) nota = 'REPASO: sin mensajes nuevos';
-      else nota = await atender(telKey, wa, utiles, true);
+      else { trR.ids = utiles.map((m: any) => String(m.id)); nota = await atender(telKey, wa, utiles, true, trR); }
     } catch (e) { nota = 'REPASO: error ' + String((e as Error).message || e).slice(0, 200); }
     finally { await sb.rpc('mabel_soltar_turno', { p_tel: telKey }); }
+    if (trR.tok.llamadas || nota.startsWith('REPASO: error')) await registrarTurno(telKey, 'repaso', { respuesta: null, motivo: 'repaso en silencio', nota, ...(nota.startsWith('REPASO: error') ? { error: nota } : {}) }, trR, t0R);
     const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
     await sb.from('conversaciones').update({ datos: { ...(cv?.datos || d), repaso: new Date().toISOString(), repasoNota: nota.slice(0, 500) } }).eq('id', telKey);
     hechos.push({ tel: telKey, nota });
