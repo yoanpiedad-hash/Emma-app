@@ -70,6 +70,24 @@ async function registrarTurno(telKey: string, origen: string, r: any, tr: Traza,
   } catch (e) { console.error('registro:', (e as Error).message); }
 }
 
+// ─── Retiro en este momento (14/11) ──────────────────────────
+const DIAS_N = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const diaConNombre = (f: string) => { const d = new Date(f + 'T12:00:00Z'); return DIAS_N[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1); };
+const hhmmUY = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Montevideo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+const hhmm = (s: unknown) => { const m = String(s || '').match(/^(\d{1,2})(?::(\d{2}))?/); return m ? m[1].padStart(2, '0') + ':' + (m[2] || '00') : ''; };
+/** Horario de retiro de HOY si estamos dentro (desde ≤ ahora ≤ hasta), o null. */
+function retiroAhora(cfg: any) {
+  const hoy = hoyUY(), h = (Array.isArray(cfg.horariosRetiro) ? cfg.horariosRetiro : []).find((x: any) => x?.fecha === hoy && !x.cerrado);
+  if (!h || !hhmm(h.desde) || !hhmm(h.hasta)) return null;
+  const ya = hhmmUY();
+  return ya >= hhmm(h.desde) && ya <= hhmm(h.hasta) ? h : null;
+}
+const retiroAhoraTexto = (cfg: any) => { const h = retiroAhora(cfg); return h ? `RETIRO AHORA: estamos dentro del horario de retiro de hoy (de ${h.desde} a ${h.hasta} hs).` : 'RETIRO AHORA: fuera del horario de retiro de hoy (o hoy no hay horario cargado).'; };
+const PUERTA_TXT = 'Es la puerta con reja a la derecha del local verde. Tocá timbre y te atienden enseguida 🫶';
+// "Llegué", "estoy abajo", "estoy en la puerta": mensaje corto de que está en el local. Si nombra el pedido o el paquete, no (puede ser "me llegó").
+const RE_LLEGUE = /\b(llegu[eé]|estoy (abajo|afuera|en la puerta|en la reja|ac[aá] afuera|frente)|ya estoy (ac[aá]|ah[ií])|estamos (abajo|afuera|en la puerta))\b/i;
+const esLlegue = (t: string) => RE_LLEGUE.test(t) && !/pedido|paquete|casa|lleg[oó]|env[ií]o|cadete|\?/i.test(t) && t.trim().split(/\s+/).length <= 8;
+
 const UNSUP_TXT ='[Mandó un mensaje o archivo que no llegó al sistema: puede ser un comprobante en un formato que no se recibe]';
 const AUTOMATICO = /Gracias por elegir Emma Indumentaria|mensaje autom[aá]tico de Emma|me confirm[aá]s con un S[ÍI]|Formas de pago/i;
 
@@ -264,6 +282,8 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
     `HOY: ${ahoraTxtUY()} (hora de Uruguay, ${hoyUY()}).`,
     salientes ? 'Ya te presentaste hoy con esta clienta: no vuelvas a presentarte.' : 'Es tu primer mensaje de hoy con esta clienta (aunque ya hayan hablado otro día): arrancá presentándote como indican las instrucciones ("Hola bella, soy Mabel, la asistente virtual de Emma") y después seguí con lo que corresponde.',
     horariosRetiroTexto(cfg),
+    retiroAhoraTexto(cfg),
+    horaUYn < 6 ? `MADRUGADA: son entre las 00:00 y las 06:00. Si la clienta dice "mañana", se refiere al día que ya empezó: HOY ${diaConNombre(hoyF)} (no al día siguiente). Ejemplo: a las 00:22 del sábado 14/11, "pago mañana" es el sábado 14/11. Decí siempre el día con nombre y fecha.` : '',
     nov ? `NOVEDADES DE HOY (vigentes hasta ${nov.vence || 'sin fecha'}): ${nov.texto}` : 'NOVEDADES DE HOY: no hay novedades vigentes.',
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
     salidaCadeteria(),
@@ -418,6 +438,15 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
       await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'ausente', texto: txt, procesado: true });
     } catch (e) { console.error('ausente:', (e as Error).message); return { respuesta: null, motivo: 'modo ausente: no se pudo enviar', error: String((e as Error).message || e) }; }
     return { respuesta: txt, motivo: 'modo ausente', ...(opts.dry ? { prueba: true } : {}) };
+  }
+  // 14/11: llegó a retirar ("estoy abajo", "llegué") dentro del horario de retiro de hoy: se le dice cuál es la puerta, sin Claude y sin derivar.
+  // Fuera del horario sigue el camino normal (Mabel la pasa a Yanaina).
+  if (!lote.some((m: any) => m.media) && esLlegue(lote.map((m: any) => String(m.texto || '')).join(' ')) && retiroAhora(cfg)) {
+    const txt = PUERTA_TXT;
+    if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id));
+    const id = opts.dry ? uid('dryout') : await enviar(wa, txt);
+    await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: txt, procesado: true });
+    return { respuesta: txt, motivo: 'llegó a retirar dentro del horario', ...(opts.dry ? { prueba: true } : {}) };
   }
   // 14/11 (MAC-01): primera respuesta de la clienta después de un pase con frase ("Contame en un mensaje qué necesitás…").
   // Mabel no la contesta, aunque haya pasado la hora: queda SIN LEER en el celular de Yanaina y se suma al pendiente de la bandeja.
