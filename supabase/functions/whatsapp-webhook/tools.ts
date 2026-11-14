@@ -31,7 +31,7 @@ const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efecti
 const medioDe = (c: string) => /mercado\s*pago/i.test(c || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(c || '') ? 'efectivo' : 'transferencia';
 const esHabitual = (a: string) => /^(dac|nu[nñ]ez|correo)/.test(normB(a));
 
-export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string };
+export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean };
 
 // ─── Config ───────────────────────────────────────────────────────
 export async function leerConfig(): Promise<Record<string, any>> {
@@ -343,6 +343,14 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, 
   const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3);
   const c = ctx.clienta;
   // 14/11 (MAC-07): primero el pendiente de la bandeja. Si no se pudo guardar, no se cambia la conversación ni se promete nada.
+  // 14/11 (MAR-01): en_silencio solo vale si alguien del equipo le escribió en la última hora. Excepciones: el repaso (no le
+  // escribe nunca), los cambios en plazo (van en silencio a la bandeja por decisión del 13/11) y los pedidos anteriores a Mabel.
+  let silencioNegado = false;
+  if (silencio && !ctx.repaso && categoria !== 'cambio' && !(ctx.anteriores && categoria === 'pago')) {
+    const { data: ec } = await sb.from('mabel_mensajes').select('texto,tipo').eq('tel_key', ctx.telKey).eq('direccion', 'echo').gte('creado', new Date(ahora.getTime() - 3600e3).toISOString()).limit(20);
+    const equipoHablo = (ec || []).some((e: any) => !['edit', 'revoke', 'system', 'unsupported', 'ephemeral', 'reaction'].includes(String(e.tipo)) && !/Gracias por elegir Emma Indumentaria|mensaje autom[aá]tico de Emma|me confirm[aá]s con un S[ÍI]|Formas de pago/i.test(String(e.texto || '')));
+    if (!equipoHablo) { silencio = false; silencioNegado = true; }
+  }
   const dv = await registrarDerivado(ctx.telKey, c, motivo, categoria, silencio, categoria ? 'mabel' : 'regla', ctx.inicio);
   if (!dv) return { ok: false, derivado: false, error: 'No se pudo dejar el pase para Yanaina (falla al guardar).', instruccion: 'NO le digas que le avisás a Yanaina ni que alguien le escribe. Contestale solo lo que puedas resolver vos; si no hay nada para contestar, respondé exactamente "(sin mensaje)".' };
   const { data: prevCv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
@@ -351,14 +359,27 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, 
   const { data: ultNuestro } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', ctx.telKey).in('direccion', ['out', 'echo']).not('tipo', 'in', '(edit,revoke,reaction,system,ephemeral,unsupported)').order('creado', { ascending: false }).limit(1);
   const revisarDesde = ultNuestro?.[0]?.creado ? new Date(ultNuestro[0].creado).toISOString() : null;
   // 14/11 (punto 8): ya no se calla por "otro pase en las últimas 6 h". Solo se calla si ya había un pendiente del MISMO tema (repetido).
-  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(dv.repetido && !silencio ? { repetido: true } : {}), ...(!silencio && !dv.repetido ? { espera: ahora.toISOString() } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
+  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(dv.repetido && !silencio ? { repetido: true } : {}), ...(!silencio && !dv.repetido && !ctx.repaso ? { espera: ahora.toISOString() } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
   if (silencio) return { ok: true, derivado: true, en_silencio: true, instruccion: 'Quedó para Yanaina en silencio: NO le escribas nada a la clienta sobre esto (ni "le aviso a Yanaina").' };
   if (dv.repetido) return { ok: true, derivado: true, ya_estaba_pendiente: true, instruccion: 'Ya había un pase de este mismo tema esperando a Yanaina: quedó sumado. NO le repitas que le avisás a Yanaina. Si la clienta preguntó otra cosa que podés contestar, contestala; si no, respondé exactamente "(sin mensaje)".' };
-  return { ok: true, derivado: true, mensaje_para_la_clienta: FRASE_PASE };
+  return { ok: true, derivado: true, mensaje_para_la_clienta: FRASE_PASE, ...(silencioNegado ? { nota: 'No va en silencio: nadie del equipo le escribió en la última hora. Decile la frase de pase.' } : {}) };
 }
+
+// 14/11 (MAR-04): ¿es solo un agradecimiento o un "ok"? Mira todas las palabras ("ok gracias", "bien", "Mu has gracias 😘").
+const PAL_ACK = new Set('ok oka okay okey oki okis dale listo genial perfecto bueno buenisimo bien gracias muchas mil bella bellas a vos igualmente un una beso besos besito besitos aguardo espero respuesta quedo atenta joya barbaro divino divina hermoso hermosa lindo linda super ahi va si sii claro de nada saludos abrazo abrazos amor mu has tranqui todo ya entendido entiendo vale sticker reaction te tu para mi'.split(' '));
+export function esAck(texto: string) {
+  const t = String(texto || '');
+  if (t.includes('?')) return false;
+  const w = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-zñ\s]/g, ' ').split(/\s+/).filter(Boolean);
+  if (!w.length) return true;
+  if (w.length > 8) return false;
+  return w.every((x) => PAL_ACK.has(x) || /^(ja)+j?$|^(je)+$|^gra+cias+$|^o+k+$|^s+i+$|^bes+o+s*$/.test(x));
+}
+/** ¿Hay una pregunta? (signo de pregunta o arranca como pregunta) */
+export const esPregunta = (texto: string) => /\?/.test(String(texto || '')) || /^\s*(c[oó]mo|cu[aá]ndo|cu[aá]nto|cu[aá]l|d[oó]nde|qu[eé]|por qu[eé]|me (pas[aá]s|dec[ií]s|mand[aá]s|confirm[aá]s)|pod[eé]s|puedo|se puede|hay|tienen|ten[eé]s|sale|llega|ya (sali[oó]|est[aá]))\b/i.test(String(texto || ''));
 
 // ─── actualizar_nota ──────────────────────────────────────────
 export async function actualizarNota(ctx: Ctx, texto: string) {

@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, FRASE_PASE, RE_PASE, categoriaDe, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -242,6 +242,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
   const ctx: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [], inicio: new Date().toISOString() };
   const cfg = await leerConfig();
   const estado = await buscarPedido(ctx);
+  ctx.repaso = repaso; ctx.anteriores = JSON.stringify(estado || {}).includes('anterior_a_mabel_sin_marcar_pago');
   // 8/11: Mabel se presenta en el primer mensaje de cada día (no cada 24 h): una clienta que vuelve otro día puede no acordarse de quién es.
   const desde24 = new Date(hoyUY() + 'T00:00:00-03:00').toISOString();
   const { count: salientes } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'out').eq('tipo', 'text').gte('creado', desde24);
@@ -575,7 +576,25 @@ async function repasarPendientes(soloTel = '') {
     for (const m of ult || []) { if (m.direccion === 'echo' && m.tipo === 'reaction') break; /* 5/11: Yanaina reaccionó = lo vio y lo atendió */ if (['edit', 'revoke', 'reaction', 'unsupported', 'system', 'ephemeral'].includes(String(m.tipo)) && !(m.direccion === 'in' && m.tipo === 'unsupported' && m.texto === UNSUP_TXT)) continue; if (m.direccion !== 'in') break; if (enVentana(va, m.creado)) break; /* 14/11: llegó en el modo ausente */ if (m.creado > desde) sinResp.push(m.id); }
     // 5/11: si Yanaina habló con la clienta durante la ventana (eco desde el celular), el repaso no contesta: revisa en silencio y lo dudoso queda para Yanaina
     const { count: nEco } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'echo').gt('creado', d.desde || new Date(Date.now() - 12 * 3600e3).toISOString());
+    let soloRevisar = false;
     if (sinResp.length && !(nEco && nEco > 0)) {
+      // 14/11 (caso Lucía): con un pendiente abierto, el repaso NO le contesta lo que no es pregunta (fotos sueltas, comentarios, "jaja"):
+      // queda sin leer para Yanaina y se suma al pendiente. Si hay archivos, se revisan en silencio (comprobante o entrega).
+      const { data: pdR } = await sb.from('derivados').select('datos').eq('datos->>telKey', telKey).eq('borrado', false).order('actualizado', { ascending: false }).limit(10);
+      if ((pdR || []).some((r: any) => r.datos && !r.datos.resuelto)) {
+        const msR = (ult || []).filter((m: any) => sinResp.includes(m.id)).reverse();
+        if (!msR.some((m: any) => esPregunta(String(m.texto || '')))) {
+          soloRevisar = true;
+          const utR = msR.filter((m: any) => m.tipo !== 'text' || !esAck(String(m.texto || '')));
+          if (utR.length) {
+            const txtR = utR.map((m: any) => (m.tipo !== 'text' ? '[' + m.tipo + '] ' : '') + String(m.texto || '')).join(' / ').replace(/\s+/g, ' ').trim().slice(0, 200);
+            const { data: clR } = await sb.from('clientas').select('id,datos').eq('tel_key', telKey).eq('borrado', false).limit(1);
+            await registrarDerivado(telKey, clR?.[0] || null, 'Escribió después del pase (sin pregunta): ' + txtR, categoriaDe(txtR), true, 'repaso', new Date().toISOString());
+          }
+        }
+      }
+    }
+    if (sinResp.length && !(nEco && nEco > 0) && !soloRevisar) {
       // 5/11: el repaso solo contesta a clientas con pedido pendiente en la app; si no tiene, se queda en silencio (queda para Yanaina)
       const { data: cls } = await sb.from('clientas').select('id').eq('tel_key', telKey).eq('borrado', false);
       let conPedido = false;
@@ -585,9 +604,8 @@ async function repasarPendientes(soloTel = '') {
         await sb.from('conversaciones').update({ datos: { ...(cv1?.datos || d), repaso: new Date().toISOString(), repasoNota: 'REPASO: sin pedidos pendientes, en silencio' } }).eq('id', telKey);
         // 11/11: lo que escribió y nadie contestó también va a la bandeja de la app (pestaña Mabel), para que no quede escondido
         {
-          const SOLO_ACK = /^(ok+|oka+y?|okis|dale+|listo+|genial|perfecto|b+ueno+|gracias+|muchas gracias|mil gracias|gracias bella|gracias a vos|igualmente|un beso|besos?|\[sticker\]|\[reaction\]|[\p{Extended_Pictographic}\uFE0F\u200D\s]+)[\s.!¡]*([\p{Extended_Pictographic}\uFE0F\u200D\s]*)$/iu;
           const pend = (ult || []).filter((m: any) => sinResp.includes(m.id)).reverse();
-          const utiles = pend.filter((m: any) => m.tipo !== 'text' || !SOLO_ACK.test(String(m.texto || '').trim()));
+          const utiles = pend.filter((m: any) => m.tipo !== 'text' || !esAck(String(m.texto || ''))); // 14/11 (MAR-04): "ok gracias", "bien" no van a la bandeja
           if (utiles.length) {
             const txt = utiles.map((m: any) => String(m.texto || '[' + m.tipo + ']').replace(/\s+/g, ' ').trim()).join(' / ').slice(0, 200);
             const { data: cl1 } = await sb.from('clientas').select('id,datos').eq('tel_key', telKey).eq('borrado', false).limit(1);
@@ -618,6 +636,34 @@ async function repasarPendientes(soloTel = '') {
     const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
     await sb.from('conversaciones').update({ datos: { ...(cv?.datos || d), repaso: new Date().toISOString(), repasoNota: nota.slice(0, 500) } }).eq('id', telKey);
     hechos.push({ tel: telKey, nota });
+  }
+  try { hechos.push(...await levantarSinRespuesta([...equipo], solo, va)); } catch (e) { hechos.push({ sin_respuesta: 'error ' + String((e as Error).message || e).slice(0, 120) }); }
+  return hechos;
+}
+
+// 14/11 (MAR-01): preguntas o archivos de clientas que llevan más de 30 minutos sin ninguna respuesta (ni de Mabel ni del equipo)
+// se suman en silencio a la bandeja. No le escribe a la clienta. Mira las últimas 12 h; cada mensaje se levanta una sola vez.
+async function levantarSinRespuesta(excluir: string[], solo: string[], va: [string, string] | null) {
+  const hechos: any[] = [];
+  const ahora = Date.now(), desde = new Date(ahora - 12 * 3600e3).toISOString(), hasta = new Date(ahora - 30 * 60e3).toISOString();
+  const { data: cand } = await sb.from('mabel_mensajes').select('id,tel_key,tipo,texto,creado,media').eq('direccion', 'in').eq('procesado', true).gte('creado', desde).lte('creado', hasta).or('texto.ilike.%?%,tipo.in.(image,document,audio,voice,unsupported)').order('creado', { ascending: false }).limit(300);
+  const porTel = new Map<string, any>();
+  for (const m of cand || []) if (!porTel.has(m.tel_key)) porTel.set(m.tel_key, m); // el más nuevo de cada clienta
+  let n = 0;
+  for (const [tel, m] of porTel) {
+    if (n >= 15) break;
+    if (excluir.includes(tel) || (solo.length && !solo.includes(tel)) || enVentana(va, m.creado)) continue;
+    if (m.tipo === 'text' && (esAck(m.texto) || String(m.texto || '').trim().length < 4)) continue;
+    n++;
+    const { data: resp } = await sb.from('mabel_mensajes').select('id').eq('tel_key', tel).in('direccion', ['out', 'echo']).not('tipo', 'in', '(edit,revoke,system,ephemeral,unsupported)').gt('creado', m.creado).limit(1);
+    if (resp?.length) continue; // alguien le contestó (Mabel, el equipo o una reacción de Yanaina)
+    const { data: dvs } = await sb.from('derivados').select('datos').eq('datos->>telKey', tel).eq('borrado', false).gte('datos->>ultimo', new Date(m.creado).toISOString()).limit(1);
+    if (dvs?.length) continue; // ya está en la bandeja con algo de después de ese mensaje
+    const { data: sueltos } = await sb.from('mabel_mensajes').select('tipo,texto,creado').eq('tel_key', tel).eq('direccion', 'in').gte('creado', new Date(new Date(m.creado).getTime() - 30 * 60e3).toISOString()).order('creado').limit(6);
+    const txt = (sueltos || []).filter((x: any) => x.tipo !== 'text' || !esAck(x.texto)).map((x: any) => (x.tipo !== 'text' ? '[' + x.tipo + '] ' : '') + String(x.texto || '')).join(' / ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const { data: cl } = await sb.from('clientas').select('id,datos').eq('tel_key', tel).eq('borrado', false).limit(1);
+    const r = await registrarDerivado(tel, cl?.[0] || null, 'Sin respuesta hace más de 30 min: ' + (txt || '[' + m.tipo + ']'), categoriaDe(txt), true, 'sin_respuesta', new Date().toISOString());
+    hechos.push({ tel, sin_respuesta: r ? 'a la bandeja' : 'no se pudo guardar' });
   }
   return hechos;
 }
