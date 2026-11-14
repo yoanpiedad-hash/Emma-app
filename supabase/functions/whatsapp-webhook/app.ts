@@ -675,7 +675,10 @@ async function repasarPendientes(soloTel = '') {
 async function levantarSinRespuesta(excluir: string[], solo: string[], va: [string, string] | null) {
   const hechos: any[] = [];
   const ahora = Date.now(), desde = new Date(ahora - 12 * 3600e3).toISOString(), hasta = new Date(ahora - 30 * 60e3).toISOString();
-  const { data: cand } = await sb.from('mabel_mensajes').select('id,tel_key,tipo,texto,creado,media').eq('direccion', 'in').eq('procesado', true).gte('creado', desde).lte('creado', hasta).or('texto.ilike.%?%,tipo.in.(image,document,audio,voice,unsupported)').order('creado', { ascending: false }).limit(300);
+  const base = () => sb.from('mabel_mensajes').select('id,tel_key,tipo,texto,creado').eq('direccion', 'in').eq('procesado', true).gte('creado', desde).lte('creado', hasta);
+  const [q1, q2] = await Promise.all([base().like('texto', '%?%').order('creado', { ascending: false }).limit(200), base().in('tipo', ['image', 'document', 'audio', 'voice', 'unsupported']).order('creado', { ascending: false }).limit(200)]);
+  if (q1.error || q2.error) return [{ sin_respuesta: 'error al buscar: ' + (q1.error || q2.error)!.message }];
+  const cand = [...(q1.data || []), ...(q2.data || [])].sort((x: any, y: any) => String(y.creado).localeCompare(String(x.creado)));
   const porTel = new Map<string, any>();
   for (const m of cand || []) if (!porTel.has(m.tel_key)) porTel.set(m.tel_key, m); // el más nuevo de cada clienta
   let n = 0;
