@@ -209,14 +209,14 @@ function salidaCadeteria() {
   const pasoCorte = h >= 20;
   const base = pasoCorte ? 2 : 1; // si ya pasaron las 20:00 el pedido entra al corte del día siguiente
   const cad = prox(base, true), nun = prox(base, true), cor = prox(base, false);
-  const dacHoyOk = h <= 16 && hoy.getUTCDay() >= 1 && hoy.getUTCDay() <= 5;
+  const dacHoyOk = h < 15 && hoy.getUTCDay() >= 1 && hoy.getUTCDay() <= 5; // 14/11: corte DAC 15:00 (antes 16:59)
   const dac = dacHoyOk ? null : prox(pasoCorte ? 2 : 1, true);
   const dacNoche = (() => { const d = prox(1, true); return d.getUTCDay() === 6 ? new Date(d.getTime() + 2 * 864e5) : d; })(); // después de las 20:00 el sábado ya no sale (cierre del viernes 20:00)
   const mom = (d: Date) => d.getUTCDay() === 6 ? ' (antes de las 12)' : '';
   return [
     pasoCorte
       ? 'SALIDAS SI PAGA AHORA: ya pasaron las 20:00. Si paga ahora NO le digas el día de salida y NO la pases a Yanaina por eso: seguí la regla NO ADELANTES CUÁNDO SALE (solo si pregunta cuándo sale, Yanaina se lo confirma). Referencia interna, no se la digas: cadetería ' + fmt(cad) + ', Núñez ' + fmt(nun) + mom(nun) + ', Correo ' + fmt(cor) + ', DAC ' + fmt(dacNoche) + mom(dacNoche) + '.'
-      : 'SALIDAS SI PAGA AHORA (antes de las 20:00 de hoy): cadetería sale el ' + fmt(cad) + '; Núñez sale el ' + fmt(nun) + mom(nun) + '; Correo Uruguayo sale el ' + fmt(cor) + '; DAC ' + (dacHoyOk ? 'sale hoy entre las 17 y las 18 si paga hasta las 16:00 (después de las 16:00 sale el ' + fmt(prox(1, true)) + ')' : 'sale el ' + fmt(dac!) + mom(dac!)) + '. Estos días son SOLO para cuando la clienta pregunta cuándo sale (no los adelantes: regla NO ADELANTES CUÁNDO SALE). Decí siempre el día con nombre y fecha, nunca "mañana".',
+      : 'SALIDAS SI PAGA AHORA (antes de las 20:00 de hoy): cadetería sale el ' + fmt(cad) + '; Núñez sale el ' + fmt(nun) + mom(nun) + '; Correo Uruguayo sale el ' + fmt(cor) + '; DAC ' + (dacHoyOk ? 'sale hoy entre las 17 y las 18 si paga hasta las 15:00 (después de las 15:00 sale el ' + fmt(prox(1, true)) + ')' : 'sale el ' + fmt(dac!) + mom(dac!)) + '. Estos días son SOLO para cuando la clienta pregunta cuándo sale (no los adelantes: regla NO ADELANTES CUÁNDO SALE). Decí siempre el día con nombre y fecha, nunca "mañana".',
     'DÍAS SIN SALIDA: el domingo no sale ningún envío. El sábado salen cadetería, DAC y Núñez (DAC y Núñez antes de las 12), con cierre a las 20:00 del viernes; Correo Uruguayo no sale los sábados. Lo que se paga el sábado o el domingo sale el lunes.',
   ].join('\n');
 }
