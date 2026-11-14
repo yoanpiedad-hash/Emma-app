@@ -379,7 +379,7 @@ export function esAck(texto: string) {
   return w.every((x) => PAL_ACK.has(x) || /^(ja)+j?$|^(je)+$|^gra+cias+$|^o+k+$|^s+i+$|^bes+o+s*$/.test(x));
 }
 /** ¿Hay una pregunta? (signo de pregunta o arranca como pregunta) */
-export const esPregunta = (texto: string) => /\?/.test(String(texto || '')) || /^\s*(c[oó]mo|cu[aá]ndo|cu[aá]nto|cu[aá]l|d[oó]nde|qu[eé]|por qu[eé]|me (pas[aá]s|dec[ií]s|mand[aá]s|confirm[aá]s)|pod[eé]s|puedo|se puede|hay|tienen|ten[eé]s|sale|llega|ya (sali[oó]|est[aá]))\b/i.test(String(texto || ''));
+export const esPregunta = (texto: string) => /\?/.test(String(texto || '')) || /^\s*(c[oó]mo|cu[aá]ndo|cu[aá]nto|cu[aá]l|d[oó]nde|qu[eé]|por qu[eé]|me (pas[aá]s|dec[ií]s|mand[aá]s|confirm[aá]s)|pod[eé]s|puedo|se puede|hay|tienen|ten[eé]s|sale|llega|ya (sali[oó]|est[aá]))(?!\p{L})/iu.test(String(texto || ''));
 
 // ─── actualizar_nota ──────────────────────────────────────────
 export async function actualizarNota(ctx: Ctx, texto: string) {

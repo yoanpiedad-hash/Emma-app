@@ -85,7 +85,7 @@ function retiroAhora(cfg: any) {
 const retiroAhoraTexto = (cfg: any) => { const h = retiroAhora(cfg); return h ? `RETIRO AHORA: estamos dentro del horario de retiro de hoy (de ${h.desde} a ${h.hasta} hs).` : 'RETIRO AHORA: fuera del horario de retiro de hoy (o hoy no hay horario cargado).'; };
 const PUERTA_TXT = 'Es la puerta con reja a la derecha del local verde. Tocá timbre y te atienden enseguida 🫶';
 // "Llegué", "estoy abajo", "estoy en la puerta": mensaje corto de que está en el local. Si nombra el pedido o el paquete, no (puede ser "me llegó").
-const RE_LLEGUE = /\b(llegu[eé]|estoy (abajo|afuera|en la puerta|en la reja|ac[aá] afuera|frente)|ya estoy (ac[aá]|ah[ií])|estamos (abajo|afuera|en la puerta))\b/i;
+const RE_LLEGUE = /(?<!\p{L})(llegu[eé]|estoy (abajo|afuera|en la puerta|en la reja|ac[aá] afuera|frente)|ya estoy (ac[aá]|ah[ií])|estamos (abajo|afuera|en la puerta))(?!\p{L})/iu;
 const esLlegue = (t: string) => RE_LLEGUE.test(t) && !/pedido|paquete|casa|lleg[oó]|env[ií]o|cadete|\?/i.test(t) && t.trim().split(/\s+/).length <= 8;
 
 const UNSUP_TXT ='[Mandó un mensaje o archivo que no llegó al sistema: puede ser un comprobante en un formato que no se recibe]';
