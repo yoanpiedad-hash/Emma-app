@@ -681,16 +681,24 @@ async function levantarSinRespuesta(excluir: string[], solo: string[], va: [stri
   const cand = [...(q1.data || []), ...(q2.data || [])].sort((x: any, y: any) => String(y.creado).localeCompare(String(x.creado)));
   const porTel = new Map<string, any>();
   for (const m of cand || []) if (!porTel.has(m.tel_key)) porTel.set(m.tel_key, m); // el más nuevo de cada clienta
+  // Respuestas (Mabel o equipo) y pendientes de la bandeja de las mismas 12 h, de una sola vez
+  const [ro, rd] = await Promise.all([
+    sb.from('mabel_mensajes').select('tel_key,creado').in('direccion', ['out', 'echo']).not('tipo', 'in', '(edit,revoke,system,ephemeral,unsupported)').gte('creado', desde).order('creado', { ascending: false }).limit(3000),
+    sb.from('derivados').select('datos').eq('borrado', false).gte('datos->>ultimo', desde).limit(1000),
+  ]);
+  if (ro.error || rd.error) return [{ sin_respuesta: 'error al buscar respuestas: ' + (ro.error || rd.error)!.message }];
+  const ultResp = new Map<string, string>(), ultDv = new Map<string, string>();
+  for (const r of ro.data || []) { const t = new Date(r.creado).toISOString(); if ((ultResp.get(r.tel_key) || '') < t) ultResp.set(r.tel_key, t); }
+  for (const r of rd.data || []) { const k = String(r.datos?.telKey || ''), t = String(r.datos?.ultimo || ''); if ((ultDv.get(k) || '') < t) ultDv.set(k, t); }
   let n = 0;
   for (const [tel, m] of porTel) {
-    if (n >= 15) break;
+    if (n >= 10) break;
     if (excluir.includes(tel) || (solo.length && !solo.includes(tel)) || enVentana(va, m.creado)) continue;
     if (m.tipo === 'text' && (esAck(m.texto) || String(m.texto || '').trim().length < 4)) continue;
+    const t = new Date(m.creado).toISOString();
+    if ((ultResp.get(tel) || '') > t) continue; // alguien le contestó (Mabel, el equipo o una reacción de Yanaina)
+    if ((ultDv.get(tel) || '') >= t) continue; // ya está en la bandeja con algo de después de ese mensaje
     n++;
-    const { data: resp } = await sb.from('mabel_mensajes').select('id').eq('tel_key', tel).in('direccion', ['out', 'echo']).not('tipo', 'in', '(edit,revoke,system,ephemeral,unsupported)').gt('creado', m.creado).limit(1);
-    if (resp?.length) continue; // alguien le contestó (Mabel, el equipo o una reacción de Yanaina)
-    const { data: dvs } = await sb.from('derivados').select('datos').eq('datos->>telKey', tel).eq('borrado', false).gte('datos->>ultimo', new Date(m.creado).toISOString()).limit(1);
-    if (dvs?.length) continue; // ya está en la bandeja con algo de después de ese mensaje
     const { data: sueltos } = await sb.from('mabel_mensajes').select('tipo,texto,creado').eq('tel_key', tel).eq('direccion', 'in').gte('creado', new Date(new Date(m.creado).getTime() - 30 * 60e3).toISOString()).order('creado').limit(6);
     const txt = (sueltos || []).filter((x: any) => x.tipo !== 'text' || !esAck(x.texto)).map((x: any) => (x.tipo !== 'text' ? '[' + x.tipo + '] ' : '') + String(x.texto || '')).join(' / ').replace(/\s+/g, ' ').trim().slice(0, 200);
     const { data: cl } = await sb.from('clientas').select('id,datos').eq('tel_key', tel).eq('borrado', false).limit(1);
