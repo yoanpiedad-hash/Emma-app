@@ -170,6 +170,15 @@ async function ingestarEco(e: any) {
   const vigente = ex?.datos?.estado === 'yanaina' && ex.datos.hasta > ahora.toISOString();
   if (ex?.datos?.espera) delete ex.datos.espera; // 14/11: Yanaina ya le escribió: la próxima respuesta de la clienta la puede atender Mabel
   const datos = vigente ? { ...ex!.datos, hasta } : { id: telKey, tel: cl?.[0]?.datos?.tel || '0' + telKey, clienteId: cl?.[0]?.id || null, estado: 'yanaina', motivo: 'Contestó una persona del equipo desde el celular', desde: ahora.toISOString(), hasta };
+  // 14/11 tarde: si el mensaje del equipo termina en ".." (con o sin espacio o emoji después), la conversación vuelve a Mabel ya,
+  // igual que el botón "Devolver a Mabel" de la app (estado agente + devuelta; el repaso revisa en silencio lo que quedó).
+  if (/\.\.[\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]*$/u.test(texto)) {
+    const dv: any = { ...(ex?.datos || datos), id: telKey, estado: 'agente', devuelta: ahora.toISOString(), devueltaPor: 'equipo (..)' };
+    delete dv.hasta; delete dv.espera; delete dv.silencio; delete dv.repetido;
+    await sb.from('conversaciones').upsert({ id: telKey, datos: dv, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
+    await resolverPorEquipo(telKey).catch(() => 0);
+    return;
+  }
   await sb.from('conversaciones').upsert({ id: telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   await resolverPorEquipo(telKey).catch(() => 0); // 14/11 tarde: el equipo le contestó: el pendiente queda resuelto ("equipo respondió")
 }
