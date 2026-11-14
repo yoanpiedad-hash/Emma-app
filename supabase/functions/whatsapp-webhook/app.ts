@@ -34,7 +34,8 @@ const DIAS_AU = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes'
 const fechaAu = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? String(s) : '';
 function ausenteActivo(cfg: any) {
   const a = cfg?.mabelAusente;
-  return !!a && typeof a === 'object' && a.activo === true && (!fechaAu(a.hasta) || hoyUY() <= fechaAu(a.hasta));
+  // 14/11 tarde: se puede dejar programado. Prende solo cuando llega "desde" (ISO) y se apaga solo al terminar el día "hasta".
+  return !!a && typeof a === 'object' && a.activo === true && (!a.desde || Date.parse(a.desde) <= Date.now()) && (!fechaAu(a.hasta) || hoyUY() <= fechaAu(a.hasta));
 }
 function textoAusente(a: any) {
   const t = String(a?.texto || '').trim();

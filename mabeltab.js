@@ -187,7 +187,10 @@ function mbVincPintar() {
 
 // ─── Ajustes ──────────────────────────────────────────────────
 // 14/11: modo ausente (viaje). Lo lee Mabel en config.mabelAusente.
-const mbAusenteOn = au => !!au && au.activo === true && (!au.hasta || au.hasta >= hoyISO());
+// 14/11 tarde: se puede programar (desde/hasta). Mabel lo prende sola al llegar "desde" y lo apaga sola al terminar "hasta".
+const mbAusenteOn = au => !!au && au.activo === true && (!au.hasta || au.hasta >= hoyISO());          // prendido o programado
+const mbAusenteProg = au => mbAusenteOn(au) && !!au.desde && au.desde > ahoraISO();                  // programado, todavía no empezó
+const mbDiaHoraAu = iso => { const d = new Date(iso); return mbDiaAu(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')) + (d.getHours() || d.getMinutes() ? ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') : ' 00:00'); };
 function mbDiaAu(f) { if (!/^\d{4}-\d{2}-\d{2}$/.test(f || '')) return f || ''; const d = new Date(f + 'T12:00:00'); return ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1); }
 const mbTextoAu = au => (au && au.texto) || `Hola bella, estamos de viaje hasta el ${mbDiaAu(au && au.hasta)}. Escribinos a partir de ahí y te respondemos. ¡Gracias!`;
 function renderAjustesMabel() {
@@ -198,8 +201,8 @@ function renderAjustesMabel() {
       <button class="b sm${activa ? ' dan' : ' ok'}" data-act="mbPausa">${activa ? '⏸️ Pausar a Mabel' : '▶️ Activar a Mabel'}</button></div>
       ${Array.isArray(solo) && solo.length ? `<div class="alert pe">Modo piloto: Mabel solo le contesta a ${solo.length} número(s).</div>` : ''}
       ${hoy ? '' : '<div class="alert pe">⚠️ No hay horario de retiro cargado para hoy: Mabel no le va a dar horario a nadie. Cargalo más abajo.</div>'}</div>
-    <div class="mbt-est"><div class="row"><b class="grow">${auOn ? '✈️ Modo ausente PRENDIDO hasta el ' + esc(mbDiaAu(au.hasta)) : '✈️ Modo ausente apagado'}</b>
-      <button class="b sm${auOn ? ' ok' : ''}" data-act="mbAusente">${auOn ? 'Apagar modo ausente' : 'Prender modo ausente'}</button></div>
+    <div class="mbt-est"><div class="row"><b class="grow">${!auOn ? '✈️ Modo ausente apagado' : mbAusenteProg(au) ? '✈️ Modo ausente PROGRAMADO: se prende solo el ' + esc(mbDiaHoraAu(au.desde)) + ' y se apaga solo al terminar el ' + esc(mbDiaAu(au.hasta)) : '✈️ Modo ausente PRENDIDO hasta el ' + esc(mbDiaAu(au.hasta)) + ' (se apaga solo)'}</b>
+      <button class="b sm${auOn ? ' ok' : ''}" data-act="mbAusente">${!auOn ? 'Programar modo ausente' : mbAusenteProg(au) ? 'Cancelar programación' : 'Apagar modo ausente'}</button></div>${auOn && au.texto ? `<div class="small muted mt">Mensaje: "${esc(au.texto)}"</div>` : ''}
       <div class="small muted">${auOn ? 'A cada clienta le contesta una sola vez: "' + esc(mbTextoAu(au)) + '". No marca pagos, no toma entregas ni deriva. Se apaga solo al terminar ese día.' : 'Para el viaje: a cada clienta le contesta una sola vez que están de viaje y nada más.'}</div></div>`;
   const el = $('#mbt-pausa'); if (el.innerHTML !== h) el.innerHTML = h;
   if (typeof pintarCfgMabel === 'function') pintarCfgMabel();
@@ -250,18 +253,26 @@ Object.assign(ACT, {
   },
   mbAusente: () => {
     const au = cfgN('mabelAusente', null) || {};
+    if (mbAusenteProg(au)) {
+      if (!confirm('¿Cancelar el modo ausente programado para el ' + mbDiaHoraAu(au.desde) + '?\n\nMabel sigue atendiendo normal.')) return;
+      saveConfig({ mabelAusente: { ...au, activo: false, apagado: au.desde, cancelado: ahoraISO() } }); toast('✓ Programación cancelada'); render(); return;
+    }
     if (mbAusenteOn(au)) {
       if (!confirm('¿Apagar el modo ausente?\n\nMabel vuelve a atender normal los mensajes que lleguen desde ahora. Lo que llegó durante el viaje no lo contesta sola: queda sin leer en el celular.')) return;
       saveConfig({ mabelAusente: { ...au, activo: false, apagado: ahoraISO() } }); toast('✓ Modo ausente apagado'); render(); return;
     }
-    const hasta = (prompt('¿Hasta qué día están de viaje? (AAAA-MM-DD)', au.hasta && au.hasta >= hoyISO() ? au.hasta : '2026-11-21') || '').trim();
+    const desdeF = (prompt('¿Desde qué día? (AAAA-MM-DD; arranca a las 00:00 de ese día. Si es hoy, se prende ya)', hoyISO()) || '').trim();
+    if (!desdeF) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(desdeF) || desdeF < hoyISO()) { alert('La fecha tiene que ser AAAA-MM-DD y de hoy en adelante (ej. 2026-11-18).'); return; }
+    const desde = desdeF === hoyISO() ? ahoraISO() : new Date(desdeF + 'T00:00:00-03:00').toISOString();
+    const hasta = (prompt('¿Hasta qué día inclusive? (AAAA-MM-DD; se apaga solo al terminar ese día)', au.hasta && au.hasta >= hoyISO() ? au.hasta : '2026-11-21') || '').trim();
     if (!hasta) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(hasta) || hasta < hoyISO()) { alert('La fecha tiene que ser AAAA-MM-DD y de hoy en adelante (ej. 2026-11-21).'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(hasta) || hasta < desdeF) { alert('La fecha tiene que ser AAAA-MM-DD y no antes del día de inicio (ej. 2026-11-20).'); return; }
     const def = mbTextoAu({ hasta });
     const texto = (prompt('Mensaje que le manda Mabel a cada clienta, una sola vez:', def) || '').trim();
     if (!texto) return;
-    if (!confirm('¿Prender el modo ausente?\n\nHasta el ' + mbDiaAu(hasta) + ', Mabel le contesta a cada clienta una sola vez:\n\n"' + texto + '"\n\ny nada más (no marca pagos, no toma entregas, no deriva).')) return;
-    saveConfig({ mabelAusente: { activo: true, hasta, texto, desde: ahoraISO(), apagado: null } }); toast('✈️ Modo ausente prendido'); render();
+    if (!confirm('¿' + (desdeF === hoyISO() ? 'Prender' : 'Programar') + ' el modo ausente?\n\nDel ' + mbDiaHoraAu(desde) + ' al ' + mbDiaAu(hasta) + ' (inclusive), Mabel le contesta a cada clienta una sola vez:\n\n"' + texto + '"\n\ny nada más (no marca pagos, no toma entregas, no deriva). Se prende y se apaga solo.')) return;
+    saveConfig({ mabelAusente: { activo: true, hasta, texto, desde, apagado: null } }); toast(desdeF === hoyISO() ? '✈️ Modo ausente prendido' : '✈️ Modo ausente programado'); render();
   },
   mbPausa: () => {
     const activa = cfgN('mabelActiva', true) !== false;
