@@ -310,6 +310,16 @@ export async function registrarDerivado(telKey: string, c: any, motivo: string, 
     const repetido = previos.some((m) => m.categoria === cat && String(m.fecha) < corte);
     const nuevo = { fecha: ahora, categoria: cat, motivo: mot, origen, ...(silencio || repetido ? { silencio: true } : {}) };
     if (!pend.length) {
+      // 14/11 tarde: si el último pendiente lo cerró el equipo al escribirle desde el celular, se reabre esa misma fila (queda la historia)
+      const re = ((ab || []) as any[]).find((r) => r.datos?.resueltoPor === 'equipo respondió' && String(r.datos.resuelto || '') > new Date(Date.now() - 7 * 864e5).toISOString());
+      if (re) {
+        const ms = [...motivosDe(re.datos), nuevo].slice(-15);
+        const d2: any = { ...re.datos, categoria: re.datos.categoriaManual ? re.datos.categoria : cat, motivos: ms, motivo: textoMotivos(ms), ultimo: ahora, veces: (+re.datos.veces || 1) + 1, resuelto: null, reabierto: ahora, silencio: !!nuevo.silencio, clienteId: c?.id || re.datos.clienteId || null };
+        delete d2.resueltoPor; delete d2.resueltoEquipo;
+        const { error } = await dosVeces(() => sb.from('derivados').update({ datos: d2 }).eq('id', re.id));
+        if (error) { console.error('derivados (reabrir):', error.message); return null; }
+        return { id: re.id, repetido: false };
+      }
       const id = 'dv' + telKey + Date.now().toString(36);
       const datos = { id, telKey, tel: c?.datos?.tel || '0' + telKey, clienteId: c?.id || null, categoria: cat, motivo: textoMotivos([nuevo]), motivos: [nuevo], silencio: !!nuevo.silencio, origen, creado: ahora, ultimo: ahora, veces: 1, resuelto: null };
       const { error } = await dosVeces(() => sb.from('derivados').insert({ id, datos, borrado: false }));
@@ -335,6 +345,20 @@ export async function registrarDerivado(telKey: string, c: any, motivo: string, 
 
 // 14/11 (MAC-01): la frase de pase le pide a la clienta que escriba. Esa respuesta queda SIN LEER en el celular de Yanaina
 // (con notificación) y Mabel no la contesta mientras el pendiente siga abierto (conversaciones.datos.espera).
+// 14/11 tarde: el equipo le escribió a la clienta desde el celular: sus pendientes pasan a resueltos ("equipo respondió").
+// Si la clienta vuelve a escribir y nadie le contesta, el repaso de sin respuesta reabre la fila (registrarDerivado).
+export async function resolverPorEquipo(telKey: string) {
+  const { data, error } = await sb.from('derivados').select('id,datos').eq('datos->>telKey', telKey).eq('borrado', false).order('actualizado', { ascending: false }).limit(10);
+  if (error) { console.error('derivados (equipo):', error.message); return 0; }
+  const ahora = new Date().toISOString(); let n = 0;
+  for (const r of data || []) {
+    if (!r.datos || r.datos.resuelto) continue;
+    const { error: e } = await sb.from('derivados').update({ datos: { ...r.datos, resuelto: ahora, resueltoPor: 'equipo respondió', resueltoEquipo: true } }).eq('id', r.id);
+    if (e) console.error('derivados (equipo):', e.message); else n++;
+  }
+  return n;
+}
+
 export const FRASE_PASE = 'Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶';
 // Frases de pase (la vieja sigue en el historial): para no repetirla y para sacarla cuando el pase va en silencio.
 export const RE_PASE = /(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s)/i;

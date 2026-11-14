@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -171,6 +171,7 @@ async function ingestarEco(e: any) {
   if (ex?.datos?.espera) delete ex.datos.espera; // 14/11: Yanaina ya le escribió: la próxima respuesta de la clienta la puede atender Mabel
   const datos = vigente ? { ...ex!.datos, hasta } : { id: telKey, tel: cl?.[0]?.datos?.tel || '0' + telKey, clienteId: cl?.[0]?.id || null, estado: 'yanaina', motivo: 'Contestó una persona del equipo desde el celular', desde: ahora.toISOString(), hasta };
   await sb.from('conversaciones').upsert({ id: telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
+  await resolverPorEquipo(telKey).catch(() => 0); // 14/11 tarde: el equipo le contestó: el pendiente queda resuelto ("equipo respondió")
 }
 
 // ─── Coexistencia: historial (llega UNA vez) y sincronización de contactos ─
@@ -678,7 +679,13 @@ async function levantarSinRespuesta(excluir: string[], solo: string[], va: [stri
   const base = () => sb.from('mabel_mensajes').select('id,tel_key,tipo,texto,creado').eq('direccion', 'in').eq('procesado', true).gte('creado', desde).lte('creado', hasta);
   const [q1, q2] = await Promise.all([base().like('texto', '%?%').order('creado', { ascending: false }).limit(200), base().in('tipo', ['image', 'document', 'audio', 'voice', 'unsupported']).order('creado', { ascending: false }).limit(200)]);
   if (q1.error || q2.error) return [{ sin_respuesta: 'error al buscar: ' + (q1.error || q2.error)!.message }];
-  const cand = [...(q1.data || []), ...(q2.data || [])].sort((x: any, y: any) => String(y.creado).localeCompare(String(x.creado)));
+  // 14/11 tarde: clientas cuyo pendiente cerró el equipo al escribirle (últimas 24 h): cualquier mensaje suyo posterior sin respuesta reabre el pendiente
+  const { data: rEq } = await sb.from('derivados').select('datos').eq('borrado', false).eq('datos->>resueltoPor', 'equipo respondió').gte('datos->>resuelto', new Date(ahora - 24 * 3600e3).toISOString()).limit(300);
+  const cerroEquipo = new Map<string, string>();
+  for (const r of rEq || []) { const k = String(r.datos?.telKey || ''), t = String(r.datos?.resuelto || ''); if (k && (cerroEquipo.get(k) || '') < t) cerroEquipo.set(k, t); }
+  let q3: any[] = [];
+  if (cerroEquipo.size) { const { data } = await base().in('tel_key', [...cerroEquipo.keys()]).order('creado', { ascending: false }).limit(300); q3 = (data || []).filter((m: any) => new Date(m.creado).toISOString() > (cerroEquipo.get(m.tel_key) || '9')); }
+  const cand = [...(q1.data || []), ...(q2.data || []), ...q3].sort((x: any, y: any) => String(y.creado).localeCompare(String(x.creado)));
   const porTel = new Map<string, any>();
   for (const m of cand || []) if (!porTel.has(m.tel_key)) porTel.set(m.tel_key, m); // el más nuevo de cada clienta
   // Respuestas (Mabel o equipo) y pendientes de la bandeja de las mismas 12 h, de una sola vez
@@ -702,8 +709,9 @@ async function levantarSinRespuesta(excluir: string[], solo: string[], va: [stri
     const { data: sueltos } = await sb.from('mabel_mensajes').select('tipo,texto,creado').eq('tel_key', tel).eq('direccion', 'in').gte('creado', new Date(new Date(m.creado).getTime() - 30 * 60e3).toISOString()).order('creado').limit(6);
     const txt = (sueltos || []).filter((x: any) => x.tipo !== 'text' || !esAck(x.texto)).map((x: any) => (x.tipo !== 'text' ? '[' + x.tipo + '] ' : '') + String(x.texto || '')).join(' / ').replace(/\s+/g, ' ').trim().slice(0, 200);
     const { data: cl } = await sb.from('clientas').select('id,datos').eq('tel_key', tel).eq('borrado', false).limit(1);
-    const r = await registrarDerivado(tel, cl?.[0] || null, 'Sin respuesta hace más de 30 min: ' + (txt || '[' + m.tipo + ']'), categoriaDe(txt), true, 'sin_respuesta', new Date().toISOString());
-    hechos.push({ tel, sin_respuesta: r ? 'a la bandeja' : 'no se pudo guardar' });
+    const reab = new Date(m.creado).toISOString() > (cerroEquipo.get(tel) || '9');
+    const r = await registrarDerivado(tel, cl?.[0] || null, (reab ? 'Volvió a escribir después de que le contestó el equipo y nadie le respondió: ' : 'Sin respuesta hace más de 30 min: ') + (txt || '[' + m.tipo + ']'), categoriaDe(txt), true, 'sin_respuesta', new Date().toISOString());
+    hechos.push({ tel, sin_respuesta: r ? (reab ? 'reabierto' : 'a la bandeja') : 'no se pudo guardar' });
   }
   return hechos;
 }
