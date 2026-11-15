@@ -31,7 +31,7 @@ const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efecti
 const medioDe = (c: string) => /mercado\s*pago/i.test(c || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(c || '') ? 'efectivo' : 'transferencia';
 const esHabitual = (a: string) => /^(dac|nu[nñ]ez|correo)/.test(normB(a));
 
-export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean };
+export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean; ausente?: boolean };
 
 // ─── Config ───────────────────────────────────────────────────────
 export async function leerConfig(): Promise<Record<string, any>> {
@@ -394,6 +394,9 @@ export async function resolverPorEquipo(telKey: string) {
 }
 
 export const FRASE_PASE = 'Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶';
+// 15/11: durante el modo ausente que atiende, el pase avisa que Yanaina contesta a la vuelta.
+export const FRASE_PASE_AUSENTE = 'Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta a la vuelta del viaje 🫶';
+export const frasePase = (ctx?: { ausente?: boolean } | null) => ctx?.ausente ? FRASE_PASE_AUSENTE : FRASE_PASE;
 // Frases de pase (la vieja sigue en el historial): para no repetirla y para sacarla cuando el pase va en silencio.
 export const RE_PASE = /(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s)/i;
 export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, categoria?: string) {
@@ -423,7 +426,7 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, 
   ctx.derivado = true;
   if (silencio) return { ok: true, derivado: true, en_silencio: true, instruccion: 'Quedó para Yanaina en silencio: NO le escribas nada a la clienta sobre esto (ni "le aviso a Yanaina"). Si no hay otra cosa para contestarle, respondé exactamente "(sin mensaje)".' };
   if (dv.repetido) return { ok: true, derivado: true, ya_estaba_pendiente: true, instruccion: 'Ya había un pase de este mismo tema esperando a Yanaina: quedó sumado. NO le repitas que le avisás a Yanaina. Si la clienta preguntó otra cosa que podés contestar, contestala; si no, respondé exactamente "(sin mensaje)".' };
-  return { ok: true, derivado: true, mensaje_para_la_clienta: FRASE_PASE, ...(silencioNegado ? { nota: 'No va en silencio: nadie del equipo le escribió en la última hora. Decile la frase de pase.' } : {}) };
+  return { ok: true, derivado: true, mensaje_para_la_clienta: frasePase(ctx), ...(silencioNegado ? { nota: 'No va en silencio: nadie del equipo le escribió en la última hora. Decile la frase de pase.' } : {}) };
 }
 
 // 14/11 (MAR-04): ¿es solo un agradecimiento o un "ok"? Mira todas las palabras ("ok gracias", "bien", "Mu has gracias 😘").

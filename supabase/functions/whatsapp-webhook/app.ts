@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -30,6 +30,8 @@ const b64 = (u: Uint8Array) => { let s = ''; for (let i = 0; i < u.length; i += 
 // Prendido (y hasta el final del día "hasta"): a cada clienta le contesta UNA sola vez el texto fijo y nada más
 // (no marca pagos, no toma entregas, no deriva, no repasa). Los mensajes quedan guardados en mabel_mensajes.
 // Al apagarlo, el repaso no contesta lo que llegó durante la ausencia (ventanaAusente).
+// 15/11: con atiende=true Mabel atiende normal (registra pagos, toma entregas, contesta, deriva) y en su primer mensaje de la
+// ausencia avisa el viaje (campo aviso). El repaso sigue andando. Las salidas salen de config.diasSinSalida.
 const DIAS_AU = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const fechaAu = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? String(s) : '';
 function ausenteActivo(cfg: any) {
@@ -53,6 +55,10 @@ function ventanaAusente(cfg: any): [string, string] | null {
   const fin = a.activo === true ? finFecha : String(a.apagado || finFecha);
   return [String(a.desde), [fin, finFecha].sort()[0]];
 }
+// 15/11: solo en el modo prueba (x-mabel-test) se puede simular un modo ausente sin tocar Config (que comparte la Mabel real).
+let ausentePrueba: any = null;
+const leerCfg = async () => { const c = await leerConfig(); if (ausentePrueba) c.mabelAusente = ausentePrueba; return c; };
+const ausenteAtiende = (cfg: any) => ausenteActivo(cfg) && cfg?.mabelAusente?.atiende === true;
 const enVentana = (v: [string, string] | null, creado: string) => !!v && new Date(creado).toISOString() >= v[0] && new Date(creado).toISOString() <= v[1];
 
 // ─── Registro de turnos (14/11, MAC-12) ───────────────────────
@@ -276,12 +282,27 @@ export function salidaCadeteria(cfg: any = {}, ahora: Date = new Date()) {
 
 async function atender(telKey: string, wa: string, lote: any[], repaso = false, tr: Traza = nuevaTraza()) {
   const ctx: Ctx = { telKey, wa, clienta: null, clientas: [], media: null, llamadas: [], inicio: new Date().toISOString() };
-  const cfg = await leerConfig();
+  const cfg = await leerCfg();
   const estado = await buscarPedido(ctx);
-  ctx.repaso = repaso; ctx.anteriores = JSON.stringify(estado || {}).includes('anterior_a_mabel_sin_marcar_pago');
+  ctx.repaso = repaso; ctx.ausente = ausenteAtiende(cfg); ctx.anteriores = JSON.stringify(estado || {}).includes('anterior_a_mabel_sin_marcar_pago');
   // 8/11: Mabel se presenta en el primer mensaje de cada día (no cada 24 h): una clienta que vuelve otro día puede no acordarse de quién es.
   const desde24 = new Date(hoyUY() + 'T00:00:00-03:00').toISOString();
   const { count: salientes } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'out').eq('tipo', 'text').gte('creado', desde24);
+  // 15/11: modo ausente que atiende. ¿Ya le avisó del viaje a esta clienta desde que empezó la ausencia?
+  let ausenteTxt = '';
+  if (ctx.ausente && !repaso) {
+    const a = cfg.mabelAusente || {}, desdeA = String(a.desde || new Date(hoyUY() + 'T00:00:00-03:00').toISOString());
+    const { count: yaAviso } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'out').gte('creado', desdeA);
+    const aviso = String(a.aviso || '').trim() || 'Te cuento que estamos de viaje haciendo la importación para diciembre 🛍️';
+    const h = fechaAu(a.hasta), at = (f: string) => new Date(f + 'T12:00:00-03:00').toISOString();
+    const sal = (t: string, ag: string) => h ? ((salidaPrevista(t, ag, at(h), cfg) as any)?.dia || '') : '';
+    const cad = sal('cadeteria', ''), dac = sal('agencia', 'dac'), cor = sal('agencia', 'correo');
+    const hastaTxt = h ? (() => { const d = new Date(h + 'T12:00:00Z'); return DIAS_AU[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1); })() : '';
+    ausenteTxt = 'MODO AUSENTE (el equipo está de viaje' + (hastaTxt ? ' hasta el ' + hastaTxt : '') + '): atendé normal (registrá comprobantes, tomá entregas, contestá lo que tenga respuesta). '
+      + (yaAviso ? 'Ya le avisaste del viaje a esta clienta: no lo repitas. ' : 'Todavía no le avisaste del viaje: en este mensaje, después del saludo, decile "' + aviso + '" y seguí con lo que pregunta. ')
+      + (cad ? 'Si pregunta por su pedido, el envío o cuándo sale: la cadetería y las agencias salen recién el ' + cad + (cor && cor !== cad ? ' (Correo Uruguayo el ' + cor + ', no sale los sábados)' : '') + (dac && dac !== cad ? ' (DAC el ' + dac + ')' : '') + '. Retiro, a la vuelta (escribinos para coordinar). ' : '')
+      + 'Si la pasás a Yanaina, la frase es "' + FRASE_PASE_AUSENTE + '": no prometas que le contesta antes de la vuelta.';
+  }
   const nov = novedadesVigentes(cfg);
   // 8/11: ¿hay un vivo en curso? Solo si hay un live creado en la app con la fecha de hoy (o de ayer, si son menos de las 6 de la mañana).
   // Sin vivo en curso el total ya se mandó o no corresponde: Mabel atiende normal (registra comprobantes, toma entrega).
@@ -298,6 +319,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
   const devuelta = cv?.datos?.devuelta && (!ult?.[0] || cv.datos.devuelta > new Date(ult[0].creado).toISOString()) ? cv.datos.devuelta : null;
   const dinamico = [
     `HOY: ${ahoraTxtUY()} (hora de Uruguay, ${hoyUY()}).`,
+    ausenteTxt,
     salientes ? 'Ya te presentaste hoy con esta clienta: no vuelvas a presentarte.' : 'Es tu primer mensaje de hoy con esta clienta (aunque ya hayan hablado otro día): arrancá presentándote como indican las instrucciones ("Hola bella, soy Mabel, la asistente virtual de Emma") y después seguí con lo que corresponde.',
     horariosRetiroTexto(cfg),
     retiroAhoraTexto(cfg),
@@ -415,7 +437,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   if (!lote?.length) return { respuesta: null, motivo: 'sin mensajes pendientes' };
   lote.sort((a, b) => String(a.creado).localeCompare(String(b.creado)));
   tr.ids = lote.map((m: any) => String(m.id));
-  const cfg = await leerConfig();
+  const cfg = await leerCfg();
   if (cfg.mabelActiva === false) return { respuesta: null, motivo: 'Mabel pausada (config.mabelActiva=false)' };
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
   if (solo.length && !solo.includes(telKey)) return { respuesta: null, motivo: 'número fuera de mabelSolo' };
@@ -445,7 +467,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     }
   }
   // 14/11: modo ausente. Una sola respuesta fija por clienta desde que se prendió; nada de herramientas ni de Claude.
-  if (ausenteActivo(cfg)) {
+  if (ausenteActivo(cfg) && !ausenteAtiende(cfg)) {
     await sb.from('mabel_mensajes').update({ procesado: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false);
     const a = cfg.mabelAusente, desdeA = String(a.desde || new Date(Date.now() - 7 * 864e5).toISOString());
     const { count: ya } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'out').eq('tipo', 'ausente').gte('creado', desdeA);
@@ -498,9 +520,9 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     error = String((e as Error).message || e); console.error('Mabel error:', error);
     const { data: c } = await sb.from('clientas').select('*').eq('tel_key', telKey).eq('borrado', false).limit(1); ctxMin.clienta = c?.[0] || null;
     const rp: any = await pasarAYanaina(ctxMin, 'Error técnico de Mabel: ' + error.slice(0, 120), false, 'otros').catch(() => null);
-    respuesta = rp?.derivado ? FRASE_PASE : '(sin mensaje: no se pudo dejar el pase)'; // 14/11 (MAC-07): sin pendiente guardado no se promete nada
+    respuesta = rp?.derivado ? (ausenteAtiende(cfg) ? FRASE_PASE_AUSENTE : FRASE_PASE) : '(sin mensaje: no se pudo dejar el pase)'; // 14/11 (MAC-07): sin pendiente guardado no se promete nada
   }
-  if (!respuesta) respuesta = FRASE_PASE;
+  if (!respuesta) respuesta = ausenteAtiende(cfg) ? FRASE_PASE_AUSENTE : FRASE_PASE;
   // 4/11: si mientras armaba la respuesta la clienta mandó más mensajes, no contesta por partes: vuelve a armar una sola respuesta con todo
   if (!error && !opts.dry && !opts.reintento) {
     const { count: nuevos } = await sb.from('mabel_mensajes').select('id', { count: 'exact', head: true }).eq('tel_key', telKey).eq('direccion', 'in').eq('procesado', false);
@@ -579,8 +601,8 @@ async function repasarPendientes(soloTel = '') {
   const ahora = new Date().toISOString(), hechos: any[] = [];
   const cfg = await leerConfig();
   if (cfg.mabelActiva === false) return [{ motivo: 'Mabel pausada' }];
-  if (ausenteActivo(cfg)) return [{ motivo: 'modo ausente: no se repasa' }]; // 14/11
-  const va = ventanaAusente(cfg); // lo que llegó durante la ausencia no lo contesta el repaso al volver
+  if (ausenteActivo(cfg) && !ausenteAtiende(cfg)) return [{ motivo: 'modo ausente: no se repasa' }]; // 14/11
+  const va = cfg?.mabelAusente?.atiende === true ? null : ventanaAusente(cfg); // 15/11: si Mabel atendió durante la ausencia, el repaso sigue normal // lo que llegó durante la ausencia no lo contesta el repaso al volver
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
   const ignorar: string[] = Array.isArray(cfg.mabelIgnorar) ? cfg.mabelIgnorar.map((x: any) => telKeyDe(String(x && typeof x === 'object' ? x.tel : x))).filter(Boolean) : []; // 7/11: proveedores, mayoristas, contactos personales: Mabel nunca les contesta ni los repasa
   const equipo = [...ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean), ...ignorar];
@@ -768,8 +790,8 @@ Deno.serve(async (req) => {
       let media: any = null;
       if (b.imagen_base64) { const bin = Uint8Array.from(atob(b.imagen_base64), (c) => c.charCodeAt(0)); media = await guardarMedia(telKey, uid('test'), bin, b.mime || 'image/jpeg'); if (b.sha256) media.sha256 = String(b.sha256); }
       await sb.from('mabel_mensajes').insert({ id: uid('test'), tel_key: telKey, wa_id: wa, direccion: 'in', tipo: media ? 'image' : 'text', texto: b.texto || '', media, procesado: false });
-      const r = await procesar(telKey, wa, { dry: true, esperar: false });
-      return Response.json(r);
+      ausentePrueba = b.ausente && typeof b.ausente === 'object' ? b.ausente : null;
+      try { const r = await procesar(telKey, wa, { dry: true, esperar: false }); return Response.json(r); } finally { ausentePrueba = null; }
     } catch (e) { return Response.json({ error: String((e as Error).message || e) }, { status: 500 }); }
   }
 
