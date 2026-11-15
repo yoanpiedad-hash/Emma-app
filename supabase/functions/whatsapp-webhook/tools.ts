@@ -263,15 +263,27 @@ export function sinSalida(cfg: any, fecha: string, kind: string) {
   return l.some((x: any) => x?.fecha === fecha && (!Array.isArray(x.solo) || !x.solo.length || x.solo.includes(kind)));
 }
 const DIAS_NOM = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-/** Días sin salida que vienen (desde hoy, hasta 14 días), para avisarle a Mabel. */
+/** Días sin salida que vienen (desde hoy, hasta 14 días), para avisarle a Mabel: hasta cuándo se paga para que salga antes y qué día sale lo que se pague después. */
 export function pausaTexto(cfg: any) {
   const hoy = hoyUY(), lim = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
   const l = (Array.isArray(cfg?.diasSinSalida) ? cfg.diasSinSalida : []).filter((x: any) => x?.fecha >= hoy && x.fecha <= lim).sort((a: any, b: any) => a.fecha.localeCompare(b.fecha));
   if (!l.length) return '';
   const dia = (f: string) => { const d = new Date(f + 'T12:00:00Z'); return DIAS_NOM[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1); };
+  const sumar = (f: string, n: number) => new Date(new Date(f + 'T12:00:00Z').getTime() + n * 864e5).toISOString().slice(0, 10);
+  const total = l.filter((x: any) => !Array.isArray(x.solo) || !x.solo.length);
   const nombre: Record<string, string> = { dac: 'DAC', nunez: 'Núñez', correo: 'Correo Uruguayo', cadeteria: 'cadetería', retiro: 'retiro' };
-  const partes = l.map((x: any) => dia(x.fecha) + (Array.isArray(x.solo) && x.solo.length ? ' (sin ' + x.solo.map((k: string) => nombre[k] || k).join(' ni ') + ')' : ' (no sale nada ni hay retiro)'));
-  return 'PAUSA DE DESPACHO (el equipo está de viaje): ' + partes.join('; ') + '. Las fechas de SALIDAS SI PAGA AHORA y de salida_prevista ya lo tienen en cuenta: usalas tal cual. Si pregunta por qué tarda, decile que estamos de viaje y el día que sale. Retiro: esos días no hay; ofrecé el primer día con horario cargado o "escribinos para coordinar a la vuelta". No la pases a Yanaina por esto.';
+  const parciales = l.filter((x: any) => Array.isArray(x.solo) && x.solo.length).map((x: any) => dia(x.fecha) + ' no hay ' + x.solo.map((k: string) => nombre[k] || k).join(' ni '));
+  // Último día de pago (antes de las 20, o de las 15 en DAC) que todavía sale antes de la pausa, y qué día sale lo que se pague después.
+  const at = (f: string, hh: string) => new Date(f + 'T' + hh + ':00-03:00').toISOString();
+  const primero = l[0].fecha;
+  let ultimo = '';
+  for (let f = hoy; f < primero; f = sumar(f, 1)) { const r: any = salidaPrevista('cadeteria', '', at(f, '19:00'), cfg); if (r?.dia && r.dia === salidaPrevista('cadeteria', '', at(f, '19:00'), {})?.dia) ultimo = f; }
+  const desp = total.length ? total[total.length - 1].fecha : l[l.length - 1].fecha;
+  const tras = (tipo: string, ag: string) => (salidaPrevista(tipo, ag, at(desp, '12:00'), cfg) as any)?.texto || '';
+  return 'PAUSA DE DESPACHO (el equipo está de viaje): ' + (total.length ? 'del ' + dia(total[0].fecha) + ' al ' + dia(desp) + ' no sale ningún envío ni hay retiro' : '') + (parciales.length ? (total.length ? '; además el ' : '') + parciales.join('; ') : '') + '. '
+    + (ultimo ? 'Para que salga antes del viaje tiene que pagar hasta el ' + dia(ultimo) + ' a las 20:00 (cadetería, Núñez, Correo) o a las 15:00 (DAC). ' : '')
+    + (ultimo ? 'Lo que se pague después' : 'Lo que se pague ahora') + ': cadetería ' + tras('cadeteria', '') + '; Núñez ' + tras('agencia', 'nunez') + '; DAC ' + tras('agencia', 'dac') + '; Correo Uruguayo ' + tras('agencia', 'correo') + '. '
+    + 'Usá estos días tal cual (SALIDAS SI PAGA AHORA y salida_prevista ya los tienen en cuenta), solo si pregunta cuándo sale o por qué tarda; no la pases a Yanaina por esto. Retiro esos días no hay: ofrecé el primer día con horario cargado o "escribinos para coordinar a la vuelta".';
 }
 export function salidaPrevista(tipo: string, agencia: string, pagoISO: string | null, cfg: any = {}) {
   if (!pagoISO) return null;
