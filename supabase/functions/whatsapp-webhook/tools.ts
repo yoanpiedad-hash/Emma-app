@@ -169,7 +169,7 @@ export async function buscarPedido(ctx: Ctx) {
     const { total, detalle } = calcPedido(p, live);
     return {
       ...(anteriores.has(r.id) ? { anterior_a_mabel_sin_marcar_pago: true, indicio_en_historial: evidencia[r.id] || null, aviso: 'NO le pidas comprobante de este pedido y no le digas que lo debe: puede estar pagado y sin marcar. Si hace falta, pasalo a Yanaina en silencio.' } : {}),
-      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: live?.datos?.fechaPagoISO || null, ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
+      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: live?.datos?.fechaPagoISO || null, ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha, cfg) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
       entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
@@ -256,22 +256,44 @@ async function conReintento<T>(fn: () => Promise<T>): Promise<T> {
 // 10/11: día de salida del pedido calculado con la hora REAL del pago (p.pago.fecha), no con el plazo del live.
 // Domingo no sale nada; sábado salen cadetería, DAC y Núñez (DAC y Núñez antes de las 12); Correo solo de lunes a viernes.
 // Pago pasadas las 20:00 (DAC: pasadas las 20 también, aunque sale al día siguiente): no se promete día, lo confirma Yanaina.
-export function salidaPrevista(tipo: string, agencia: string, pagoISO: string | null) {
+// 15/11: días sin salida (viaje, feriados). config.diasSinSalida = [{ fecha: 'AAAA-MM-DD', solo?: ['dac'|'nunez'|'correo'|'cadeteria'|'retiro'], motivo? }].
+// Sin "solo", ese día no sale nada ni hay retiro. Las fechas de salida los saltean igual que al domingo.
+export function sinSalida(cfg: any, fecha: string, kind: string) {
+  const l = Array.isArray(cfg?.diasSinSalida) ? cfg.diasSinSalida : [];
+  return l.some((x: any) => x?.fecha === fecha && (!Array.isArray(x.solo) || !x.solo.length || x.solo.includes(kind)));
+}
+const DIAS_NOM = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+/** Días sin salida que vienen (desde hoy, hasta 14 días), para avisarle a Mabel. */
+export function pausaTexto(cfg: any) {
+  const hoy = hoyUY(), lim = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+  const l = (Array.isArray(cfg?.diasSinSalida) ? cfg.diasSinSalida : []).filter((x: any) => x?.fecha >= hoy && x.fecha <= lim).sort((a: any, b: any) => a.fecha.localeCompare(b.fecha));
+  if (!l.length) return '';
+  const dia = (f: string) => { const d = new Date(f + 'T12:00:00Z'); return DIAS_NOM[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1); };
+  const nombre: Record<string, string> = { dac: 'DAC', nunez: 'Núñez', correo: 'Correo Uruguayo', cadeteria: 'cadetería', retiro: 'retiro' };
+  const partes = l.map((x: any) => dia(x.fecha) + (Array.isArray(x.solo) && x.solo.length ? ' (sin ' + x.solo.map((k: string) => nombre[k] || k).join(' ni ') + ')' : ' (no sale nada ni hay retiro)'));
+  return 'PAUSA DE DESPACHO (el equipo está de viaje): ' + partes.join('; ') + '. Las fechas de SALIDAS SI PAGA AHORA y de salida_prevista ya lo tienen en cuenta: usalas tal cual. Si pregunta por qué tarda, decile que estamos de viaje y el día que sale. Retiro: esos días no hay; ofrecé el primer día con horario cargado o "escribinos para coordinar a la vuelta". No la pases a Yanaina por esto.';
+}
+export function salidaPrevista(tipo: string, agencia: string, pagoISO: string | null, cfg: any = {}) {
   if (!pagoISO) return null;
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23', minute: '2-digit' }).formatToParts(new Date(pagoISO)).map((x) => [x.type, x.value]));
   const h = +p.hour + (+p.minute) / 60, d0 = new Date(Date.UTC(+p.year, +p.month - 1, +p.day, 12));
-  const nom = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-  const fmt = (d: Date) => nom[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1);
+  const fmt = (d: Date) => DIAS_NOM[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
   const ag = String(agencia || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const kind = tipo === 'cadeteria' ? 'cadeteria' : /\bdac\b/.test(ag) ? 'dac' : /nunez|nunes/.test(ag) ? 'nunez' : /correo/.test(ag) ? 'correo' : null;
   if (!kind) return { texto: 'No hay salida calculable para esta agencia: que lo confirme Yanaina.', confirmar_yanaina: true };
   const sab = kind !== 'correo';
-  const sigue = (desde: Date) => { let d = new Date(desde.getTime() + 864e5); while (d.getUTCDay() === 0 || (d.getUTCDay() === 6 && !sab)) d = new Date(d.getTime() + 864e5); return d; };
-  if (h >= 20) return { texto: 'Pagó pasadas las 20 hs: no le prometas día, Yanaina le confirma el día de salida.', confirmar_yanaina: true };
-  if (kind === 'dac' && h < 15 && d0.getUTCDay() >= 1 && d0.getUTCDay() <= 5) return { texto: 'sale hoy (' + fmt(d0) + ') entre las 17 y las 18', dia: fmt(d0) };
+  const sigue = (desde: Date, pausa = true) => { let d = new Date(desde.getTime() + 864e5); while (d.getUTCDay() === 0 || (d.getUTCDay() === 6 && !sab) || (pausa && sinSalida(cfg, iso(d), kind))) d = new Date(d.getTime() + 864e5); return d; };
+  const cuando = (d: Date) => kind === 'cadeteria' ? '' : (kind === 'dac' ? (d.getUTCDay() === 6 ? ' antes de las 12' : ' entre las 17 y las 18') : (d.getUTCDay() === 6 ? ' antes de las 12' : ' al mediodía'));
+  if (h >= 20) {
+    // Pasadas las 20 entra al corte del día siguiente. Sin pausa lo confirma Yanaina; si una pausa corre la salida, el día ya es seguro.
+    const base = new Date(d0.getTime() + 864e5), dP = sigue(base), dN = sigue(base, false);
+    if (iso(dP) !== iso(dN)) return { texto: 'sale el ' + fmt(dP) + cuando(dP) + ' (el equipo está de viaje)', dia: fmt(dP) };
+    return { texto: 'Pagó pasadas las 20 hs: no le prometas día, Yanaina le confirma el día de salida.', confirmar_yanaina: true };
+  }
+  if (kind === 'dac' && h < 15 && d0.getUTCDay() >= 1 && d0.getUTCDay() <= 5 && !sinSalida(cfg, iso(d0), 'dac')) return { texto: 'sale hoy (' + fmt(d0) + ') entre las 17 y las 18', dia: fmt(d0) };
   const d = sigue(d0);
-  const cuando = kind === 'cadeteria' ? '' : (kind === 'dac' ? (d.getUTCDay() === 6 ? ' antes de las 12' : ' entre las 17 y las 18') : (d.getUTCDay() === 6 ? ' antes de las 12' : ' al mediodía'));
-  return { texto: 'sale el ' + fmt(d) + cuando, dia: fmt(d) };
+  return { texto: 'sale el ' + fmt(d) + cuando(d), dia: fmt(d) };
 }
 // ─── Bandeja de derivados (pestaña Mabel de la app, 11/11) ─────
 // Cada pase a Yanaina deja una fila en la tabla derivados con su categoría. La app la muestra como pendiente hasta que alguien toca "Resuelto".
@@ -387,7 +409,7 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, 
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
-  if (silencio) return { ok: true, derivado: true, en_silencio: true, instruccion: 'Quedó para Yanaina en silencio: NO le escribas nada a la clienta sobre esto (ni "le aviso a Yanaina").' };
+  if (silencio) return { ok: true, derivado: true, en_silencio: true, instruccion: 'Quedó para Yanaina en silencio: NO le escribas nada a la clienta sobre esto (ni "le aviso a Yanaina"). Si no hay otra cosa para contestarle, respondé exactamente "(sin mensaje)".' };
   if (dv.repetido) return { ok: true, derivado: true, ya_estaba_pendiente: true, instruccion: 'Ya había un pase de este mismo tema esperando a Yanaina: quedó sumado. NO le repitas que le avisás a Yanaina. Si la clienta preguntó otra cosa que podés contestar, contestala; si no, respondé exactamente "(sin mensaje)".' };
   return { ok: true, derivado: true, mensaje_para_la_clienta: FRASE_PASE, ...(silencioNegado ? { nota: 'No va en silencio: nadie del equipo le escribió en la última hora. Decile la frase de pase.' } : {}) };
 }
@@ -811,7 +833,7 @@ export const HERRAMIENTAS = [
   { name: 'vincular_pedido', description: 'La clienta escribe desde un número que no figura en ningún pedido pero dice quién es ("soy Ale, te pedí una remera", "confirmo el pedido 34", su usuario de TikTok). Busca en los lives de hoy y ayer el pedido sin teléfono que coincida y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si la clienta estaba confirmando el pedido' }, prenda: { type: 'string', description: 'Lo que dice que compró, si lo dijo ("conjunto chocolate", "jean")' } } } },
   { name: 'guardar_pedido', description: 'La clienta pide guardar su pedido (que no salga todavía, juntarlo con el próximo live, levantarlo más adelante). Si ya pagó, lo pasa a Guardado. Si no pagó, solo lo guarda si la ficha lo permite (hasta 7 días); si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'Fecha hasta la que lo guarda, AAAA-MM-DD, solo si la clienta dijo una' } } } },
   { name: 'confirmar_pedido', description: 'La clienta confirma su pedido del live ("sí", "confirmo mi pedido"). Marca confirmados sus pedidos abiertos del live más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
-  { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 1 hora o hasta que Yanaina la devuelva. No la uses para consultas de prendas, pedidos de sumar una prenda ni cambios dentro de la política: esas las contestás vos.', input_schema: { type: 'object', properties: { motivo: { type: 'string' }, categoria: { type: 'string', enum: CATEGORIAS, description: 'Obligatoria. Ordena el pase en la bandeja del equipo. pedido = problema con el pedido (desconoce la compra, prenda de más o de menos, algo mal anotado, reclamo, número sin pedido que no se pudo vincular) · pago = comprobantes, faltantes, link de Mercado Pago, plazo para pagar, pedidos viejos sin marcar pago · entrega = cadetería, agencia, retiro, día de salida, juntar paquetes · cambio = cambio de talle o de prenda · especial = ya compró y pide algo aparte que no podés resolver (guardar sin pagar, que le avisen cuando haya algo) · yharol = emprendimiento de Yharol (maquillaje, perfumería, bazar) · otros = no entra en ninguna (proveedores, publicidad, audios que no se entienden). Si hay más de un tema, elegí el que frena el pedido.' }, en_silencio: { type: 'boolean', description: 'true = no se le avisa a la clienta (Yanaina lo ve en la bandeja). Usalo para pedidos anteriores a Mabel sin marcar como pagos y cuando el equipo ya habló con la clienta.' } }, required: ['motivo', 'categoria'] } },
+  { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina, con el motivo en una línea. Mabel se calla en esa conversación por 1 hora o hasta que Yanaina la devuelva. No la uses para consultas de prendas, pedidos de sumar una prenda ni cambios dentro de la política: esas las contestás vos.', input_schema: { type: 'object', properties: { motivo: { type: 'string' }, categoria: { type: 'string', enum: CATEGORIAS, description: 'Obligatoria. Ordena el pase en la bandeja del equipo. pedido = problema con el pedido (desconoce la compra, prenda de más o de menos, algo mal anotado, reclamo, número sin pedido que no se pudo vincular) · pago = comprobantes, faltantes, link de Mercado Pago, plazo para pagar, pedidos viejos sin marcar pago · entrega = cadetería, agencia, retiro, día de salida, juntar paquetes · cambio = cambio de talle o de prenda · especial = ya compró y pide algo aparte que no podés resolver (guardar sin pagar, que le avisen cuando haya algo) · yharol = emprendimiento de Yharol (maquillaje, perfumería, bazar) · otros = no entra en ninguna (proveedores, publicidad, audios que no se entienden). Si hay más de un tema, elegí el que frena el pedido.' }, en_silencio: { type: 'boolean', description: 'true = no se le avisa a la clienta (Yanaina lo ve en la bandeja). Usalo para pedidos anteriores a Mabel sin marcar como pagos y para los cambios en plazo. En los demás casos va sin silencio (la herramienta lo controla).' } }, required: ['motivo', 'categoria'] } },
   { name: 'actualizar_nota', description: 'Reescribe la nota de la clienta (máximo 3 líneas, solo hechos con fecha, sin opiniones ni datos sensibles). Llamala al cerrar una conversación en la que pasó algo útil para la próxima vez.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
 ];
 
@@ -833,7 +855,7 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
 // 5/11: horarios de retiro por fecha (cargados en la app, Config → Mabel). Siempre con la fecha real, nunca "hoy/mañana" sueltos.
 export function horariosRetiroTexto(c: any) {
   const hoy = hoyUY(), dia = (f: string) => { const d = new Date(f + 'T12:00:00Z'); return ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1); };
-  const hs = (Array.isArray(c.horariosRetiro) ? c.horariosRetiro : []).filter((x: any) => x?.fecha >= hoy).sort((a: any, b: any) => a.fecha.localeCompare(b.fecha)).slice(0, 14);
+  const hs = (Array.isArray(c.horariosRetiro) ? c.horariosRetiro : []).filter((x: any) => x?.fecha >= hoy && !sinSalida(c, x.fecha, 'retiro')).sort((a: any, b: any) => a.fecha.localeCompare(b.fecha)).slice(0, 14);
   if (!hs.length) return 'HORARIOS DE RETIRO: no hay ninguno cargado. No des horario: "Dale bella, escribinos un día antes para coordinar".';
   return 'HORARIOS DE RETIRO CARGADOS (decí siempre el día con nombre y fecha): ' + hs.map((x: any) => (x.fecha === hoy ? 'HOY ' : '') + dia(x.fecha) + ': ' + (x.cerrado ? 'sin retiro' : 'de ' + x.desde + ' a ' + x.hasta + ' hs')).join('; ') + '. Para un día que no está en la lista no des horario: "Dale bella, escribinos un día antes para coordinar".';
 }

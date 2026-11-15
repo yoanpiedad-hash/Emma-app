@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -245,26 +245,33 @@ async function claude(system: any[], messages: any[]) {
 
 // Día concreto de salida de la cadetería (3/11): se carga hasta las 20:00 y sale al día siguiente.
 // Se calcula acá para que Mabel nunca diga "mañana" (a las 2 de la mañana se malinterpreta).
-function salidaCadeteria() {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Montevideo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+export function salidaCadeteria(cfg: any = {}, ahora: Date = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Montevideo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(ahora).map((x) => [x.type, x.value]));
   const hoy = new Date(Date.UTC(+p.year, +p.month - 1, +p.day, 12)), h = +p.hour;
   const nom = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   const fmt = (d: Date) => nom[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
   // Primer día después de `desde` (n días) en que sale ese servicio. Domingo no sale nada; sábado sale cadetería, DAC y Núñez (no Correo).
-  const prox = (desde: number, sab: boolean) => { let n = desde; for (;;) { const d = new Date(hoy.getTime() + n * 864e5); const w = d.getUTCDay(); if (w !== 0 && (w !== 6 || sab)) return d; n++; } };
+  // 15/11: también saltea los días sin salida de Config (viaje, feriados) para ese servicio.
+  const prox = (desde: number, sab: boolean, kind = '', pausa = true) => { let n = desde; for (;;) { const d = new Date(hoy.getTime() + n * 864e5); const w = d.getUTCDay(); if (w !== 0 && (w !== 6 || sab) && !(pausa && kind && sinSalida(cfg, iso(d), kind))) return d; n++; } };
   const pasoCorte = h >= 20;
   const base = pasoCorte ? 2 : 1; // si ya pasaron las 20:00 el pedido entra al corte del día siguiente
-  const cad = prox(base, true), nun = prox(base, true), cor = prox(base, false);
-  const dacHoyOk = h < 15 && hoy.getUTCDay() >= 1 && hoy.getUTCDay() <= 5; // 14/11: corte DAC 15:00 (antes 16:59)
-  const dac = dacHoyOk ? null : prox(pasoCorte ? 2 : 1, true);
-  const dacNoche = (() => { const d = prox(1, true); return d.getUTCDay() === 6 ? new Date(d.getTime() + 2 * 864e5) : d; })(); // después de las 20:00 el sábado ya no sale (cierre del viernes 20:00)
+  const cad = prox(base, true, 'cadeteria'), nun = prox(base, true, 'nunez'), cor = prox(base, false, 'correo');
+  const dacHoyOk = h < 15 && hoy.getUTCDay() >= 1 && hoy.getUTCDay() <= 5 && !sinSalida(cfg, iso(hoy), 'dac'); // 14/11: corte DAC 15:00 (antes 16:59)
+  const dac = dacHoyOk ? null : prox(pasoCorte ? 2 : 1, true, 'dac');
+  const dacNoche = (() => { const d = prox(1, true, 'dac'); return d.getUTCDay() === 6 && hoy.getUTCDay() === 5 ? prox(Math.round((d.getTime() - hoy.getTime()) / 864e5) + 1, true, 'dac') : d; })(); // después de las 20:00 el sábado ya no sale (cierre del viernes 20:00)
   const mom = (d: Date) => d.getUTCDay() === 6 ? ' (antes de las 12)' : '';
+  // 15/11: si una pausa corre las salidas, pasadas las 20 el día ya es seguro y se puede decir.
+  const corrida = pasoCorte && [['cadeteria', true], ['nunez', true], ['correo', false]].some(([k, sb_]) => iso(prox(base, sb_ as boolean, k as string)) !== iso(prox(base, sb_ as boolean, k as string, false)));
   return [
-    pasoCorte
+    pasoCorte && !corrida
       ? 'SALIDAS SI PAGA AHORA: ya pasaron las 20:00. Si paga ahora NO le digas el día de salida y NO la pases a Yanaina por eso: seguí la regla NO ADELANTES CUÁNDO SALE (solo si pregunta cuándo sale, Yanaina se lo confirma). Referencia interna, no se la digas: cadetería ' + fmt(cad) + ', Núñez ' + fmt(nun) + mom(nun) + ', Correo ' + fmt(cor) + ', DAC ' + fmt(dacNoche) + mom(dacNoche) + '.'
-      : 'SALIDAS SI PAGA AHORA (antes de las 20:00 de hoy): cadetería sale el ' + fmt(cad) + '; Núñez sale el ' + fmt(nun) + mom(nun) + '; Correo Uruguayo sale el ' + fmt(cor) + '; DAC ' + (dacHoyOk ? 'sale hoy entre las 17 y las 18 si paga hasta las 15:00 (después de las 15:00 sale el ' + fmt(prox(1, true)) + ')' : 'sale el ' + fmt(dac!) + mom(dac!)) + '. Estos días son SOLO para cuando la clienta pregunta cuándo sale (no los adelantes: regla NO ADELANTES CUÁNDO SALE). Decí siempre el día con nombre y fecha, nunca "mañana".',
+      : pasoCorte
+      ? 'SALIDAS SI PAGA AHORA (ya pasaron las 20:00 y el equipo está de viaje, así que estos días son seguros): cadetería sale el ' + fmt(cad) + '; Núñez sale el ' + fmt(nun) + mom(nun) + '; Correo Uruguayo sale el ' + fmt(cor) + '; DAC sale el ' + fmt(dacNoche) + mom(dacNoche) + '. Decilos SOLO si pregunta cuándo sale (regla NO ADELANTES CUÁNDO SALE), sin pasarla a Yanaina. Decí siempre el día con nombre y fecha, nunca "mañana".'
+      : 'SALIDAS SI PAGA AHORA (antes de las 20:00 de hoy): cadetería sale el ' + fmt(cad) + '; Núñez sale el ' + fmt(nun) + mom(nun) + '; Correo Uruguayo sale el ' + fmt(cor) + '; DAC ' + (dacHoyOk ? 'sale hoy entre las 17 y las 18 si paga hasta las 15:00 (después de las 15:00 sale el ' + fmt(prox(1, true, 'dac')) + mom(prox(1, true, 'dac')) + ')' : 'sale el ' + fmt(dac!) + mom(dac!)) + '. Estos días son SOLO para cuando la clienta pregunta cuándo sale (no los adelantes: regla NO ADELANTES CUÁNDO SALE). Decí siempre el día con nombre y fecha, nunca "mañana".',
     'DÍAS SIN SALIDA: el domingo no sale ningún envío. El sábado salen cadetería, DAC y Núñez (DAC y Núñez antes de las 12), con cierre a las 20:00 del viernes; Correo Uruguayo no sale los sábados. Lo que se paga el sábado o el domingo sale el lunes.',
-  ].join('\n');
+    pausaTexto(cfg),
+  ].filter(Boolean).join('\n');
 }
 
 async function atender(telKey: string, wa: string, lote: any[], repaso = false, tr: Traza = nuevaTraza()) {
@@ -297,7 +304,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
     horaUYn < 6 ? `MADRUGADA: son entre las 00:00 y las 06:00. Si la clienta dice "mañana", se refiere al día que ya empezó: HOY ${diaConNombre(hoyF)} (no al día siguiente). Ejemplo: a las 00:22 del sábado 14/11, "pago mañana" es el sábado 14/11. Decí siempre el día con nombre y fecha.` : '',
     nov ? `NOVEDADES DE HOY (vigentes hasta ${nov.vence || 'sin fecha'}): ${nov.texto}` : 'NOVEDADES DE HOY: no hay novedades vigentes.',
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
-    salidaCadeteria(),
+    salidaCadeteria(cfg),
     !liveActivo ? 'VIVO: hoy no hay ningún vivo en curso. Los totales de los vivos anteriores ya se mandaron: atendé normal (comprobantes se registran, entrega se toma, cuentas se pasan si las pide). No digas "cuando termine el vivo".' : totalEnviado ? 'TOTAL: ya se le mandó el total de su pedido (puede pagar).' : 'TOTAL: todavía NO se le mandó el total de su último pedido (puede que siga sumando en el vivo).',
     `FORMAS DE PAGO (texto oficial de Config; no lo reenvíes salvo que la clienta lo pida):\n${typeof cfg.msgPago === 'string' ? cfg.msgPago : '(no cargado)'}`,
     devuelta ? 'CONVERSACIÓN DEVUELTA POR YANAINA: Yanaina atendió esta conversación y te la devolvió. Lo que haya quedado pendiente o mal en tus mensajes anteriores ya lo resolvió ella (pudo cambiar prendas, total o marcar el pago en la app). El ESTADO ACTUAL es la verdad: no pidas disculpas ni expliques diferencias con lo que dijiste antes; seguí desde ahí con lo que la clienta pide ahora.' : '',
