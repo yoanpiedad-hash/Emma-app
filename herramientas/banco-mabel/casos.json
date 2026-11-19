@@ -260,17 +260,18 @@
    "espera": {
     "envia": true,
     "contiene": [
-     "(talle|foto|cambio)"
+     "(talle|foto|cambio|usuario|n[uú]mero de pedido)"
     ],
     "no_contiene": [
      "Contame en un mensaje qué necesitás"
     ]
-   }
+   },
+   "nota": "Sin pedido a su número, buscar el pedido primero está bien. El cambio con pedido va en la fase 2."
   },
   {
    "id": "Y01",
    "nombre": "Emprendimiento de Yharol",
-   "tanda": "ya",
+   "tanda": "D",
    "pasos": [
     {
      "texto": "hola, quiero comprar el perfume que vende Yharol"
@@ -281,7 +282,8 @@
     "contiene": [
      "Yharol"
     ]
-   }
+   },
+   "nota": "19/11: en 2 corridas, una vez dijo \"le avisamos a Yharol\" y otra no (D-5)"
   },
   {
    "id": "G01",
