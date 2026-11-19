@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Banco de casos de Mabel (19/11).
+
+Corre cada caso de casos.json contra la función de prueba (mabel-prueba) con el modo prueba
+(header x-mabel-test). No sale ningún WhatsApp. Cada caso usa su propio número 099000NNN, que se
+limpia antes y después.
+
+Uso:  MABEL_TEST_KEY=... python3 correr.py [--url URL] [--solo S01,A01] [--tanda ya|D|todas]
+Sale con código 1 si falla algún caso de la tanda pedida: si falla, no se publica.
+"""
+import argparse, concurrent.futures as cf, datetime as dt, json, os, re, sys, time, urllib.request
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+URL = 'https://ssipaovluukkypsbzboe.supabase.co/functions/v1/mabel-prueba'
+
+
+def post(url, key, body, intentos=2):
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), method='POST',
+                                 headers={'content-type': 'application/json', 'x-mabel-test': key})
+    for i in range(intentos):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return json.loads(r.read() or b'{}')
+        except urllib.error.HTTPError as e:
+            txt = e.read().decode(errors='replace')
+            if i + 1 == intentos: return {'error': f'HTTP {e.code}: {txt[:300]}'}
+        except Exception as e:  # corte de red: un reintento
+            if i + 1 == intentos: return {'error': str(e)[:300]}
+        time.sleep(3)
+
+
+def dias_viaje():
+    hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date()
+    return [{'fecha': (hoy + dt.timedelta(days=i)).isoformat(), 'motivo': 'viaje'} for i in range(4)]
+
+
+def correr_caso(c, tel, url, key, ausente):
+    post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
+    pasos, ultimo = [], None
+    try:
+        for p in c['pasos']:
+            cfg = {'mabelAusente': None, 'diasSinSalida': []}
+            cfg.update({k: (dias_viaje() if v == '__viaje__' else v) for k, v in (p.get('cfg') or {}).items()})
+            body = {'tel': tel, 'texto': p.get('texto', ''), 'detalle': True, 'cfg': cfg}
+            if p.get('ausente'): body['ausente'] = ausente; cfg.pop('mabelAusente', None)
+            for k in ('previo', 'conv', 'imagen_base64', 'mime'):
+                if k in p: body[k] = p[k]
+            r = post(url, key, body); pasos.append(r); ultimo = r
+    finally:
+        post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
+    return revisar(c, ultimo or {}, pasos)
+
+
+def revisar(c, r, pasos):
+    e, fallas = c.get('espera', {}), []
+    if r.get('error') and not r.get('respuesta'): fallas.append('error: ' + str(r['error'])[:160])
+    txt = r.get('respuesta') or ''
+    if 'envia' in e:
+        if e['envia'] and not txt: fallas.append('no mandó mensaje (' + str(r.get('motivo')) + ')')
+        if not e['envia'] and txt: fallas.append('mandó mensaje y tenía que callar')
+    for pat in e.get('contiene', []):
+        if txt and not re.search(pat, txt, re.I): fallas.append(f'falta /{pat}/')
+    for pat in e.get('no_contiene', []):
+        if txt and re.search(pat, txt): fallas.append(f'no debía decir /{pat}/')
+    herr = json.dumps([x.get('registro') for x in pasos], ensure_ascii=False)
+    for h in e.get('herramienta', []):
+        if h not in herr: fallas.append('no usó ' + h)
+    for h in e.get('no_herramienta', []):
+        if f'"{h}"' in herr or f"'{h}'" in herr or f'{h}(' in herr: fallas.append('usó ' + h)
+    if 'derivado' in e:
+        hay = bool(r.get('derivados'))
+        if e['derivado'] and not hay: fallas.append('no dejó pendiente para Yanaina')
+        if not e['derivado'] and hay: fallas.append('dejó pendiente para Yanaina y no tenía')
+    return {'id': c['id'], 'nombre': c['nombre'], 'tanda': c.get('tanda', 'ya'), 'ok': not fallas, 'fallas': fallas,
+            'respuesta': txt or None, 'motivo': r.get('motivo'), 'silencio': r.get('silencio'),
+            'derivados': [d.get('ultimo') or d.get('motivo') for d in (r.get('derivados') or [])]}
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--url', default=URL); ap.add_argument('--solo', default=''); ap.add_argument('--tanda', default='todas')
+    a = ap.parse_args()
+    key = os.environ.get('MABEL_TEST_KEY') or sys.exit('Falta MABEL_TEST_KEY')
+    banco = json.load(open(os.path.join(AQUI, 'casos.json')))
+    casos = [c for c in banco['casos'] if (not a.solo or c['id'] in a.solo.split(',')) and (a.tanda == 'todas' or c.get('tanda', 'ya') == a.tanda)]
+    with cf.ThreadPoolExecutor(4) as ex:
+        res = list(ex.map(lambda ic: correr_caso(ic[1], '099000%03d' % (100 + ic[0]), a.url, key, banco['ausente']), enumerate(casos)))
+    for x in res:
+        print(('✅' if x['ok'] else '❌'), x['id'], f"[{x['tanda']}]", x['nombre'])
+        for f in x['fallas']: print('     ·', f)
+        print('     →', (x['respuesta'] or f"(no mandó: {x['motivo']})").replace('\n', ' ')[:220])
+    ok = sum(x['ok'] for x in res)
+    print(f'\n{ok}/{len(res)} bien')
+    sello = dt.datetime.now().strftime('%Y%m%d-%H%M')
+    os.makedirs(os.path.join(AQUI, 'resultados'), exist_ok=True)
+    json.dump(res, open(os.path.join(AQUI, 'resultados', sello + '.json'), 'w'), ensure_ascii=False, indent=1)
+    sys.exit(0 if all(x['ok'] for x in res if x['tanda'] == 'ya' or a.tanda == 'D') else 1)
+
+
+if __name__ == '__main__':
+    main()

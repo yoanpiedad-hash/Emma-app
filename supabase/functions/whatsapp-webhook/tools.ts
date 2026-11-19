@@ -34,10 +34,14 @@ const esHabitual = (a: string) => /^(dac|nu[nñ]ez|correo)/.test(normB(a));
 export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean; ausente?: boolean };
 
 // ─── Config ───────────────────────────────────────────────────────
+// 19/11 (banco de casos): solo el modo prueba (x-mabel-test) pone cfgPrueba, para simular Config sin tocar la real.
+let cfgPrueba: Record<string, any> | null = null;
+export const ponerCfgPrueba = (c: Record<string, any> | null) => { cfgPrueba = c; };
 export async function leerConfig(): Promise<Record<string, any>> {
   const { data } = await sb.from('config').select('clave,valor');
   const o: Record<string, any> = {};
   for (const r of data || []) o[r.clave] = r.valor;
+  if (cfgPrueba) for (const k in cfgPrueba) { if (cfgPrueba[k] === null) delete o[k]; else o[k] = cfgPrueba[k]; }
   return o;
 }
 const num = (v: any, d = 0) => { const n = +v; return Number.isFinite(n) ? n : d; };

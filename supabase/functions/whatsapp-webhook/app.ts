@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, ponerCfgPrueba, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -56,8 +56,8 @@ function ventanaAusente(cfg: any): [string, string] | null {
   return [String(a.desde), [fin, finFecha].sort()[0]];
 }
 // 15/11: solo en el modo prueba (x-mabel-test) se puede simular un modo ausente sin tocar Config (que comparte la Mabel real).
-let ausentePrueba: any = null;
-const leerCfg = async () => { const c = await leerConfig(); if (ausentePrueba) c.mabelAusente = ausentePrueba; return c; };
+// 19/11: ahora pasa por ponerCfgPrueba (tools.ts), que cubre todas las lecturas de Config.
+const leerCfg = () => leerConfig();
 const ausenteAtiende = (cfg: any) => ausenteActivo(cfg) && cfg?.mabelAusente?.atiende === true;
 const enVentana = (v: [string, string] | null, creado: string) => !!v && new Date(creado).toISOString() >= v[0] && new Date(creado).toISOString() <= v[1];
 
@@ -786,12 +786,37 @@ Deno.serve(async (req) => {
         await cargarClienta(ctx);
         return Response.json(await ejecutar(String(b.tool), b.input || {}, ctx));
       }
-      if (b.reset) { await sb.from('conversaciones').delete().eq('id', telKey); await sb.from('mabel_mensajes').delete().eq('tel_key', telKey); }
+      // 19/11 (banco de casos): limpiar, historial previo, estado de la conversación y Config simulada. Solo con números de prueba
+      // (099000xxx), para que una prueba nunca toque la conversación de una clienta real.
+      const esPrueba = /^99000\d{3}$/.test(telKey);
+      if ((b.limpiar || b.previo || b.conv || b.cfg) && !esPrueba) return Response.json({ error: 'limpiar/previo/conv/cfg solo con números 099000xxx' }, { status: 400 });
+      if (b.reset || b.limpiar) { await sb.from('conversaciones').delete().eq('id', telKey); await sb.from('mabel_mensajes').delete().eq('tel_key', telKey); }
+      if (b.limpiar) { await sb.from('derivados').delete().eq('datos->>telKey', telKey); await sb.from('mabel_turnos').delete().eq('tel_key', telKey).then(() => {}, () => {}); }
+      if (b.solo_limpiar) return Response.json({ ok: true, limpio: telKey });
+      if (Array.isArray(b.previo)) {
+        const rows = b.previo.map((m: any, i: number) => ({ id: uid('prev'), tel_key: telKey, wa_id: wa, direccion: ['in', 'out', 'echo'].includes(m.dir) ? m.dir : 'in', tipo: m.tipo || 'text', texto: String(m.texto || ''), procesado: true, creado: new Date(Date.now() - (Number(m.hace_min) || (b.previo.length - i) * 5) * 60e3).toISOString() }));
+        if (rows.length) await sb.from('mabel_mensajes').insert(rows);
+      }
+      if (b.conv && typeof b.conv === 'object') {
+        const d: any = { ...b.conv }; for (const k of ['hasta', 'desde', 'devuelta', 'espera']) if (typeof d[k] === 'number') d[k] = new Date(Date.now() + d[k] * 60e3).toISOString(); // minutos desde ahora
+        await sb.from('conversaciones').upsert({ id: telKey, datos: d, borrado: false });
+      }
       let media: any = null;
       if (b.imagen_base64) { const bin = Uint8Array.from(atob(b.imagen_base64), (c) => c.charCodeAt(0)); media = await guardarMedia(telKey, uid('test'), bin, b.mime || 'image/jpeg'); if (b.sha256) media.sha256 = String(b.sha256); }
       await sb.from('mabel_mensajes').insert({ id: uid('test'), tel_key: telKey, wa_id: wa, direccion: 'in', tipo: media ? 'image' : 'text', texto: b.texto || '', media, procesado: false });
-      ausentePrueba = b.ausente && typeof b.ausente === 'object' ? b.ausente : null;
-      try { const r = await procesar(telKey, wa, { dry: true, esperar: false }); return Response.json(r); } finally { ausentePrueba = null; }
+      const cp: Record<string, any> = b.cfg && typeof b.cfg === 'object' ? { ...b.cfg } : {};
+      if (b.ausente && typeof b.ausente === 'object') cp.mabelAusente = b.ausente;
+      if (b.ausente === false) cp.mabelAusente = null; // prueba sin el modo ausente aunque esté prendido en la real
+      ponerCfgPrueba(Object.keys(cp).length ? cp : null);
+      try {
+        const r: any = await procesar(telKey, wa, { dry: true, esperar: false });
+        if (b.detalle) { // herramientas del turno y pendientes abiertos, para el banco de casos
+          const { data: rg } = await sb.from('mabel_registro').select('resultado,motivo,herramientas').eq('tel_key', telKey).order('creado', { ascending: false }).limit(1);
+          const { data: dv } = await sb.from('derivados').select('datos').eq('datos->>telKey', telKey).eq('borrado', false);
+          r.registro = rg?.[0] || null; r.derivados = (dv || []).map((x: any) => x.datos);
+        }
+        return Response.json(r);
+      } finally { ponerCfgPrueba(null); }
     } catch (e) { return Response.json({ error: String((e as Error).message || e) }, { status: 500 }); }
   }
 
