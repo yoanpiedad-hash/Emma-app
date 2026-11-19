@@ -6,7 +6,7 @@
 // de la app de Dualhook, así que la firma no se puede verificar: se acepta el POST si la firma es válida O si llega por la ruta secreta,
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, ponerCfgPrueba, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, conCfgPrueba, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
@@ -422,7 +422,7 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
         catch (e) { r = { respuesta: null, motivo: 'falla del turno', error: String((e as Error).message || e) }; await registrarTurno(telKey, opts.dry ? 'prueba' : opts.desdeRepaso ? 'repaso' : 'webhook', r, tr, t0); throw e; }
         await registrarTurno(telKey, opts.dry ? 'prueba' : opts.desdeRepaso ? 'repaso' : 'webhook', r, tr, t0);
         if (r.reintentar) { reint = true; continue; } // una sola vez por invocación
-        if (!r.respuesta) break;
+        if (!r.respuesta) { if (!ultima.respuesta) ultima = r; break; } // 19/11: devuelve el motivo real del silencio
         ultima = r;
       }
     } finally { await sb.rpc('mabel_soltar_turno', { p_tel: telKey }); }
@@ -807,8 +807,7 @@ Deno.serve(async (req) => {
       const cp: Record<string, any> = b.cfg && typeof b.cfg === 'object' ? { ...b.cfg } : {};
       if (b.ausente && typeof b.ausente === 'object') cp.mabelAusente = b.ausente;
       if (b.ausente === false) cp.mabelAusente = null; // prueba sin el modo ausente aunque esté prendido en la real
-      ponerCfgPrueba(Object.keys(cp).length ? cp : null);
-      try {
+      return await conCfgPrueba(Object.keys(cp).length ? cp : null, async () => {
         const r: any = await procesar(telKey, wa, { dry: true, esperar: false });
         if (b.detalle) { // herramientas del turno y pendientes abiertos, para el banco de casos
           const { data: rg } = await sb.from('mabel_registro').select('resultado,motivo,herramientas').eq('tel_key', telKey).order('creado', { ascending: false }).limit(1);
@@ -816,7 +815,7 @@ Deno.serve(async (req) => {
           r.registro = rg?.[0] || null; r.derivados = (dv || []).map((x: any) => x.datos);
         }
         return Response.json(r);
-      } finally { ponerCfgPrueba(null); }
+      });
     } catch (e) { return Response.json({ error: String((e as Error).message || e) }, { status: 500 }); }
   }
 

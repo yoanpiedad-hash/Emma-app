@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 // Herramientas de Mabel. Replican la lógica de la app (despacho.js, mabel.js, index.html) sobre la base.
 // Regla de seguridad: ninguna herramienta recibe teléfono ni id de clienta del modelo. Siempre usan ctx (el número que escribió).
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -35,12 +36,14 @@ export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: a
 
 // ─── Config ───────────────────────────────────────────────────────
 // 19/11 (banco de casos): solo el modo prueba (x-mabel-test) pone cfgPrueba, para simular Config sin tocar la real.
-let cfgPrueba: Record<string, any> | null = null;
-export const ponerCfgPrueba = (c: Record<string, any> | null) => { cfgPrueba = c; };
+// Va por pedido (AsyncLocalStorage): dos pruebas al mismo tiempo no se pisan y la atención real nunca la ve.
+const ALS_PRUEBA = new AsyncLocalStorage<Record<string, any> | null>();
+export const conCfgPrueba = <T>(c: Record<string, any> | null, f: () => Promise<T>) => ALS_PRUEBA.run(c, f);
 export async function leerConfig(): Promise<Record<string, any>> {
   const { data } = await sb.from('config').select('clave,valor');
   const o: Record<string, any> = {};
   for (const r of data || []) o[r.clave] = r.valor;
+  const cfgPrueba = ALS_PRUEBA.getStore();
   if (cfgPrueba) for (const k in cfgPrueba) { if (cfgPrueba[k] === null) delete o[k]; else o[k] = cfgPrueba[k]; }
   return o;
 }
