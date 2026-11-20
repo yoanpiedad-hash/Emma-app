@@ -986,7 +986,8 @@
     "contiene": [
      "nombre"
     ]
-   }
+   },
+   "nota": "v110: la agencia se carga aunque falte el nombre (aviso en Despacho). Mabel pide el nombre pero no carga la agencia."
   },
   {
    "id": "F18",
@@ -1029,7 +1030,7 @@
   },
   {
    "id": "F19",
-   "nombre": "Cambio en plazo con pedido enviado hace 2 días",
+   "nombre": "Cambio en plazo con pedido enviado hace 6 días",
    "tanda": "ya",
    "fixture": {
     "pedidos": [
@@ -1044,7 +1045,7 @@
       ],
       "estado": "enviado",
       "entrega": "cadeteria",
-      "enviado_hace_dias": 2,
+      "enviado_hace_dias": 6,
       "pagado": {
        "cuenta": "BROU",
        "monto": 500
