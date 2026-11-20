@@ -789,10 +789,35 @@ Deno.serve(async (req) => {
       // 19/11 (banco de casos): limpiar, historial previo, estado de la conversación y Config simulada. Solo con números de prueba
       // (099000xxx), para que una prueba nunca toque la conversación de una clienta real.
       const esPrueba = /^99000\d{3}$/.test(telKey);
-      if ((b.limpiar || b.previo || b.conv || b.cfg) && !esPrueba) return Response.json({ error: 'limpiar/previo/conv/cfg solo con números 099000xxx' }, { status: 400 });
+      if ((b.limpiar || b.previo || b.conv || b.cfg || b.fixture) && !esPrueba) return Response.json({ error: 'limpiar/previo/conv/cfg solo con números 099000xxx' }, { status: 400 });
       if (b.reset || b.limpiar) { await sb.from('conversaciones').delete().eq('id', telKey); await sb.from('mabel_mensajes').delete().eq('tel_key', telKey); }
       if (b.limpiar) { await sb.from('derivados').delete().eq('datos->>telKey', telKey); await sb.from('mabel_turnos').delete().eq('tel_key', telKey).then(() => {}, () => {}); }
+      if (b.limpiar) { // fichas, pedidos y pagos de prueba de este número (ids cb<tel>, pb<tel>-N)
+        await sb.from('pagos').delete().like('pedido_id', 'pb' + telKey + '-%');
+        await sb.from('pedidos').delete().like('id', 'pb' + telKey + '-%');
+        await sb.from('clientas').delete().eq('id', 'cb' + telKey);
+      }
+      if (b.borrar_live_banco) { await sb.from('pedidos').delete().eq('live_id', 'lbanco-mabel'); await sb.from('lives').delete().eq('id', 'lbanco-mabel'); }
       if (b.solo_limpiar) return Response.json({ ok: true, limpio: telKey });
+      if (b.fixture && typeof b.fixture === 'object') { // 19/11: ficha y pedidos de prueba en el live "BANCO MABEL (prueba, no tocar)"
+        const fx = b.fixture, ahoraIso = new Date().toISOString(), lf = String(fx.live_fecha || '2026-11-13');
+        const lid = 'lbanco-mabel', lv = { id: lid, fecha: lf, nombre: 'BANCO MABEL (prueba, no tocar)', descuento: 0, fechaPago: 'el sábado 21/11', fechaPagoISO: String(fx.fecha_pago || '2026-11-21'), pedidoCounter: 999 };
+        await sb.from('lives').upsert({ id: lid, nombre: lv.nombre, fecha: lf, datos: lv, borrado: false, actualizado: ahoraIso });
+        const cid = 'cb' + telKey, cd = { id: cid, tel: '0' + telKey, telKey, nombre: fx.nombre || 'Prueba Banco', alias: [], creado: ahoraIso, saldoFavor: 0, historialViejo: [], ...(fx.clienta || {}) };
+        await sb.from('clientas').upsert({ id: cid, nombre: cd.nombre, tel_key: telKey, datos: cd, borrado: false, actualizado: ahoraIso });
+        for (const [i, q] of (Array.isArray(fx.pedidos) ? fx.pedidos : []).entries()) {
+          const pid = 'pb' + telKey + '-' + (i + 1), num = q.num || 900 + i, estado = q.estado || 'pendiente', entrega = q.entrega || 'sin_definir';
+          const hace = (d: number) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+          const pd: any = { id: pid, num, codigo: 'B' + num, estado, entrega, liveId: lid, clienteId: cid, notas: '', avisos: [], descuento: null, saldoAplicado: 0,
+            prendas: (q.prendas || [['REMERA', 500, 1]]).map((x: any[]) => ({ qty: x[2] || 1, codigo: null, nombre: x[0], precio: x[1], stockId: null, precioLista: x[1] })),
+            fechas: { creado: lf, ...(estado === 'enviado' ? { listo: hace(q.enviado_hace_dias || 2), enviado: hace(q.enviado_hace_dias || 2) } : {}) },
+            promoCalc: { fecha: lf, promos: [], vipPct: 0 }, ...(q.datos || {}) };
+          if (q.pagado) pd.pago = { id: 'gb' + telKey + '-' + (i + 1), cuenta: q.pagado.cuenta || 'BROU', fecha: new Date(Date.now() - 864e5).toISOString() };
+          await sb.from('pedidos').upsert({ id: pid, live_id: lid, clienta_id: cid, num, codigo: pd.codigo, estado, entrega, datos: pd, borrado: false, actualizado: ahoraIso });
+          if (q.pagado) await sb.from('pagos').upsert({ id: pd.pago.id, pedido_id: pid, cuenta: pd.pago.cuenta, monto: q.pagado.monto || 500, fecha: pd.pago.fecha, comprobante: null, datos: { id: pd.pago.id, pedidoId: pid, clienteId: cid, cuenta: pd.pago.cuenta, monto: q.pagado.monto || 500, fecha: pd.pago.fecha, origen: 'prueba', ajuste: 0 }, borrado: false, actualizado: ahoraIso });
+        }
+        if (fx.total_mandado) await sb.from('mabel_mensajes').insert({ id: uid('prev'), tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'plantilla', texto: 'Hola bella! Te paso el detalle de tu pedido', procesado: true, creado: new Date(Date.now() - 20 * 3600e3).toISOString() });
+      }
       if (Array.isArray(b.previo)) {
         const rows = b.previo.map((m: any, i: number) => ({ id: uid('prev'), tel_key: telKey, wa_id: wa, direccion: ['in', 'out', 'echo'].includes(m.dir) ? m.dir : 'in', tipo: m.tipo || 'text', texto: String(m.texto || ''), procesado: true, creado: new Date(Date.now() - (Number(m.hace_min) || (b.previo.length - i) * 5) * 60e3).toISOString() }));
         if (rows.length) await sb.from('mabel_mensajes').insert(rows);

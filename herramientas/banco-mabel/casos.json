@@ -426,6 +426,796 @@
      "de viaje"
     ]
    }
+  },
+  {
+   "id": "F01",
+   "nombre": "Comprobante bueno: marca el pago y pregunta la entrega",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k500.jpg",
+     "texto": "ahí te pagué"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": false,
+    "contiene": [
+     "(retir|cadete|agencia|env[ií])"
+    ]
+   }
+  },
+  {
+   "id": "F02",
+   "nombre": "Pago de menos: un solo pendiente y una sola frase",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k300.jpg",
+     "texto": "listo"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "derivado": true,
+    "herramienta": [
+     "marcar_pagado"
+    ]
+   }
+  },
+  {
+   "id": "F03",
+   "nombre": "Pago con la cadetería incluida ($500 + $250)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k750.jpg",
+     "texto": "te pagué con el envío incluido"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "F04",
+   "nombre": "Comprobante a una cuenta que no es de Emma",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k500_ajena.jpg",
+     "texto": "ahí va"
+    }
+   ],
+   "espera": {
+    "derivado": true
+   }
+  },
+  {
+   "id": "F05",
+   "nombre": "Comprobante de fecha anterior al vivo",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k500_vieja.jpg",
+     "texto": "pagado"
+    }
+   ],
+   "espera": {
+    "derivado": true
+   }
+  },
+  {
+   "id": "F06",
+   "nombre": "El mismo comprobante para otro pedido",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     },
+     {
+      "num": 901,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k500.jpg",
+     "texto": "este es del pedido 901"
+    },
+    {
+     "imagen": "k500.jpg",
+     "texto": "y este del 900"
+    }
+   ],
+   "espera": {
+    "derivado": true
+   }
+  },
+  {
+   "id": "F07",
+   "nombre": "Pago a PREX YOAN se acepta (no se ofrece)",
+   "tanda": "E",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k500_prexyoan.jpg",
+     "texto": "te pagué por prex"
+    }
+   ],
+   "espera": {
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "F08",
+   "nombre": "Pedido pago por cadetería: cuándo sale, con día y fecha",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria",
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      },
+      "estado": "listo"
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "¿cuándo me llega el pedido?"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(lunes|martes|miércoles|jueves|viernes|sábado)"
+    ],
+    "no_contiene": [
+     "[Mm]añana"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "F09",
+   "nombre": "No entiende el total: explica",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ],
+       [
+        "JEAN",
+        700,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "no entiendo el total, ¿me explicás?"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "1\\.?200"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "F10",
+   "nombre": "Dice que el total está mal: pasa a Yanaina",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ],
+       [
+        "JEAN",
+        700,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "el total está mal, yo pedí solo la remera"
+    }
+   ],
+   "espera": {
+    "derivado": true
+   }
+  },
+  {
+   "id": "F11",
+   "nombre": "Quiere cancelar el pedido: pasa sin retener",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "quiero cancelar mi pedido"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "derivado": true,
+    "no_contiene": [
+     "(segura|no te gustar|en vez de cancelar)"
+    ]
+   }
+  },
+  {
+   "id": "F12",
+   "nombre": "Quiere sacar una prenda: pasa",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ],
+       [
+        "JEAN",
+        700,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "sacame el jean del pedido por favor"
+    }
+   ],
+   "espera": {
+    "derivado": true
+   }
+  },
+  {
+   "id": "F13",
+   "nombre": "Pregunta su saldo a favor: dice monto y hasta cuándo",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ],
+    "clienta": {
+     "saldoFavor": 200
+    }
+   },
+   "pasos": [
+    {
+     "texto": "¿cuánto saldo a favor tengo?"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "200"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "F14",
+   "nombre": "Stock con pedido abierto: frase fija de los vivos",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "¿tienen remeras en L?"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "viv"
+    ],
+    "no_contiene": [
+     "(no lo manejo yo|s[ií] hay|no hay)"
+    ]
+   }
+  },
+  {
+   "id": "F15",
+   "nombre": "Cambia retiro por cadetería antes de la etiqueta",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "retiro",
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      },
+      "estado": "listo"
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "mejor mandámelo por cadete a Gral. Flores 4241, Ituzaingó"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "guardar_entrega"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "F17",
+   "nombre": "Agencia sin nombre: lo pide (La Morocha)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      },
+      "estado": "listo"
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "mandalo por DAC a Paysandú"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "guardar_entrega"
+    ],
+    "contiene": [
+     "nombre"
+    ]
+   }
+  },
+  {
+   "id": "F18",
+   "nombre": "Agencia con nombre guardado: lo ofrece",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      },
+      "estado": "listo"
+     }
+    ],
+    "clienta": {
+     "nombreEnvio": "Rosana Sosa"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "mandalo por DAC a Paysandú"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "Rosana"
+    ]
+   }
+  },
+  {
+   "id": "F19",
+   "nombre": "Cambio en plazo con pedido enviado hace 2 días",
+   "tanda": "ya",
+   "fixture": {
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "JEAN",
+        900,
+        1
+       ]
+      ],
+      "estado": "enviado",
+      "entrega": "cadeteria",
+      "enviado_hace_dias": 2,
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "me quedó chico el jean, ¿lo puedo cambiar?"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(talle|foto)"
+    ],
+    "no_contiene": [
+     "Contame en un mensaje qué necesitás"
+    ]
+   }
+  },
+  {
+   "id": "F20",
+   "nombre": "Cambio fuera de plazo (enviado hace 15 días)",
+   "tanda": "ya",
+   "fixture": {
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "JEAN",
+        900,
+        1
+       ]
+      ],
+      "estado": "enviado",
+      "entrega": "cadeteria",
+      "enviado_hace_dias": 15,
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "me quedó chico el jean, ¿lo puedo cambiar?"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(7 días|plazo)"
+    ]
+   }
+  },
+  {
+   "id": "F22",
+   "nombre": "Dos direcciones: usa la de 'casa'",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      },
+      "estado": "listo"
+     }
+    ],
+    "clienta": {
+     "direccion": "Gregorio Rodríguez 3700",
+     "barrio": "Jardines Del Hipódromo",
+     "direcciones": [
+      {
+       "barrio": "Jardines Del Hipódromo",
+       "direccion": "Gregorio Rodríguez 3700"
+      },
+      {
+       "barrio": "Ituzaingó",
+       "etiqueta": "casa",
+       "direccion": "Gral. Flores 4241"
+      }
+     ]
+    }
+   },
+   "pasos": [
+    {
+     "texto": "mandámelo por cadete a casa"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "guardar_entrega"
+    ],
+    "contiene": [
+     "Flores"
+    ]
+   }
+  },
+  {
+   "id": "F23",
+   "nombre": "Retiro sin pagar dentro de casi un mes: no lo acepta sola",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "lo paso a retirar el 15 de diciembre y pago ahí"
+    }
+   ],
+   "espera": {
+    "derivado": true
+   }
+  },
+  {
+   "id": "F24",
+   "nombre": "Pide pagar con Mercado Pago: total con recargo",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "¿puedo pagar con mercado pago? ¿cuánto sería?"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "550"
+    ]
+   }
   }
  ]
 }

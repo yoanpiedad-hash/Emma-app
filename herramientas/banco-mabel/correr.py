@@ -8,7 +8,7 @@ limpia antes y después.
 Uso:  MABEL_TEST_KEY=... python3 correr.py [--url URL] [--solo S01,A01] [--tanda ya|D|todas]
 Sale con código 1 si falla algún caso de la tanda pedida: si falla, no se publica.
 """
-import argparse, concurrent.futures as cf, datetime as dt, json, os, re, sys, time, urllib.request
+import argparse, base64, concurrent.futures as cf, datetime as dt, json, os, re, sys, time, urllib.request
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 URL = 'https://ssipaovluukkypsbzboe.supabase.co/functions/v1/mabel-prueba'
@@ -45,6 +45,9 @@ def correr_caso(c, tel, url, key, ausente):
             if p.get('ausente'): body['ausente'] = ausente; cfg.pop('mabelAusente', None)
             for k in ('previo', 'conv', 'imagen_base64', 'mime'):
                 if k in p: body[k] = p[k]
+            if p.get('imagen'):
+                body['imagen_base64'] = base64.b64encode(open(os.path.join(AQUI, 'comprobantes', p['imagen']), 'rb').read()).decode(); body['mime'] = 'image/jpeg'
+            if c.get('fixture') and p is c['pasos'][0]: body['fixture'] = c['fixture']
             r = post(url, key, body); pasos.append(r); ultimo = r
     finally:
         post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
@@ -85,6 +88,7 @@ def main():
     casos = [c for c in banco['casos'] if (not a.solo or c['id'] in a.solo.split(',')) and (a.tanda == 'todas' or c.get('tanda', 'ya') == a.tanda)]
     with cf.ThreadPoolExecutor(4) as ex:
         res = list(ex.map(lambda ic: correr_caso(ic[1], '099000%03d' % (100 + ic[0]), a.url, key, banco['ausente']), enumerate(casos)))
+    if any(c.get('fixture') for c in casos): post(a.url, key, {'tel': '099000999', 'solo_limpiar': True, 'limpiar': True, 'borrar_live_banco': True})
     for x in res:
         print(('✅' if x['ok'] else '❌'), x['id'], f"[{x['tanda']}]", x['nombre'])
         for f in x['fallas']: print('     ·', f)
