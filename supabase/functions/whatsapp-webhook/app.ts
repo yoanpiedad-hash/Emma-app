@@ -571,7 +571,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || dd.silencio === true || dd.repetido === true)) { // 14/11: ya no por "otro pase en 6 h"; solo si el mismo tema ya estaba pendiente (repetido)
       // Si además respondió algo útil (ej. el horario), se manda eso sin la frase de "le aviso a Yanaina"
       const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s|apenas termine te contesta|le avisamos a yharol)[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
-      if ((equipoActivo || dd.silencio === true) || resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) { // 5/11: con el equipo activo o pase en silencio NUNCA se manda nada
+      if (equipoActivo || resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) { // 5/11: con el equipo activo NUNCA se manda nada. 20/11: un pase en silencio sin equipo activo (cambio en plazo, pedidos anteriores) manda igual la parte útil (el paso que sigue), sin frase de pase
         await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
         return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado o Yanaina ya habló con ella)', silencio: respuesta, ...(error ? { error } : {}), ...(opts.dry ? { prueba: true } : {}) };
       }
