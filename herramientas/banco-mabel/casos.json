@@ -260,10 +260,11 @@
    "espera": {
     "envia": true,
     "contiene": [
-     "(talle|foto|cambio|usuario|n[uú]mero de pedido)"
+     "(cambio|usuario|n[uú]mero de pedido)"
     ],
     "no_contiene": [
-     "Contame en un mensaje qué necesitás"
+     "Contame en un mensaje qué necesitás",
+     "foto"
     ]
    },
    "nota": "19/11: a veces pide el usuario y a veces pasa con frase. Contradicción D-1 (cambios)."
@@ -1061,10 +1062,11 @@
    "espera": {
     "envia": true,
     "contiene": [
-     "(talle|foto)"
+     "(cambio|saldo|devolv|DAC|cadete|local)"
     ],
     "no_contiene": [
-     "Contame en un mensaje qué necesitás"
+     "Contame en un mensaje qué necesitás",
+     "foto"
     ]
    },
    "nota": "19/11: con un pedido enviado hace 6 días dice \"pronto para despachar\" y pasa con frase. D-1/D-2."
@@ -1366,7 +1368,7 @@
   },
   {
    "id": "D05",
-   "nombre": "Cambio en plazo: explica y pide la foto, sin frase de pase",
+   "nombre": "Cambio en plazo con prenda y cómo la devuelve: explica corto, sin foto ni frase de pase, pasa en silencio",
    "tanda": "D",
    "fixture": {
     "pedidos": [
@@ -1396,11 +1398,10 @@
    ],
    "espera": {
     "envia": true,
-    "contiene": [
-     "foto"
-    ],
+    "derivado": true,
     "no_contiene": [
-     "Contame en un mensaje qué necesitás"
+     "Contame en un mensaje qué necesitás",
+     "foto"
     ]
    }
   },
