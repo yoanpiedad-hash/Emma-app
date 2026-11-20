@@ -251,7 +251,7 @@
   {
    "id": "C01",
    "nombre": "Cambio de talle en plazo: explica ella, sin frase de pase",
-   "tanda": "ya",
+   "tanda": "D",
    "pasos": [
     {
      "texto": "hola, me quedó chico el jean, ¿lo puedo cambiar por otro talle?"
@@ -266,7 +266,7 @@
      "Contame en un mensaje qué necesitás"
     ]
    },
-   "nota": "Sin pedido a su número, buscar el pedido primero está bien. El cambio con pedido va en la fase 2."
+   "nota": "19/11: a veces pide el usuario y a veces pasa con frase. Contradicción D-1 (cambios)."
   },
   {
    "id": "Y01",
@@ -952,7 +952,7 @@
   {
    "id": "F17",
    "nombre": "Agencia sin nombre: lo pide (La Morocha)",
-   "tanda": "ya",
+   "tanda": "D",
    "fixture": {
     "total_mandado": true,
     "pedidos": [
@@ -987,7 +987,7 @@
      "nombre"
     ]
    },
-   "nota": "v110: la agencia se carga aunque falte el nombre (aviso en Despacho). Mabel pide el nombre pero no carga la agencia."
+   "nota": "19/11: pide el nombre pero no carga la agencia hasta tenerlo (v110 decía cargarla igual con aviso en Despacho)."
   },
   {
    "id": "F18",
@@ -1031,7 +1031,7 @@
   {
    "id": "F19",
    "nombre": "Cambio en plazo con pedido enviado hace 6 días",
-   "tanda": "ya",
+   "tanda": "D",
    "fixture": {
     "pedidos": [
      {
@@ -1066,7 +1066,8 @@
     "no_contiene": [
      "Contame en un mensaje qué necesitás"
     ]
-   }
+   },
+   "nota": "19/11: con un pedido enviado hace 6 días dice \"pronto para despachar\" y pasa con frase. D-1/D-2."
   },
   {
    "id": "F20",
