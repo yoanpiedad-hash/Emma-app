@@ -809,12 +809,13 @@ Deno.serve(async (req) => {
         for (const [i, q] of (Array.isArray(fx.pedidos) ? fx.pedidos : []).entries()) {
           const pid = 'pb' + telKey + '-' + (i + 1), num = q.num || 900 + i, estado = q.estado || 'pendiente', entrega = q.entrega || 'sin_definir';
           const hace = (d: number) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
-          const pd: any = { id: pid, num, codigo: 'B' + num, estado, entrega, liveId: lid, clienteId: cid, notas: '', avisos: [], descuento: null, saldoAplicado: 0,
+          const pd: any = { id: pid, num, codigo: 'B' + telKey.slice(-3) + num, estado, entrega, liveId: lid, clienteId: cid, notas: '', avisos: [], descuento: null, saldoAplicado: 0,
             prendas: (q.prendas || [['REMERA', 500, 1]]).map((x: any[]) => ({ qty: x[2] || 1, codigo: null, nombre: x[0], precio: x[1], stockId: null, precioLista: x[1] })),
             fechas: { creado: lf, ...(estado === 'enviado' ? { listo: hace(q.enviado_hace_dias || 2), enviado: hace(q.enviado_hace_dias || 2) } : {}) },
             promoCalc: { fecha: lf, promos: [], vipPct: 0 }, ...(q.datos || {}) };
           if (q.pagado) pd.pago = { id: 'gb' + telKey + '-' + (i + 1), cuenta: q.pagado.cuenta || 'BROU', fecha: new Date(Date.now() - 864e5).toISOString() };
-          await sb.from('pedidos').upsert({ id: pid, live_id: lid, clienta_id: cid, num, codigo: pd.codigo, estado, entrega, datos: pd, borrado: false, actualizado: ahoraIso });
+          const { error: ePd } = await sb.from('pedidos').upsert({ id: pid, live_id: lid, clienta_id: cid, num, codigo: pd.codigo, estado, entrega, datos: pd, borrado: false, actualizado: ahoraIso });
+          if (ePd) return Response.json({ error: 'fixture pedido: ' + ePd.message }, { status: 500 });
           if (q.pagado) await sb.from('pagos').upsert({ id: pd.pago.id, pedido_id: pid, cuenta: pd.pago.cuenta, monto: q.pagado.monto || 500, fecha: pd.pago.fecha, comprobante: null, datos: { id: pd.pago.id, pedidoId: pid, clienteId: cid, cuenta: pd.pago.cuenta, monto: q.pagado.monto || 500, fecha: pd.pago.fecha, origen: 'prueba', ajuste: 0 }, borrado: false, actualizado: ahoraIso });
         }
         if (fx.total_mandado) await sb.from('mabel_mensajes').insert({ id: uid('prev'), tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'plantilla', texto: 'Hola bella! Te paso el detalle de tu pedido', procesado: true, creado: new Date(Date.now() - 20 * 3600e3).toISOString() });
