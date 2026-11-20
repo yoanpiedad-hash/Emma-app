@@ -328,6 +328,8 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
     nov ? `NOVEDADES DE HOY (vigentes hasta ${nov.vence || 'sin fecha'}): ${nov.texto}` : 'NOVEDADES DE HOY: no hay novedades vigentes.',
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
     salidaCadeteria(cfg),
+    // 20/11: link a la página de cambios (Config linkCambios). Sin la clave, Mabel no pasa link.
+    cfg.linkCambios ? 'POLÍTICA DE CAMBIOS (link para pasarle si pregunta por cambios): ' + String(cfg.linkCambios) : '',
     // 20/11 (D-3): VIVO siempre dice si hay o no; con vivo, el link fijo (Config linkVivo). TOTAL solo si tiene un pedido de ese vivo.
     !liveActivo ? 'VIVO: no hay vivo en curso. Los totales de los vivos anteriores ya se mandaron: atendé normal (comprobantes, entrega, cuentas si las pide). No digas "cuando termine el vivo" ni pases el link del vivo.'
       : 'VIVO: hay un vivo en curso ahora. Link para conectarse: ' + String(cfg.linkVivo || 'tiktok.com/@emma_indumentaria/live') + '. ' + (!(estado?.pedidos_abiertos || []).some((p: any) => p.fecha_live === liveActivo) ? 'Esta clienta no tiene pedido en este vivo.' : totalEnviado ? 'TOTAL: ya se le mandó el total de su pedido (puede pagar).' : 'TOTAL: todavía NO se le mandó el total de su pedido de este vivo (puede seguir sumando).'),

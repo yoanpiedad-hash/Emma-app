@@ -264,7 +264,8 @@
     ],
     "no_contiene": [
      "Contame en un mensaje qué necesitás",
-     "foto"
+     "foto",
+     "(devuelve plata|devolvemos plata|devuelve el dinero|no se devuelve)"
     ]
    },
    "nota": "19/11: a veces pide el usuario y a veces pasa con frase. Contradicción D-1 (cambios)."
@@ -1066,7 +1067,8 @@
     ],
     "no_contiene": [
      "Contame en un mensaje qué necesitás",
-     "foto"
+     "foto",
+     "(devuelve plata|devolvemos plata|devuelve el dinero|no se devuelve)"
     ]
    },
    "nota": "19/11: con un pedido enviado hace 6 días dice \"pronto para despachar\" y pasa con frase. D-1/D-2."
@@ -1401,7 +1403,8 @@
     "derivado": true,
     "no_contiene": [
      "Contame en un mensaje qué necesitás",
-     "foto"
+     "foto",
+     "(devuelve plata|devolvemos plata|devuelve el dinero|no se devuelve)"
     ]
    }
   },
@@ -1474,6 +1477,92 @@
     "no_contiene": [
      "Contame en un mensaje qué necesitás",
      "de más"
+    ]
+   }
+  },
+  {
+   "id": "D06",
+   "nombre": "Cambio de prenda en liquidación: avisa que no tiene cambio y pasa a Yanaina",
+   "tanda": "D",
+   "fixture": {
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "JEAN",
+        900,
+        1
+       ]
+      ],
+      "estado": "enviado",
+      "entrega": "cadeteria",
+      "enviado_hace_dias": 3,
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 900
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "hola, quiero cambiar el jean, lo compré en liquidación pero me quedó grande"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "derivado": true,
+    "contiene": [
+     "liquidaci"
+    ],
+    "no_contiene": [
+     "Contame en un mensaje qué necesitás"
+    ]
+   }
+  },
+  {
+   "id": "D07",
+   "nombre": "Cambio con la página de cambios en Config: pasa el link",
+   "tanda": "D",
+   "fixture": {
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "JEAN",
+        900,
+        1
+       ]
+      ],
+      "estado": "enviado",
+      "entrega": "cadeteria",
+      "enviado_hace_dias": 3,
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 900
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "hola, ¿cómo son los cambios? el jean me quedó grande",
+     "cfg": {
+      "linkCambios": "https://yoanpiedad-hash.github.io/Emma-app/cambios.html"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "cambios\\.html"
+    ],
+    "no_contiene": [
+     "foto",
+     "(devuelve plata|devolvemos plata|devuelve el dinero|no se devuelve)",
+     "Contame en un mensaje qué necesitás"
     ]
    }
   }
