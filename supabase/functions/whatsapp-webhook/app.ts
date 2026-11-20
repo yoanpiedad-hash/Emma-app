@@ -796,12 +796,13 @@ Deno.serve(async (req) => {
         await sb.from('pagos').delete().like('pedido_id', 'pb' + telKey + '-%');
         await sb.from('pedidos').delete().like('id', 'pb' + telKey + '-%');
         await sb.from('clientas').delete().eq('id', 'cb' + telKey);
+        await sb.from('lives').delete().eq('id', 'lbanco-' + telKey);
       }
-      if (b.borrar_live_banco) { await sb.from('pedidos').delete().eq('live_id', 'lbanco-mabel'); await sb.from('lives').delete().eq('id', 'lbanco-mabel'); }
+      if (b.borrar_live_banco) { await sb.from('pagos').delete().like('pedido_id', 'pb99000%'); await sb.from('pedidos').delete().like('live_id', 'lbanco-%'); await sb.from('clientas').delete().like('id', 'cb99000%'); await sb.from('lives').delete().like('id', 'lbanco-%'); }
       if (b.solo_limpiar) return Response.json({ ok: true, limpio: telKey });
-      if (b.fixture && typeof b.fixture === 'object') { // 19/11: ficha y pedidos de prueba en el live "BANCO MABEL (prueba, no tocar)"
+      if (b.fixture && typeof b.fixture === 'object') { // 19/11: ficha y pedidos de prueba en un live "BANCO MABEL (prueba, no tocar)" propio de ese número (el número de pedido es único por live)
         const fx = b.fixture, ahoraIso = new Date().toISOString(), lf = String(fx.live_fecha || '2026-11-13');
-        const lid = 'lbanco-mabel', lv = { id: lid, fecha: lf, nombre: 'BANCO MABEL (prueba, no tocar)', descuento: 0, fechaPago: 'el sábado 21/11', fechaPagoISO: String(fx.fecha_pago || '2026-11-21'), pedidoCounter: 999 };
+        const lid = 'lbanco-' + telKey, lv = { id: lid, fecha: lf, nombre: 'BANCO MABEL (prueba, no tocar)', descuento: 0, fechaPago: 'el sábado 21/11', fechaPagoISO: String(fx.fecha_pago || '2026-11-21'), pedidoCounter: 999 };
         await sb.from('lives').upsert({ id: lid, nombre: lv.nombre, fecha: lf, datos: lv, borrado: false, actualizado: ahoraIso });
         const cid = 'cb' + telKey, cd = { id: cid, tel: '0' + telKey, telKey, nombre: fx.nombre || 'Prueba Banco', alias: [], creado: ahoraIso, saldoFavor: 0, historialViejo: [], ...(fx.clienta || {}) };
         await sb.from('clientas').upsert({ id: cid, nombre: cd.nombre, tel_key: telKey, datos: cd, borrado: false, actualizado: ahoraIso });
