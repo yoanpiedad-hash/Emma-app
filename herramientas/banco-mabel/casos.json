@@ -1366,7 +1366,7 @@
   },
   {
    "id": "D05",
-   "nombre": "Cambio en plazo con datos completos: pasa en silencio, sin frase",
+   "nombre": "Cambio en plazo: explica y pide la foto, sin frase de pase",
    "tanda": "D",
    "fixture": {
     "pedidos": [
@@ -1396,7 +1396,9 @@
    ],
    "espera": {
     "envia": true,
-    "derivado": true,
+    "contiene": [
+     "foto"
+    ],
     "no_contiene": [
      "Contame en un mensaje qué necesitás"
     ]
