@@ -310,6 +310,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
   const fechasVivo = [hoyF, ...(horaUYn < 6 ? [new Date(Date.now() - 864e5).toISOString().slice(0, 10)] : [])];
   const { data: lvs } = await sb.from('lives').select('datos').eq('borrado', false).in('datos->>fecha', fechasVivo);
   const liveActivo = (lvs || []).map((l: any) => l.datos?.fecha).sort().pop() || null;
+  ctx.vivo = !!liveActivo; // 20/11 (D-9): el pase durante el vivo usa otra frase
   // ¿Ya se le mandó el total de ese live? (mensaje del total por WhatsApp o plantilla desde que empezó ese día)
   const { data: totMsg } = await sb.from('mabel_mensajes').select('id').eq('tel_key', telKey).in('direccion', ['out', 'echo']).gte('creado', liveActivo ? new Date(liveActivo + 'T00:00:00-03:00').toISOString() : new Date(Date.now() - 36 * 3600e3).toISOString()).or('texto.ilike.%detalle de tu pedido%,texto.ilike.%Formas de pago%,texto.ilike.%total de tus pedidos%').limit(1);
   const totalEnviado = !!totMsg?.length || !liveActivo;
@@ -327,7 +328,9 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
     nov ? `NOVEDADES DE HOY (vigentes hasta ${nov.vence || 'sin fecha'}): ${nov.texto}` : 'NOVEDADES DE HOY: no hay novedades vigentes.',
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
     salidaCadeteria(cfg),
-    !liveActivo ? 'VIVO: hoy no hay ningún vivo en curso. Los totales de los vivos anteriores ya se mandaron: atendé normal (comprobantes se registran, entrega se toma, cuentas se pasan si las pide). No digas "cuando termine el vivo".' : totalEnviado ? 'TOTAL: ya se le mandó el total de su pedido (puede pagar).' : 'TOTAL: todavía NO se le mandó el total de su último pedido (puede que siga sumando en el vivo).',
+    // 20/11 (D-3): VIVO siempre dice si hay o no; con vivo, el link fijo (Config linkVivo). TOTAL solo si tiene un pedido de ese vivo.
+    !liveActivo ? 'VIVO: no hay vivo en curso. Los totales de los vivos anteriores ya se mandaron: atendé normal (comprobantes, entrega, cuentas si las pide). No digas "cuando termine el vivo" ni pases el link del vivo.'
+      : 'VIVO: hay un vivo en curso ahora. Link para conectarse: ' + String(cfg.linkVivo || 'tiktok.com/@emma_indumentaria/live') + '. ' + (!(estado?.pedidos_abiertos || []).some((p: any) => p.fecha_live === liveActivo) ? 'Esta clienta no tiene pedido en este vivo.' : totalEnviado ? 'TOTAL: ya se le mandó el total de su pedido (puede pagar).' : 'TOTAL: todavía NO se le mandó el total de su pedido de este vivo (puede seguir sumando).'),
     `FORMAS DE PAGO (texto oficial de Config; no lo reenvíes salvo que la clienta lo pida):\n${typeof cfg.msgPago === 'string' ? cfg.msgPago : '(no cargado)'}`,
     devuelta ? 'CONVERSACIÓN DEVUELTA POR YANAINA: Yanaina atendió esta conversación y te la devolvió. Lo que haya quedado pendiente o mal en tus mensajes anteriores ya lo resolvió ella (pudo cambiar prendas, total o marcar el pago en la app). El ESTADO ACTUAL es la verdad: no pidas disculpas ni expliques diferencias con lo que dijiste antes; seguí desde ahí con lo que la clienta pide ahora.' : '',
     repaso ? 'REPASO EN SILENCIO (no es una charla): esta conversación la tenía Yanaina y volvió a vos. Los mensajes de abajo son lo que la clienta mandó mientras la atendía Yanaina. NO le escribas nada a la clienta: tu respuesta final NO se envía, es una nota interna. Fijate solo dos cosas: (1) si hay un comprobante y el pedido no figura pagado en el ESTADO ACTUAL, registralo con marcar_pagado con las reglas de siempre; (2) si dio datos de entrega (dirección y barrio, agencia, ciudad, CI, retiro) que no están cargados, guardalos con guardar_entrega. Revisá TODO lo que la clienta mandó desde el último mensaje nuestro, sin dejar ningún hilo suelto: cargá todo lo que esté claro aunque el pedido no esté pago (los datos de entrega se guardan siempre). Si el pedido ya figura pagado o con la entrega cargada, no toques nada (ya lo hizo Yanaina). Si algo no cierra (monto distinto, cuenta rara, acuerdo especial con Yanaina, dudas), no marques eso que no cierra, cargá el resto (la entrega siempre, y con dejar_aviso_despacho una línea corta de por qué no figura pago, para que el pedido aparezca en despacho) y llamá pasar_a_yanaina con un motivo claro y corto (así le aparece a Yanaina en la bandeja; igual no le escribís a la clienta). Terminá con una nota corta que empiece con "REPASO:" diciendo qué hiciste o "REPASO: nada para cargar".' : '',
@@ -353,7 +356,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
   }
   const messages: any[] = [...(await historia(telKey, lote.map((m) => m.id))), { role: 'user', content: bloques }];
 
-  let corregido = false, vacio = false;
+  let corregido = false, vacio = false, corregidoM = false;
   for (let vuelta = 0; vuelta < 7; vuelta++) {
     const j = await claude(system, messages);
     { const u = j.usage || {}; tr.tok.llamadas++; tr.tok.entrada += +u.input_tokens || 0; tr.tok.salida += +u.output_tokens || 0; tr.tok.cache_lee += +u.cache_read_input_tokens || 0; tr.tok.cache_escribe += +u.cache_creation_input_tokens || 0; }
@@ -372,6 +375,12 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
       if ((/aviso a yanaina/i.test(txt) || RE_PASE.test(txt)) && !ctx.derivado && !corregido) {
         corregido = true;
         messages.push({ role: 'user', content: [{ type: 'text', text: '(Nota interna, no es de la clienta) Dijiste que le avisás a Yanaina pero no llamaste pasar_a_yanaina. Si de verdad hay que pasarla, llamala con el motivo. Si no, contestá lo que la clienta pidió usando las herramientas que hagan falta. No uses esa frase sin derivar.' }] });
+        continue;
+      }
+      // 20/11: nunca "mañana" para una salida o un retiro (con la madrugada y los días sin salida se malinterpreta). "de la mañana" sí vale.
+      if (/\bma[ñn]ana\b/i.test(txt.replace(/\b(de|por|a|en|esta|la|toda) la ma[ñn]ana\b|\bde ma[ñn]ana\b/gi, '')) && !corregidoM) {
+        corregidoM = true;
+        messages.push({ role: 'user', content: [{ type: 'text', text: '(Nota interna, no es de la clienta) No digas "mañana": escribí el mismo mensaje con el día con nombre y fecha (HOY es ' + hoyUY() + '). Contestá solo el mensaje corregido.' }] });
         continue;
       }
       return txt;
@@ -458,7 +467,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     const soloAck = lote.every((m: any) => !m.media && ACK.test(String(m.texto || '').trim() || '[sticker]'));
     // 5/11: emojis, stickers y reacciones SOLOS no se contestan nunca (ej. respuestas a un estado de Yanaina con ❤️ o sticker), sin importar qué se dijo antes
     const EMO = /^(\[sticker\]|\[reaction\]|[\p{Extended_Pictographic}\uFE0F\u200D\s]+)$/u;
-    const COMPLI = /^(hermos[ao]s?|lind[ao]s?|divin[ao]s?|precios[ao]s?|qu[eé] lind[ao]s?|me encant[aó]|amo|bellas?|jaja+|jeje+|😂|wow)[\s.!¡]*[\p{Extended_Pictographic}\uFE0F\u200D\s]*$/iu;
+    const COMPLI = /^(hermos[ao]s?|lind[ao]s?|divin[ao]s?|precios[ao]s?|qu[eé] lind[ao]s?|me encant[aó]|amo|bellas?|j?(a?ja)+j?a*|j?(e?je)+|😂|wow)[\s.!¡]*[\p{Extended_Pictographic}\uFE0F\u200D\s]*$/iu; // 20/11: 'jajaja' y 'jsjs' sueltos ya no llegan al modelo
     if (lote.every((m: any) => !m.media && (EMO.test(String(m.texto || '').trim() || '[sticker]') || COMPLI.test(String(m.texto || '').trim())))) return { respuesta: null, motivo: 'emoji, sticker o comentario suelto: no se contesta' };
     if (soloAck) {
       const { data: ul } = await sb.from('mabel_mensajes').select('texto,creado').eq('tel_key', telKey).in('direccion', ['out', 'echo']).order('creado', { ascending: false }).limit(1);
@@ -561,7 +570,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     }
     if (dd.estado === 'yanaina' && dd.derivadoEn && dd.derivadoEn >= inicioTurno && (equipoActivo || dd.silencio === true || dd.repetido === true)) { // 14/11: ya no por "otro pase en 6 h"; solo si el mismo tema ya estaba pendiente (repetido)
       // Si además respondió algo útil (ej. el horario), se manda eso sin la frase de "le aviso a Yanaina"
-      const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s)[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
+      const resto = respuesta.replace(/hola bella,?\s*soy mabel[^.!?]*[.!?]?/i, '').replace(/[^.!?]*(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s|apenas termine te contesta|le avisamos a yharol)[^.!?]*[.!?]?\s*(\p{Extended_Pictographic}\uFE0F?)?/giu, '').replace(/[^.!?]*lamento lo que pas[oó][^.!?]*[.!?]?/i, '').trim();
       if ((equipoActivo || dd.silencio === true) || resto.replace(/\p{Extended_Pictographic}|\uFE0F|\s/gu, '').length < 15) { // 5/11: con el equipo activo o pase en silencio NUNCA se manda nada
         await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
         return { respuesta: null, motivo: 'derivada en silencio (ya se le había avisado o Yanaina ya habló con ella)', silencio: respuesta, ...(error ? { error } : {}), ...(opts.dry ? { prueba: true } : {}) };
@@ -574,11 +583,14 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
     await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
     return { respuesta: null, motivo: 'nota interna del modelo: no se envía', silencio: respuesta, ...(error ? { error } : {}), ...(opts.dry ? { prueba: true } : {}) };
   }
-  if (!opts.dry) marcarLeido(String(lote[lote.length - 1].id)); // 14/11: leído solo si de verdad se le contesta (lo demás queda sin leer para Yanaina)
+  // 14/11: leído solo si de verdad se le contesta. 20/11 (Yoan, pregunta 4): si en este turno se pasó a Yanaina, tampoco: le queda SIN LEER en el celular.
+  let pasoAhora = false;
+  { const { data: cvL } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle(); pasoAhora = cvL?.datos?.estado === 'yanaina' && String(cvL?.datos?.derivadoEn || '') >= inicioTurno; }
+  if (!opts.dry && !pasoAhora) marcarLeido(String(lote[lote.length - 1].id));
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
   await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true, ...(error ? { media: { error: error.slice(0, 500) } } : {}) });
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
-  return { respuesta, error, ...(opts.dry ? { prueba: true } : {}) };
+  return { respuesta, error, ...(pasoAhora ? { sin_leer: true } : {}), ...(opts.dry ? { prueba: true } : {}) };
 }
 
 const EMOJIS_VAR = ['🫶', '❤️', '💗', '🩷', '🥰'];

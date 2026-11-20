@@ -98,7 +98,7 @@ def main():
     sello = dt.datetime.now().strftime('%Y%m%d-%H%M')
     os.makedirs(os.path.join(AQUI, 'resultados'), exist_ok=True)
     json.dump(res, open(os.path.join(AQUI, 'resultados', sello + '.json'), 'w'), ensure_ascii=False, indent=1)
-    sys.exit(0 if all(x['ok'] for x in res if x['tanda'] == 'ya' or a.tanda == 'D') else 1)
+    sys.exit(0 if all(x['ok'] for x in res if x['tanda'] == 'ya' or a.tanda != 'ya') else 1)
 
 
 if __name__ == '__main__':

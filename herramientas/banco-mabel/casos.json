@@ -1,5 +1,5 @@
 {
- "nota": "Banco de casos de Mabel. Cada caso usa su propio número de prueba 099000NNN (se limpia antes y después). 'tanda' = desde cuándo tiene que pasar: 'ya' (v110 lo tiene que pasar), 'D' (recién después de la Tanda D). 'cfg' por defecto: sin modo ausente y sin días sin salida.",
+ "nota": "Banco de casos de Mabel. Cada caso usa su propio número de prueba 099000NNN (se limpia antes y después). 'tanda' = desde cuándo tiene que pasar: 'ya' (v110 lo tiene que pasar), 'D' (recién después de la Tanda D). 'cfg' por defecto: sin modo ausente y sin días sin salida. 20/11: 'E' = tanda E (pagos).",
  "ausente": {
   "activo": true,
   "atiende": true,
@@ -1216,6 +1216,261 @@
     "envia": true,
     "contiene": [
      "550"
+    ]
+   }
+  },
+  {
+   "id": "D01",
+   "nombre": "De cadetería con envío transferido a retiro: el envío queda a favor",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria",
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 750
+      },
+      "estado": "listo",
+      "datos": {
+       "cobroEnvio": "pago",
+       "cobroMonto": 0
+      }
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "al final lo paso a retirar yo, no lo mandes por cadete"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "guardar_entrega"
+    ],
+    "contiene": [
+     "(favor|saldo)"
+    ]
+   }
+  },
+  {
+   "id": "D02",
+   "nombre": "Cambio de entrega con la etiqueta impresa: pasa (entrega)",
+   "tanda": "D",
+   "fixture": {
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "estado": "enviado",
+      "entrega": "cadeteria",
+      "enviado_hace_dias": 1,
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "cambié de idea, mejor lo paso a retirar al local"
+    }
+   ],
+   "espera": {
+    "derivado": true
+   }
+  },
+  {
+   "id": "D03",
+   "nombre": "Retiro sin pagar dentro del plazo: lo acepta (control de F23)",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "lo paso a retirar el sábado 21 y pago ahí"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "guardar_entrega"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "D04",
+   "nombre": "Pregunta por una prenda de su propio pedido: pasa (pedido)",
+   "tanda": "D",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "JEAN",
+        700,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "¿el jean de mi pedido me quedó en talle M?"
+    }
+   ],
+   "espera": {
+    "derivado": true,
+    "no_contiene": [
+     "(s[ií] hay|no hay)"
+    ]
+   }
+  },
+  {
+   "id": "D05",
+   "nombre": "Cambio en plazo con datos completos: pasa en silencio, sin frase",
+   "tanda": "D",
+   "fixture": {
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "JEAN",
+        900,
+        1
+       ]
+      ],
+      "estado": "enviado",
+      "entrega": "cadeteria",
+      "enviado_hace_dias": 4,
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 900
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "hola, el jean del pedido 900 me quedó chico, necesito un 40. Lo llevo yo al local"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "derivado": true,
+    "no_contiene": [
+     "Contame en un mensaje qué necesitás"
+    ]
+   }
+  },
+  {
+   "id": "PG1",
+   "nombre": "Dice que pagó sin mandar comprobante: no marca y pide la captura",
+   "tanda": "E",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "ya te transferí los 500 bella"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(comprobante|captura)"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "PG2",
+   "nombre": "Pago de más con saldo a favor: marca y lo ve Yanaina en silencio",
+   "tanda": "E",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ],
+    "clienta": {
+     "saldoFavor": 200
+    }
+   },
+   "pasos": [
+    {
+     "imagen": "k750.jpg",
+     "texto": "ahí va"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": true,
+    "no_contiene": [
+     "Contame en un mensaje qué necesitás",
+     "de más"
     ]
    }
   }
