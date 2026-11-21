@@ -619,7 +619,7 @@ function etqAgenciaHTML(d) {
 // En hoja A4, cada etiqueta de agencia sale sola en su hoja, con el mismo tamaño y diseño que la térmica 10×15
 const _hojasHTMLbase = hojasHTML;
 hojasHTML = function (etiquetas) {
-  if (cfg('formatoImpresion') === 'termica') return _hojasHTMLbase(etiquetas);
+  if (impEnviosTermica()) return _hojasHTMLbase(etiquetas);
   const sola = e => e.includes('lbl ag2') || e.includes('lbl grs'), ag = etiquetas.filter(sola), resto = etiquetas.filter(e => !sola(e));
   return (resto.length ? _hojasHTMLbase(resto) : '') + ag.map(e => `<div class="sheet-t a4ag">${e}</div>`).join('');
 };

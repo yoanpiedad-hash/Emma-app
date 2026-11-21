@@ -485,8 +485,7 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
     <div class="card-t">🚴 Cadetería e impresión</div>
     <div class="grid2">
       <div><label class="lb">Tarifa de envío ($)</label><input id="cf-tarifa" type="number" inputmode="numeric"></div>
-      <div><label class="lb">Formato de impresión</label>
-        <select id="cf-formato"><option value="a4">Hoja A4 (10 por hoja)</option><option value="termica">Térmica 10×15</option></select></div>
+      <div><label class="lb">Impresión</label><div class="small muted" style="padding:8px 2px">En la tarjeta 🖨️ Impresora de este equipo</div></div>
     </div>
     <button class="b pri blk mt" data-act="guardarConfig">Guardar configuración</button>
     <div id="cf-ok" class="small mt" style="color:var(--ok)"></div>
@@ -520,6 +519,7 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 <script src="vendor/supabase-2.45.4.js"></script>
 <script src="version.js"></script>
 <script src="negocio.js"></script>
+<script src="impresora.js"></script>
 <script src="nube.js"></script>
 <script>
 'use strict';
@@ -709,7 +709,9 @@ function moverStock(stockId, cantidad, motivo, ref) {
   if (!stockId || !cantidad) return;
   const a = stockById(stockId);
   if (!a) return;
-  a.stock = (+a.stock || 0) + cantidad;
+  if (cantidad > 0 && a.activo === false) return;   // no devuelve stock a una prenda archivada (USO-11)
+  // La base suma o resta (COD-01); acá se muestra igual que la base: nunca menos de 0
+  a.stock = Math.max(0, (+a.stock || 0) + cantidad);
   DB.movimientos.push({ id: uid('m'), fecha: ahoraISO(), stockId, cantidad, motivo, ref: ref || null });
   put('emma_stock', DB.stock);
   put('emma_movimientos', DB.movimientos);
@@ -1775,7 +1777,7 @@ function etqCadeteHTML(p) {
 }
 /** Hojas listas para imprimir según el formato de Config. A4: 2×5, orden por columna. Térmica: una por hoja. */
 function hojasHTML(etiquetas) {
-  if (cfg('formatoImpresion') === 'termica') return etiquetas.map(e => `<div class="sheet-t">${e}</div>`).join('');
+  if (impEnviosTermica()) return etiquetas.map(e => `<div class="sheet-t">${e}</div>`).join('');
   let out = '';
   for (let h = 0; h < etiquetas.length; h += 10) {
     const hoja = etiquetas.slice(h, h + 10), filas = Math.ceil(hoja.length / 2), celdas = [];
@@ -1785,7 +1787,7 @@ function hojasHTML(etiquetas) {
   return out;
 }
 function imprimir(html, modo) {
-  const term = cfg('formatoImpresion') === 'termica';
+  const term = impEnviosTermica();
   let page = 'size:A4;margin:0';
   if (modo === 'etiquetas' && term) page = 'size:100mm 150mm;margin:0';
   if (modo === 'boleta') page = term ? 'size:100mm 150mm;margin:0' : 'size:A4;margin:10mm';
@@ -1806,7 +1808,7 @@ function renderConfig() {
   if (!$('#cf-av1').matches(':focus')) $('#cf-av1').value = cfg('msgAviso1');
   if (!$('#cf-av2').matches(':focus')) $('#cf-av2').value = cfg('msgAviso2');
   $('#cf-tarifa').value = cfg('tarifaEnvio');
-  $('#cf-formato').value = cfg('formatoImpresion');
+  pintarCfgImpresora();
   renderRespaldos();
   const ng = Object.assign({}, NEGOCIO_DEF, cfg('negocio') || {});
   for (const k of ['nombre', 'marca', 'tel', 'rut', 'ciudad']) { const el = $('#cf-ng-' + k); if (el && !el.matches(':focus')) el.value = ng[k] || ''; }
@@ -1814,7 +1816,7 @@ function renderConfig() {
   if (!$('#cf-cuentas').matches(':focus')) $('#cf-cuentas').value = cuentasPago().join('\n');
 }
 function guardarConfigUI() {
-  const patch = { msgPago: $('#cf-pago').value, msgAviso1: $('#cf-av1').value, msgAviso2: $('#cf-av2').value, tarifaEnvio: num($('#cf-tarifa').value) || NEGOCIO_DEF.tarifaEnvio, formatoImpresion: $('#cf-formato').value };
+  const patch = { msgPago: $('#cf-pago').value, msgAviso1: $('#cf-av1').value, msgAviso2: $('#cf-av2').value, tarifaEnvio: num($('#cf-tarifa').value) || NEGOCIO_DEF.tarifaEnvio };
   // Datos del negocio: solo se escribe lo que cambió (así no se copian a la base valores que no se tocaron)
   const ng = Object.assign({}, cfg('negocio') || {}); let cambioNg = false;
   for (const k of ['nombre', 'marca', 'tel', 'rut', 'ciudad']) { const v = $('#cf-ng-' + k).value.trim(); if (v !== String(negocio(k) || '')) { ng[k] = v; cambioNg = true; } }
@@ -2141,7 +2143,7 @@ function montarComponentes() {
   });
   qlMontar('qll', '#qll-slot', pr => {
     const p = pedById(UI.cargaId); if (!p || !puedoAgregar()) return;
-    agregarPrenda(p, pr);
+    if (agregarPrenda(p, pr) === false) { render(); return; }
     render();
     const fb = $('#cr-fb'); if (fb) fb.textContent = '✓ ' + pr.nombre + (pr.qty > 1 ? ' x' + pr.qty : '') + ' · ' + fmt(pr.precio * pr.qty);
   }, () => cerrarCarga());
@@ -2189,5 +2191,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 <script src="pedidos4.js"></script>
 <script src="mabel.js"></script>
 <script src="mabeltab.js"></script>
+<script src="stock.js"></script>
 </body>
 </html>

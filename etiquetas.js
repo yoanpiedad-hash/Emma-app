@@ -28,14 +28,18 @@
 
 // Ajustes de este equipo (no van a la nube: cada equipo tiene su impresora)
 const ETQ_KEY = 'emma_etq_live';
-function etqLiveCfg() { try { return Object.assign({ on: false, medida: '40x30' }, JSON.parse(localStorage.getItem(ETQ_KEY) || '{}')); } catch (e) { return { on: false, medida: '40x30' }; } }
+// La medida sale de la impresora de este equipo (impresora.js, una sola configuración)
+function etqLiveCfg() {
+  let c; try { c = Object.assign({ on: false }, JSON.parse(localStorage.getItem(ETQ_KEY) || '{}')); } catch (e) { c = { on: false }; }
+  const i = impresora(); c.medida = i.chicoA4 ? '50x30' : i.chicoW + 'x' + i.chicoH; return c;
+}
 function etqLiveGuardar(c) { try { localStorage.setItem(ETQ_KEY, JSON.stringify(c)); } catch (e) {} }
 
 function etqLiveHTML(p, pr, medida) {
   const c = cliById(p.clienteId) || { nombre: '?' }, l = liveById(p.liveId) || {};
-  const qr = medida === '50x30' ? '20mm' : '17mm';
+  const [w, h] = String(medida || '50x30').split('x').map(Number), qr = Math.max(10, Math.min(h - 6, w * 0.4)).toFixed(1) + 'mm';
   const svg = barcodeSVG(p.codigo).replace('<svg ', `<svg style="width:${qr};height:${qr}" `);
-  return `<div class="lv${medida === '50x30' ? ' m50' : ''}"><div class="qr">${svg}</div><div class="tx">
+  return `<div class="lv${w >= 50 ? ' m50' : ''}" style="width:${w}mm;height:${h}mm"><div class="qr">${svg}</div><div class="tx">
     <div class="em"><span>EMMA</span><span>${fechaUY(l.fecha || hoyISO(), 1)}</span></div>
     <div class="nu">#${p.num}</div><div class="no">${esc(c.nombre)}</div>
     ${pr ? `<div class="pr">${esc(pr.nombre)}</div>` : ''}</div></div>`;
@@ -51,13 +55,11 @@ function encolarEtqLive(p, pr) {
 }
 function imprimirColaLive() {
   if (!ETQ_COLA.length) return;
-  const cfgE = etqLiveCfg(), [w, h] = cfgE.medida.split('x');
+  const cfgE = etqLiveCfg();
   const items = ETQ_COLA.splice(0);
   const html = items.map(x => { const p = pedById(x.id); return p ? etqLiveHTML(p, x.pr, cfgE.medida) : ''; }).join('');
   if (!html) return;
-  $('#print-page').textContent = `@page{size:${w}mm ${h}mm;margin:0} #print-area .lv{width:${w}mm;height:${h}mm}`;
-  $('#print-area').innerHTML = html;
-  setTimeout(() => window.print(), 40);
+  imprimirChicas(html, 'lv');
   toast(`🏷️ ${items.length > 1 ? items.length + ' etiquetas' : 'Etiqueta'} a la impresora`, 1500);
 }
 
@@ -81,17 +83,16 @@ function pintarCfgEtq() {
   el.innerHTML = `<div class="card-t">🏷️ Etiqueta al cargar prenda (este equipo)</div>
     <p class="small muted mb">En Live, cada prenda que le agregás a una clienta imprime una etiqueta chica con el número de pedido y el nombre, para pegarla en la prenda. Se guarda solo en este equipo: activalo en la compu del live, no en el celular.</p>
     <div class="row"><button class="b seg${c.on ? ' on' : ''}" data-act="etqLiveOn" data-v="1">✓ Activada</button><button class="b seg${c.on ? '' : ' on'}" data-act="etqLiveOn" data-v="0">Apagada</button>
-      <span class="small muted" style="margin-left:8px">Medida</span>${['40x30', '50x30'].map(m => `<button class="b sm seg${c.medida === m ? ' on' : ''}" data-act="etqLiveMedida" data-v="${m}">${m.replace('x', '×')} mm</button>`).join('')}</div>
+      <span class="small muted" style="margin-left:8px">Medida: ${esc(impChicoTxt())} (se cambia en 🖨️ Impresora de este equipo)</span></div>
     <div class="row mt"><button class="b" data-act="etqLiveProbar">🖨️ Imprimir una de prueba</button></div>
-    <p class="small muted mt">Para que salga sola, sin la ventana de imprimir: abrí Chrome con un acceso directo que tenga <span class="mono">--kiosk-printing</span> al final y dejá la térmica como impresora predeterminada, con la etiqueta chica. Si no, cada etiqueta te pide confirmar.</p>`;
+`;
 }
 Object.assign(ACT, {
   etqLiveOn: d => { const c = etqLiveCfg(); c.on = d.v === '1'; etqLiveGuardar(c); pintarCfgEtq(); toast(c.on ? '🏷️ Etiqueta al cargar: activada en este equipo' : 'Etiqueta al cargar: apagada'); },
-  etqLiveMedida: d => { const c = etqLiveCfg(); c.medida = d.v; etqLiveGuardar(c); pintarCfgEtq(); },
   etqLiveProbar: () => {
     const p = todosPedidos().filter(x => esActivo(x.estado)).slice(-1)[0] || { id: '_', num: 14, codigo: '04225', clienteId: null, liveId: null };
     const pr = { nombre: 'Buzo oversize negro', qty: 1 };
-    if (p.id === '_') { const cfgE = etqLiveCfg(), [w, h] = cfgE.medida.split('x'); $('#print-page').textContent = `@page{size:${w}mm ${h}mm;margin:0} #print-area .lv{width:${w}mm;height:${h}mm}`; $('#print-area').innerHTML = etqLiveHTML(p, pr, cfgE.medida).replace('>?<', '>María Fernández<'); setTimeout(() => window.print(), 40); return; }
+    if (p.id === '_') { const cfgE = etqLiveCfg(); imprimirChicas(etqLiveHTML(p, pr, cfgE.medida).replace('>?<', '>María Fernández<'), 'lv'); return; }
     ETQ_COLA.push({ id: p.id, pr }); imprimirColaLive();
   }
 });

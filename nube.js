@@ -17,6 +17,7 @@ const NUBE = {
   out: {},     // col → Map(id → fila pendiente de subir)
   marca: {},   // col → último "actualizado" visto (para pedir solo lo nuevo)
   estado: 'ok', error: '', subiendo: false, timer: null, canal: null,
+  apartadas: [],   // filas que la base rechazó: se apartan para que no frenen el resto (COD-03)
   compras: []
 };
 // compras: la escribe solo Gestión (parte privada encriptada en el navegador); Pedidos solo la lee
@@ -175,6 +176,22 @@ function nubeCambioTodo() { for (const c of ORDEN) nubeDiff(c); guardarCola(); g
 /* ── Subir la cola ── */
 function programarSubida(ms) { clearTimeout(NUBE.timer); NUBE.timer = setTimeout(subir, ms); }
 let _reintento = 2000;
+/** ¿Es un problema de conexión (se reintenta) o la base rechazó el dato? */
+const esRed = e => !navigator.onLine || (!e.code && (/fetch|network|Failed|timeout/i.test(e.message || '') || !e.status || e.status >= 500));
+const errFila = (col, e) => Object.assign(new Error(e.message), { col, code: e.code, status: e.status });
+function guardarApartadas() { kvSet('apartadas', NUBE.apartadas).catch(() => {}); }
+/** Una fila rechazada se aparta (queda a la vista, con su error) y el resto sigue subiendo. */
+function apartar(col, id, f, e) {
+  NUBE.apartadas = NUBE.apartadas.filter(x => !(x.col === col && x.id === id));
+  NUBE.apartadas.push({ col, id, fila: f, error: e.message || String(e), code: e.code || '', fecha: new Date().toISOString() });
+  guardarApartadas();
+  console.error('Nube: fila apartada', col, id, e);
+}
+async function subirFila(col, f) {
+  const fila = SIN_BORRADO.has(col) || f.borrado !== undefined ? f : Object.assign({}, f, { borrado: false });
+  const { error } = await NUBE.sb.from(col).upsert([fila], { onConflict: pk(col) });
+  return error;
+}
 async function subir() {
   if (NUBE.subiendo || !NUBE.user) return;
   if (!pendientes()) { NUBE.estado = 'ok'; pintarNube(); return; }
@@ -188,8 +205,16 @@ async function subir() {
         // Todas las filas del lote con las mismas columnas: si una lleva "borrado" y otra no, la base rechaza el lote entero
         const filas = lote.map(([, f]) => SIN_BORRADO.has(col) || f.borrado !== undefined ? f : Object.assign({}, f, { borrado: false }));
         const { error } = await NUBE.sb.from(col === 'config' ? 'config' : col).upsert(filas, { onConflict: pk(col) });
-        if (error) throw Object.assign(new Error(error.message), { col, code: error.code, status: error.status });
-        for (const [id, f] of lote) if (out.get(id) === f) out.delete(id);
+        if (error && esRed(error)) throw errFila(col, error);
+        if (!error) { for (const [id, f] of lote) if (out.get(id) === f) out.delete(id); guardarCola(); continue; }
+        // La base rechazó el lote: se prueba fila por fila y solo se aparta la que falla (COD-03)
+        for (const [id, f] of lote) {
+          const e1 = await subirFila(col, f);
+          if (e1 && esRed(e1)) throw errFila(col, e1);
+          if (e1 && e1.code === '23505' && col === 'pedidos') throw errFila(col, e1);   // código de pedido repetido: se arregla solo
+          if (e1) apartar(col, id, f, e1);
+          if (out.get(id) === f) out.delete(id);
+        }
         guardarCola();
       }
     }
@@ -197,7 +222,7 @@ async function subir() {
   } catch (e) {
     console.error('Nube:', e);
     // Error de la base (trae código): se muestra como error, no como "sin conexión"
-    const red = !navigator.onLine || (!e.code && (/fetch|network|Failed|timeout/i.test(e.message) || !e.status || e.status >= 500));
+    const red = esRed(e);
     NUBE.estado = red ? 'offline' : 'error';
     NUBE.error = red ? '' : `${e.col}: ${e.message}`;
     if (!red && e.code === '23505' && e.col === 'pedidos') arreglarCodigoRepetido();
@@ -354,9 +379,37 @@ function pintarNube() {
   const t = NUBE.estado === 'error' ? `⚠️ No se pudo guardar${n ? ' (' + n + ')' : ''}`
     : NUBE.estado === 'offline' ? `📴 Sin conexión${n ? ' · ' + n + ' cambio' + (n > 1 ? 's' : '') + ' esperando' : ''}`
     : n || NUBE.estado === 'subiendo' ? `⏳ Guardando${n ? ' ' + n : ''}…` : '☁️ Guardado';
-  el.textContent = t;
-  el.className = 'nube ' + (NUBE.estado === 'error' ? 'err' : NUBE.estado === 'offline' ? 'off' : n ? 'sub' : 'ok');
+  const ap = NUBE.apartadas.length;
+  el.textContent = ap ? `⚠️ ${ap} cambio${ap > 1 ? 's' : ''} sin guardar · tocá` : t;
+  el.className = 'nube ' + (ap || NUBE.estado === 'error' ? 'err' : NUBE.estado === 'offline' ? 'off' : n ? 'sub' : 'ok');
   el.title = NUBE.error || '';
+  el.style.cursor = ap ? 'pointer' : '';
+  el.onclick = ap ? verApartadas : null;
+}
+const NOMBRE_COL = { clientas: 'Clienta', lives: 'Live', pedidos: 'Pedido', stock: 'Prenda (stock)', movimientos: 'Movimiento de stock', pagos: 'Pago', paquetes: 'Paquete', config: 'Configuración', modelos: 'Modelo', promos: 'Promo', compras: 'Compra', mostrador: 'Mostrador', cobros: 'Cobro', conversaciones: 'Conversación', derivados: 'Pendiente de Mabel' };
+function descApartada(x) {
+  const d = (x.fila && x.fila.datos) || x.fila || {};
+  const que = d.codigo ? ' ' + d.codigo : d.num ? ' #' + d.num : d.nombre ? ' ' + d.nombre : x.fila && x.fila.motivo ? ' (' + x.fila.motivo + ' ' + x.fila.cantidad + ')' : '';
+  return (NOMBRE_COL[x.col] || x.col) + que;
+}
+function verApartadas() {
+  const L = NUBE.apartadas;
+  if (!L.length) return;
+  const e = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  showModal(`<h3>⚠️ Cambios que la base no aceptó</h3>
+    <p class="small mb">Estos cambios quedaron apartados para que el resto se siga guardando. <b>Mandale una captura de esta pantalla a Yoan.</b> "Reintentar" los vuelve a mandar.</p>
+    <div style="max-height:50vh;overflow-y:auto">${L.map((x, i) => `<div style="padding:8px 0;border-bottom:1px solid var(--bd)"><b>${e(descApartada(x))}</b> <span class="small muted">${new Date(x.fecha).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}</span><br><span class="small mono">${e(x.error)}${x.code ? ' [' + e(x.code) + ']' : ''}</span><br><button class="b sm dan" style="margin-top:6px" onclick="nubeDescartar(${i})">Descartar este</button></div>`).join('')}</div>
+    <div class="row mt"><button class="b pri" onclick="nubeReintentar()">↻ Reintentar todos</button><button class="b gh" onclick="closeModal()">Cerrar</button></div>`);
+}
+function nubeReintentar() {
+  for (const x of NUBE.apartadas.splice(0)) { if (NUBE.out[x.col]) NUBE.out[x.col].set(x.id, x.fila); }
+  guardarApartadas(); guardarCola(); closeModal(); pintarNube(); programarSubida(100);
+}
+function nubeDescartar(i) {
+  const x = NUBE.apartadas[i]; if (!x) return;
+  if (!confirm(`¿Descartar "${descApartada(x)}"? Ese cambio no se va a guardar nunca.`)) return;
+  NUBE.apartadas.splice(i, 1); guardarApartadas(); pintarNube();
+  if (NUBE.apartadas.length) verApartadas(); else closeModal();
 }
 
 /* ── Sesión ── */
@@ -402,6 +455,7 @@ async function arrancarConSesion() {
     if (!(await cargarCache())) { document.getElementById('carga').hidden = true; _arranco = false; return pantallaLogin('No hay conexión y este equipo todavía no tiene datos guardados. Conectate a internet y probá de nuevo.'); }
     NUBE.estado = 'offline'; toast('📴 Sin conexión: trabajás con lo guardado en este equipo y se sube al volver internet', 5000);
   }
+  NUBE.apartadas = (await kvGet('apartadas').catch(() => null)) || [];
   NUBE.listo = true;
   document.getElementById('carga').hidden = true;
   guardarCache(); pintarNube();
