@@ -398,33 +398,6 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 <section class="panel" id="p-despacho"></section>
 <section class="panel" id="p-pagos"></section>
 
-<!-- ═════════ SALIDAS ═════════ -->
-<section class="panel" id="p-salidas">
-  <div class="card">
-    <div class="row">
-      <button class="b seg" data-act="salTipo" data-t="cadeteria">🚴 Cadetería</button>
-      <button class="b seg" data-act="salTipo" data-t="agencia">📦 Agencia</button>
-      <button class="b seg" data-act="salTipo" data-t="retiro">🏠 Retiro</button>
-    </div>
-    <div id="sal-scan" class="mt" hidden>
-      <input id="scan-in" class="scan" inputmode="numeric" placeholder="Código + Enter" autocomplete="off">
-      <div class="small muted mt">Escaneá, escribí el código de la etiqueta (ej. 412) y Enter, o tocá <b>✓ Sale</b> en la lista.</div>
-      <div class="row mt" style="justify-content:space-between">
-        <span class="contador" id="sal-cont"></span>
-        <button class="b sm" data-act="cerrarSalida">Cerrar salida</button>
-      </div>
-      <div id="scan-res"></div>
-    </div>
-  </div>
-  <div id="sal-cierre"></div>
-  <div id="sal-lista"></div>
-  <div class="card">
-    <div class="card-t">🔎 Buscar pedido por código</div>
-    <input id="bus-cod" data-inp="buscarCodigo" inputmode="numeric" placeholder="Código de 5 dígitos" autocomplete="off">
-    <div id="bus-cod-res" class="mt"></div>
-  </div>
-</section>
-
 <!-- ═════════ MOSTRADOR ═════════ -->
 <section class="panel" id="p-mostrador">
   <div class="row mb">
@@ -494,6 +467,21 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
     <textarea id="cf-av2" rows="4"></textarea>
   </div>
   <div class="card">
+    <div class="card-t">🏪 Datos del negocio</div>
+    <p class="small muted mb">Salen en las etiquetas, los mensajes y los comprobantes. Lo que no cambies queda como está.</p>
+    <div class="grid2">
+      <div><label class="lb">Nombre</label><input id="cf-ng-nombre"></div>
+      <div><label class="lb">Nombre en las etiquetas</label><input id="cf-ng-marca"></div>
+      <div><label class="lb">Teléfono</label><input id="cf-ng-tel" inputmode="tel"></div>
+      <div><label class="lb">RUT</label><input id="cf-ng-rut" inputmode="numeric"></div>
+      <div><label class="lb">Ciudad</label><input id="cf-ng-ciudad"></div>
+      <div><label class="lb">Extra que cobra el cadete ($)</label><input id="cf-extra" type="number" inputmode="numeric"></div>
+    </div>
+    <label class="lb mt">Cuentas de cobro (una por renglón · Mabel usa la misma lista)</label>
+    <textarea id="cf-cuentas" rows="6"></textarea>
+    <button class="b pri blk mt" data-act="guardarConfig">Guardar configuración</button>
+  </div>
+  <div class="card">
     <div class="card-t">🚴 Cadetería e impresión</div>
     <div class="grid2">
       <div><label class="lb">Tarifa de envío ($)</label><input id="cf-tarifa" type="number" inputmode="numeric"></div>
@@ -506,27 +494,17 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
   <div class="card">
     <div class="card-t">💾 Backup completo</div>
     <button class="b ok blk" data-act="exportarBackup">⬇️ Exportar todos los datos</button>
-    <p class="small muted mt mb">Importar un backup <b style="color:var(--li)">reemplaza todos los datos actuales</b>.</p>
-    <input type="file" id="cf-imp" accept=".json,application/json" data-chg="importarBackup">
+    <p class="small muted mt">Descarga a un archivo lo que se ve en pantalla. Desde la app no se vuelve atrás: si hace falta recuperar datos, se hace desde la copia de la base.</p>
   </div>
   <div class="card">
-    <div class="card-t">↩️ Recuperar respaldo</div>
-    <p class="small muted mb">Se guarda una foto de todo <b>cada 10 minutos mientras trabajás</b>, al abrir la app y antes de crear un live, importar o recuperar. Se guardan aparte: <b>no ocupan los 5 MB</b>. Quedan las últimas 12 automáticas y las últimas 8 del resto.</p>
+    <div class="card-t">📸 Fotos de este equipo</div>
+    <p class="small muted mb">Se guarda una foto de todo <b>cada 10 minutos mientras trabajás</b>, al abrir la app y antes de crear un live. Quedan solo en este equipo (las últimas 12 automáticas y 8 del resto) y se pueden <b>descargar</b>; no se recuperan desde acá.</p>
     <div id="cf-resp"></div>
   </div>
   <div class="card">
     <div class="card-t">☁️ Cuenta y nube</div>
     <p class="small muted mb">Los datos se guardan en la nube y se ven igual desde la compu y el celular. Si se corta internet, se sigue cargando y se sube al volver.</p>
     <div class="row"><button class="b" onclick="cambiarPass()">🔑 Cambiar contraseña</button><button class="b dan" onclick="salir()">Cerrar sesión</button></div>
-    <div id="cf-espacio" hidden></div>
-  </div>
-  <div class="card">
-    <div class="card-t">🧹 Empezar de cero</div>
-    <div id="cf-cero"></div>
-  </div>
-  <div class="card" id="cf-viejo-card" hidden>
-    <div class="card-t">🧓 Datos de la versión anterior (v71)</div>
-    <div id="cf-viejo"></div>
   </div>
 </section>
 
@@ -541,13 +519,13 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
 
 <script src="vendor/supabase-2.45.4.js"></script>
 <script src="version.js"></script>
+<script src="negocio.js"></script>
 <script src="nube.js"></script>
 <script>
 'use strict';
-const MODO_NUBE = true;
 /* ══════════════════════════════════════════════════════════════
-   EMMA PEDIDOS — v1 (reemplaza a pedidos-live.html v71)
-   Datos en localStorage, compartidos con Emma Gestión.
+   EMMA PEDIDOS — los datos viven en Supabase (nube.js los trae y los sube).
+   Los datos del negocio (nombre, teléfono, RUT, cuentas, tarifas) están en negocio.js y en ⚙️ Config.
    ══════════════════════════════════════════════════════════════ */
 
 // ─── 1. UTILIDADES ────────────────────────────────────────────
@@ -592,105 +570,31 @@ function descargar(contenido, nombre, tipo) {
 const DB = { clientes: [], lives: [], stock: [], movimientos: [], mostrador: [], config: {}, paquetes: [], pagos: [], respaldos: [] };
 const CFG_DEF = {
   msgPago: '',
-  msgAviso1: 'Hola {nombre}! 💛 Te escribimos de Emma Indumentaria. Tu pedido guardado ya lleva {dias} días con nosotras. Te lo podemos guardar hasta el {fecha_limite}. ¿Coordinamos el pago o el envío? 🙌',
+  msgAviso1: 'Hola {nombre}! 💛 Te escribimos de ' + NEGOCIO_DEF.nombre + '. Tu pedido guardado ya lleva {dias} días con nosotras. Te lo podemos guardar hasta el {fecha_limite}. ¿Coordinamos el pago o el envío? 🙌',
   msgAviso2: 'Hola {nombre}! 🙏 Último aviso: tu pedido guardado vence el {fecha_limite}. Si no tenemos noticias para esa fecha, la ropa vuelve a la venta. ¡Escribinos y lo coordinamos!',
-  tarifaEnvio: 250,
+  tarifaEnvio: NEGOCIO_DEF.tarifaEnvio,
   formatoImpresion: 'a4',
   codigoCounter: 0,
   liveActualId: null
 };
 const cfg = k => (DB.config[k] ?? CFG_DEF[k]);
 const CLAVES_NUBE = { emma_clientes: () => DB.clientes, emma_lives: () => DB.lives, emma_stock: () => DB.stock, emma_movimientos: () => DB.movimientos, emma_mostrador: () => DB.mostrador, emma_config: () => DB.config, emma_compras: () => NUBE.compras, emma_paquetes: () => DB.paquetes, emma_pagos: () => DB.pagos };
-function leer(k, def) {
-  if (MODO_NUBE && CLAVES_NUBE[k]) { const v = CLAVES_NUBE[k](); return v == null ? def : v; } try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } }
-function cargarDB() {
-  if (MODO_NUBE) return; // la carga la hace la nube
-  DB.clientes = leer('emma_clientes', []);
-  DB.lives = leer('emma_lives', []);
-  DB.stock = leer('emma_stock', []);
-  DB.movimientos = leer('emma_movimientos', []);
-  DB.mostrador = leer('emma_mostrador', []);
-  DB.config = leer('emma_config', {});
-}
-// ── Protección de datos: espacio, guardado y una sola pestaña ──
-const LIM_AVISO = 4.0e6, LIM_BLOQ = 4.5e6;
-const ESP = { tam: {}, total: 0 };
-function medirEspacio() {
-  ESP.tam = {};
-  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ESP.tam[k] = k.length + (localStorage.getItem(k) || '').length; }
-  ESP.total = Object.values(ESP.tam).reduce((a, n) => a + n, 0);
-}
-function anotarEspacio(k, v) { if (v == null) delete ESP.tam[k]; else ESP.tam[k] = k.length + v.length; ESP.total = Object.values(ESP.tam).reduce((a, n) => a + n, 0); }
-const mbUso = () => (ESP.total / 1e6).toLocaleString('es-UY', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-const FALLIDOS = new Set();
-function put(k, v) {
+/** Lo que hay en memoria para una clave (los datos viven en la base; nube.js los trae). */
+function leer(k, def) { const v = CLAVES_NUBE[k] ? CLAVES_NUBE[k]() : undefined; return v == null ? def : v; }
+/** "Guardar": avisa a la nube qué colección cambió; nube.js detecta las filas y las sube. */
+function put(k) {
   if (TAB.bloqueada) return false;
-  if (MODO_NUBE && CLAVES_NUBE[k]) { nubeCambio(k); return true; }
-  const str = JSON.stringify(v);
-  try {
-    localStorage.setItem(k, str); anotarEspacio(k, str);
-    if (FALLIDOS.delete(k) && !FALLIDOS.size) toast('✓ Se volvió a guardar todo');
-    actualizarAvisos();
-    return true;
-  } catch (e) {
-    // Sin espacio: se sacrifican las copias descartables, nunca datos de trabajo.
-    for (const x of ['emma_respaldos', 'emma_deshacer']) {
-      const old = x !== k && localStorage.getItem(x);
-      if (old) { if (x === 'emma_respaldos') migrarRespaldosViejos(old); localStorage.removeItem(x); anotarEspacio(x, null); return put(k, v); }
-    }
-    FALLIDOS.add(k);
-    avisarNoGuardado();
-    actualizarAvisos();
-    return false;
-  }
+  nubeCambio(k);
+  return true;
 }
-/** Todo lo que está en pantalla (memoria), aunque no se haya podido guardar. */
+/** Todo lo que está en pantalla (memoria). */
 function datosMemoria() {
   const d = { emma_clientes: DB.clientes, emma_lives: DB.lives, emma_stock: DB.stock, emma_movimientos: DB.movimientos, emma_mostrador: DB.mostrador, emma_config: DB.config, emma_paquetes: DB.paquetes, emma_pagos: DB.pagos };
   const comp = leer('emma_compras', null); if (comp && comp.length !== undefined) d.emma_compras = comp;
   return d;
 }
-function descargarCopiaEmergencia() {
-  const h = new Date();
-  descargar(JSON.stringify({ app: 'emma', tipo: 'backup-completo', version: 1, fecha: ahoraISO(), datos: datosMemoria() }), 'Emma_EMERGENCIA_' + hoyISO() + '_' + pad2(h.getHours()) + pad2(h.getMinutes()) + '.json', 'application/json');
-  toast('⬇️ Copia de emergencia descargada');
-}
-/** Reintenta guardar todo lo de memoria (después de liberar espacio). */
-function guardarTodo() {
-  saveClientes(); saveLives(); saveMostrador();
-  // El stock solo si había quedado sin guardar: si no, se podría pisar un cambio más nuevo de Gestión.
-  if (FALLIDOS.has('emma_stock')) put('emma_stock', DB.stock);
-  if (FALLIDOS.has('emma_movimientos')) put('emma_movimientos', DB.movimientos);
-}
-function avisarNoGuardado() {
-  if ($('#modal').classList.contains('on') && $('#mbox').dataset.tipo === 'noguardado') return;
-  showModal(`<h3 style="color:var(--li)">🚨 NO SE ESTÁ GUARDANDO</h3>
-    <p class="mb">La memoria del navegador está llena. Lo que cargaste <b>se ve en pantalla pero no quedó guardado</b>: si cerrás o recargás esta pestaña, se pierde.</p>
-    <ol style="margin:0 0 12px 18px;line-height:1.6"><li><b>Bajá la copia de emergencia</b> (es lo que ves en pantalla).</li><li><b>Liberá espacio</b> y se vuelve a guardar todo solo.</li></ol>
-    <div class="row"><button class="b ok" data-act="copiaEmergencia">⬇️ Copia de emergencia</button><button class="b pri" data-act="irLiberar">🧹 Liberar espacio</button></div>`);
-  $('#mbox').dataset.tipo = 'noguardado';
-}
-/** Antes de cargar algo nuevo: ¿esta pestaña manda, se está guardando y hay lugar? */
-function puedoAgregar() {
-  if (TAB.bloqueada) return false;
-  if (FALLIDOS.size) { avisarNoGuardado(); return false; }
-  if (ESP.total >= LIM_BLOQ) {
-    showModal(`<h3 style="color:var(--li)">🚫 Memoria casi llena (${mbUso()} de 5 MB)</h3>
-      <p class="mb">Para no perder datos, <b>no se pueden cargar pedidos, prendas ni clientas nuevas</b> hasta liberar espacio. Lo que ya está cargado sigue guardado.</p>
-      <p class="small muted mb">Lo que más libera: <b>archivar lives viejos</b> y borrar los datos de la v71.</p>
-      <div class="row"><button class="b pri" data-act="irLiberar">🧹 Liberar espacio</button><button class="b gh" data-act="closeModal">Cerrar</button></div>`);
-    return false;
-  }
-  return true;
-}
-function actualizarAvisos() {
-  const el = document.getElementById('avisos'); if (!el) return;
-  let h = '';
-  if (FALLIDOS.size) h = `<div class="av ro"><span class="grow">🚨 NO SE ESTÁ GUARDANDO: memoria llena. No cierres esta pestaña.</span><button class="b sm ok" data-act="copiaEmergencia">⬇️ Copia</button><button class="b sm pri" data-act="irLiberar">🧹 Liberar</button></div>`;
-  else if (ESP.total >= LIM_BLOQ) h = `<div class="av ro"><span class="grow">🚫 Memoria ${mbUso()} de 5 MB: no se puede cargar nada nuevo hasta liberar espacio.</span><button class="b sm pri" data-act="irLiberar">🧹 Liberar espacio</button></div>`;
-  else if (ESP.total >= LIM_AVISO) h = `<div class="av am"><span class="grow">⚠️ Memoria ${mbUso()} de 5 MB. A los 4,5 se bloquea la carga: liberá espacio antes del próximo live.</span><button class="b sm" data-act="irLiberar">🧹 Liberar</button></div>`;
-  if (el.innerHTML !== h) el.innerHTML = h;
-}
+/** Antes de cargar algo nuevo: ¿esta pestaña es la que manda? */
+function puedoAgregar() { return !TAB.bloqueada; }
 
 // ── Una sola pestaña a la vez ──
 const TAB = { id: uid('t'), bloqueada: false };
@@ -726,13 +630,6 @@ function saveConfig(patch) {
   DB.config = cur;
   put('emma_config', cur);
 }
-/** Relee el stock guardado (Gestión puede haberlo cambiado). Si el último guardado del stock falló, se queda con lo de pantalla para no perderlo. */
-function reloadStock() {
-  if (MODO_NUBE) return; // el stock llega en tiempo real
-  if (FALLIDOS.has('emma_stock') || FALLIDOS.has('emma_movimientos')) return;
-  DB.stock = leer('emma_stock', []); DB.movimientos = leer('emma_movimientos', []);
-}
-
 // ─── 3. DOMINIO ───────────────────────────────────────────────
 const cliById = id => DB.clientes.find(c => c.id === id);
 const liveById = id => DB.lives.find(l => l.id === id);
@@ -810,7 +707,6 @@ function histHTML(h) {
 // ── Stock ──
 function moverStock(stockId, cantidad, motivo, ref) {
   if (!stockId || !cantidad) return;
-  reloadStock();
   const a = stockById(stockId);
   if (!a) return;
   a.stock = (+a.stock || 0) + cantidad;
@@ -971,39 +867,20 @@ function elegirConservar(grupo) {
     (enLive.has(b.id) - enLive.has(a.id)) ||
     (idx.get(b.id) - idx.get(a.id)))[0];
 }
-function snapshotDeshacer(desc) {
-  const snap = { fecha: ahoraISO(), desc, clientes: DB.clientes, lives: DB.lives, mostrador: DB.mostrador };
-  try { localStorage.setItem('emma_deshacer', JSON.stringify(snap)); } catch (e) { /* sin espacio: seguimos sin deshacer */ }
-}
-function deshacerFusion() {
-  const s = leer('emma_deshacer', null);
-  if (!s) return toast('No hay nada para deshacer');
-  if (!confirm('¿Deshacer "' + s.desc + '"?\n\nVuelven las fichas como estaban antes. Ojo: se pierde lo que hayas cargado después en clientas y pedidos.')) return;
-  DB.clientes = s.clientes; DB.lives = s.lives; DB.mostrador = s.mostrador;
-  guardar(); saveMostrador();
-  localStorage.removeItem('emma_deshacer');
-  closeModal();
-  toast('↩️ Fusión deshecha');
-  render();
+/** Fichas con el mismo teléfono: [{ keep, otras }] (no cambia nada). */
+function gruposDuplicadas() {
+  const grupos = {};
+  for (const c of DB.clientes) if (c.telKey) (grupos[c.telKey] = grupos[c.telKey] || []).push(c);
+  return Object.values(grupos).filter(g => g.length > 1).map(g => { const keep = elegirConservar(g); return { keep, otras: g.filter(c => c !== keep) }; });
 }
 /** Agrupa por teléfono normalizado y fusiona. Devuelve [{keep, nombres:[...] }]. */
 function fusionarDuplicadas() {
-  const grupos = {};
-  for (const c of DB.clientes) if (c.telKey) (grupos[c.telKey] = grupos[c.telKey] || []).push(c);
   const res = [];
-  for (const g of Object.values(grupos)) {
-    if (g.length < 2) continue;
-    const keep = elegirConservar(g);
-    const otras = g.filter(c => c !== keep);
-    res.push({ keep: keep.nombre, otros: otras.map(o => o.nombre), n: g.length });
+  for (const { keep, otras } of gruposDuplicadas()) {
+    res.push({ keep: keep.nombre, otros: otras.map(o => o.nombre), n: otras.length + 1 });
     fusionar(keep, otras);
   }
   return res;
-}
-function resumenFusionHTML(res) {
-  const fichas = res.reduce((s, r) => s + r.n, 0);
-  return `<div class="alert ok">Se fusionaron <b>${fichas}</b> fichas en <b>${res.length}</b> clientas.</div>
-    <div class="box mt" style="max-height:260px;overflow-y:auto">${res.map(r => `<div class="small" style="padding:3px 0"><b>${esc(r.keep)}</b> <span class="muted">← ${esc(r.otros.join(', '))}</span></div>`).join('')}</div>`;
 }
 /** Editar nombre/teléfono. Nombre viejo → alias. Si el teléfono coincide con otra ficha, se fusionan solas. */
 function editarClienta(c, cambios) {
@@ -1022,7 +899,6 @@ function editarClienta(c, cambios) {
     c.telKey = telKey(c.tel);
     const otras = c.telKey ? DB.clientes.filter(o => o.id !== c.id && o.telKey === c.telKey) : [];
     if (otras.length) {
-      snapshotDeshacer('fusión de ' + c.nombre + ' con ' + otras.map(o => o.nombre).join(', '));
       fusionar(c, otras);
       fusionada = otras.map(o => o.nombre);
     }
@@ -1033,188 +909,9 @@ function editarClienta(c, cambios) {
   return fusionada;
 }
 
-// ─── 4. MIGRACIÓN v71 / v5 ────────────────────────────────────
-const V71_KEYS = ['clientes', 'lives', 'liveActualId', 'codigoCounter', 'msgPago', 'descuentoLive', 'productos', 'lives_backup', 'lives_backup_ts', 'barriosCadeteria', 'msgNocturno', 'msgEncamino', 'mapaBarrios', 'pedidos', 'pedidoCounter'];
-const V5_KEYS = ['ei_stock', 'ei_importaciones', 'ei_draft_importacion', 'ei_draft_compra_local'];
-const hayV71 = () => localStorage.getItem('lives') != null || localStorage.getItem('clientes') != null;
-
-function backupViejo() {
-  const datos = {};
-  for (const k of [...V71_KEYS, ...V5_KEYS]) { const v = localStorage.getItem(k); if (v != null) datos[k] = v; }
-  const json = JSON.stringify({ app: 'emma', tipo: 'backup-v71-v5-antes-de-migrar', fecha: ahoraISO(), datos }, null, 1);
-  descargar(json, 'Emma_backup_v71_v5_' + hoyISO() + '.json', 'application/json');
-  return json.length;
-}
-
-function migrar() {
-  const oldCl = leer('clientes', []) || [];
-  const oldLives = leer('lives', []) || [];
-  const oldLiveActual = parseInt(localStorage.getItem('liveActualId'), 10);
-  const descLive = num(localStorage.getItem('descuentoLive'));
-  const hoy = hoyISO();
-
-  // Stock (v5) → emma_stock, solo si todavía no existe
-  let stock = leer('emma_stock', null);
-  if (!stock) {
-    stock = (leer('ei_stock', []) || []).map((s, i) => ({ id: 's' + (i + 1) + '_' + Date.now().toString(36), codigo: String(s.codigo || '').toUpperCase(),
-      descripcion: s.descripcion || '', categoria: s.categoria || String(s.codigo || '').charAt(0), stock: +s.stock || 0, precioVenta: +s.precioVenta || 0, activo: true }));
-    put('emma_stock', stock);
-    if (!localStorage.getItem('emma_movimientos')) put('emma_movimientos', []);
-    if (!localStorage.getItem('emma_compras')) {
-      const imps = (leer('ei_importaciones', []) || []).map(imp => Object.assign({}, imp, {
-        id: String(imp.id), fecha: parseFechaUY(imp.fecha) || imp.fecha,
-        articulos: (imp.articulos || []).map(a => Object.assign({}, a, { stockId: (stock.find(s => s.codigo === String(a.codigo || '').toUpperCase()) || {}).id || null }))
-      }));
-      put('emma_compras', imps);
-    }
-  }
-  const stockPorCod = new Map(stock.map(s => [s.codigo, s]));
-
-  // Clientas
-  const clientes = [];
-  const porNombre = new Map();
-  oldCl.forEach(o => {
-    if (!o || !o.nombre) return;
-    const c = nuevaClienta(o.nombre, o.tel);
-    const cad = o.cadeteria || {};
-    Object.assign(c, { nombreEnvio: o.nombreEnvio || '', ci: o.ci || '', agencia: o.agencia || '', depto: o.depto || '', ciudad: o.ciudad || '',
-      direccion: o.direccion || [cad.direccion, cad.barrio].filter(Boolean).join(', '),
-      notaCadete: [cad.horario && 'Horario: ' + cad.horario, cad.referencia, cad.notas].filter(Boolean).join(' · '), creado: '' });
-    c._old = o;
-    clientes.push(c);
-    if (!porNombre.has(norm(o.nombre))) porNombre.set(norm(o.nombre), c);
-  });
-  const porTel = k => k && clientes.find(c => c.telKey === k);
-
-  // Lives y pedidos
-  const usados = new Set();
-  let maxCod = parseInt(localStorage.getItem('codigoCounter'), 10) || 0;
-  oldLives.forEach(l => (l.pedidos || []).forEach(p => { const n = parseInt(p.codigo, 10); if (n > maxCod) maxCod = n; }));
-  const lives = oldLives.map(ol => {
-    const fecha = parseFechaUY(ol.fecha) || hoy;
-    const live = { id: 'l' + ol.id, nombre: ol.nombre || ('Live ' + fechaUY(fecha)), fecha, fechaPago: ol.fechaPago || '',
-      descuento: ol.id === oldLiveActual ? descLive : 0, pedidoCounter: ol.pedidoCounter || 0, pedidos: [], _oldId: ol.id };
-    (ol.pedidos || []).forEach(op => {
-      const nombre = String(op.nombre || '').trim() || 'Sin nombre';
-      let c = porNombre.get(norm(nombre)) || porTel(telKey(op.tel));
-      if (!c) { c = nuevaClienta(nombre, op.tel); c.creado = ''; clientes.push(c); porNombre.set(norm(nombre), c); }
-      if (!c.tel && op.tel) { c.tel = String(op.tel); c.telKey = telKey(op.tel); }
-      if ((c.ultimoUso || '') < fecha) c.ultimoUso = fecha;
-      let codigo = op.codigo ? String(op.codigo).padStart(5, '0') : '';
-      if (!codigo || usados.has(codigo)) codigo = String(++maxCod).padStart(5, '0');
-      usados.add(codigo);
-      const estadoViejo = op.estado || 'pendiente';
-      const estado = ['pendiente', 'listo', 'guardado', 'liberado'].includes(estadoViejo) ? estadoViejo : 'pendiente';
-      const cad = op.cadeteria || {};
-      const p = { id: uid('p'), codigo, num: op.num, liveId: live.id, clienteId: c.id,
-        prendas: (op.prendas || []).map(pr => {
-          const precio = num(pr.precio);
-          const s = pr.codigo ? stockPorCod.get(String(pr.codigo).toUpperCase()) : null;
-          return { stockId: s ? s.id : null, codigo: s ? s.codigo : (pr.codigo || null), nombre: pr.nombre || '', precioLista: precio, precio, qty: +pr.qty || 1 };
-        }),
-        descuento: num(op.descuento) > 0 ? num(op.descuento) : null,
-        saldoAplicado: 0, estado,
-        entrega: cad.pendiente ? 'cadeteria' : (c._old && c._old.agencia ? 'agencia' : 'sin_definir'),
-        cobroEnvio: cad.pendiente ? (cad.cobroTipo === 'ya_pago' ? 'pago' : 'cobrar') : null,
-        fechas: { creado: fecha }, avisos: [], notas: '' };
-      if (cad.pendiente && cad.direccion && !c.direccion) c.direccion = [cad.direccion, cad.barrio].filter(Boolean).join(', ');
-      if (estado === 'listo') {
-        p.fechas.listo = fecha;
-        // En la v71 no existía "enviado": un "listo" de un live de hace más de 7 días ya salió.
-        if (diasDesde(fecha) > 7) { p.estado = 'enviado'; p.fechas.enviado = fecha; }
-      }
-      if (estado === 'liberado') p.fechas.liberado = fecha;
-      if (estado === 'guardado') p.fechas.guardado = fecha;
-      if (maxCod < parseInt(codigo, 10)) maxCod = parseInt(codigo, 10);
-      live.pedidos.push(p);
-    });
-    return live;
-  });
-  if (!lives.length) lives.push({ id: uid('l'), nombre: 'Live ' + fechaUY(hoy), fecha: hoy, fechaPago: '', descuento: 0, pedidoCounter: 0, pedidos: [] });
-
-  // En la v71 la deuda o el guardado de una clienta podían haber quedado en otra ficha suya (mismo teléfono, otro nombre).
-  // Por eso se resuelven mirando todas las fichas viejas del mismo teléfono.
-  const grupo = c => c.telKey ? clientes.filter(x => x.telKey === c.telKey) : [c];
-  const oldsDe = c => grupo(c).map(x => x._old).filter(Boolean);
-  lives.forEach(l => l.pedidos.forEach(p => {
-    const c = clientes.find(x => x.id === p.clienteId);
-    const olds = oldsDe(c);
-    if (p.estado === 'liberado') {
-      const lib = olds.flatMap(o => o.pedidosLiberados || []).find(x => x.numPedido === p.num);
-      p.deudaSaldada = !lib; // si ya no figuraba en pedidosLiberados, la deuda se había saldado
-      if (lib) p.fechas.liberado = parseFechaUY(lib.fecha) || p.fechas.liberado;
-    }
-    if (p.estado === 'guardado') {
-      const g = olds.flatMap(o => o.pedidosGuardados || []).find(x => x.numPedido === p.num);
-      if (g && parseFechaUY(g.fecha)) p.fechas.guardado = parseFechaUY(g.fecha);
-    }
-  }));
-  // historialViejo: compras y liberados de la v71 que no estén en ningún live existente (sin contar dos veces)
-  const vistos = new Map();
-  for (const c of clientes) {
-    const o = c._old; if (!o) continue;
-    const gk = c.telKey || c.id;
-    if (!vistos.has(gk)) vistos.set(gk, new Set());
-    const ya = vistos.get(gk);
-    const ids = new Set(grupo(c).map(x => x.id));
-    const propios = [];
-    lives.forEach(l => l.pedidos.forEach(p => { if (ids.has(p.clienteId)) propios.push({ num: p.num, live: l.nombre }); }));
-    const existe = h => propios.some(x => x.num === h.numPedido && (!h.liveName || h.liveName === x.live));
-    const agregar = (h, tipo) => {
-      const key = tipo + '|' + h.numPedido + '|' + (h.liveName || '') + '|' + h.fecha;
-      if (existe(h) || ya.has(key)) return;
-      ya.add(key);
-      c.historialViejo.push(tipo === 'ok'
-        ? { tipo: 'ok', fecha: parseFechaUY(h.fecha), total: num(h.total), cantidad: +h.cantidad || 0, ref: '#' + h.numPedido + (h.liveName ? ' · ' + h.liveName : '') }
-        : { tipo: 'liberado', fecha: parseFechaUY(h.fecha), total: num(h.total), ref: '#' + h.numPedido, saldado: false });
-    };
-    (o.historialCompras || []).forEach(h => agregar(h, 'ok'));
-    (o.pedidosLiberados || []).forEach(h => agregar(h, 'liberado'));
-  }
-  clientes.forEach(c => delete c._old);
-  lives.forEach(l => delete l._oldId);
-
-  const liveAct = lives.find(l => l.id === 'l' + oldLiveActual) || lives[lives.length - 1];
-  DB.clientes = clientes; DB.lives = lives; DB.stock = stock; DB.mostrador = []; DB.movimientos = leer('emma_movimientos', []);
-  saveConfig({ msgPago: localStorage.getItem('msgPago') || '', codigoCounter: maxCod, liveActualId: liveAct.id, migradoV71: ahoraISO() });
-  guardar(); saveMostrador();
-
-  // Fusión automática por teléfono, con deshacer
-  snapshotDeshacer('fusión automática de la migración');
-  const res = fusionarDuplicadas();
-  guardar();
-  if (!res.length) localStorage.removeItem('emma_deshacer');
-  return { res, clientas: DB.clientes.length, lives: DB.lives.length, pedidos: todosPedidos().length, stock: stock.length, enviados: todosPedidos().filter(p => p.estado === 'enviado').length };
-}
-
-function iniciarMigracion() {
-  showModal(`<h3>🔄 Pasando tus datos a Emma Pedidos</h3>
-    <p class="small muted">Paso 1: se descargó un <b>backup completo</b> de la versión anterior (v71 y Stock v5). Guardalo por las dudas.</p>
-    <button class="b sm mt" data-act="reBackupViejo">⬇️ Descargar el backup otra vez</button>
-    <div id="mig-estado" class="mt small">Convirtiendo…</div>`);
-  try { backupViejo(); } catch (e) { $('#mig-estado').innerHTML = '<div class="alert li">No se pudo descargar el backup automáticamente. Tocá el botón de arriba antes de seguir.</div>'; }
-  setTimeout(() => {
-    let r;
-    try { r = migrar(); }
-    catch (e) {
-      console.error(e);
-      $('#mig-estado').innerHTML = `<div class="alert li">❌ Algo falló en la migración: ${esc(e.message)}.<br>Tus datos viejos están intactos (no se borró nada). Mandale una captura a Yoan.</div>`;
-      ['emma_clientes', 'emma_lives', 'emma_deshacer'].forEach(k => localStorage.removeItem(k));
-      return;
-    }
-    $('#mbox').innerHTML = `<h3>✅ Migración lista</h3>
-      <div class="small">${r.clientas} clientas · ${r.lives} lives · ${r.pedidos} pedidos · ${r.stock} artículos de stock</div>
-      <div class="mt">${r.res.length ? resumenFusionHTML(r.res) : '<div class="alert ok">No había clientas duplicadas por teléfono.</div>'}</div>
-      ${r.enviados ? `<p class="small mt">🚚 ${r.enviados} pedidos "listo" de lives de hace más de 7 días quedaron como <b>enviados</b> (en la versión anterior no existía ese estado).</p>` : ''}
-      <p class="small muted mt">Los datos viejos <b>no se borraron</b>. Cuando confirmes que todo está bien, los podés limpiar desde ⚙️ Config.</p>
-      <div class="row mt">${r.res.length ? '<button class="b dan" data-act="deshacerFusion">↩️ Deshacer fusión</button>' : ''}<span class="grow"></span><button class="b pri" data-act="closeModal">Listo</button></div>`;
-    render();
-  }, 400);
-}
-
 // ─── 5. UI GENERAL ────────────────────────────────────────────
 const UI = { pedTab: 'todos', cadDraft: {}, tab: 'live', abiertos: new Set(), preview: new Set(), editNom: new Set(), cargaId: null, filtroLive: '', filtroCl: '',
-  clHist: new Set(), clEdit: new Set(), clSep: null, salida: null, mos: { modo: 'venta', cli: null, items: [], medio: 'efectivo', sumarA: null }, cam: { cli: null, entra: [], sale: [], vinc: null, envio: 'mano', res: null } };
+  clHist: new Set(), clEdit: new Set(), clSep: null, mos: { modo: 'venta', cli: null, items: [], medio: 'efectivo', sumarA: null }, cam: { cli: null, entra: [], sale: [], vinc: null, envio: 'mano', res: null } };
 
 function toast(t, ms) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), ms || 2600); }
 function showModal(html) { $('#mbox').innerHTML = html; $('#modal').classList.add('on'); }
@@ -1239,7 +936,6 @@ function render() {
     if (UI.tab === 'live') renderLive();
     else if (UI.tab === 'clientes') renderClientes();
     else if (UI.tab === 'guardados') renderGuardados();
-    else if (UI.tab === 'salidas') renderSalidas();
     else if (UI.tab === 'despacho') renderDespacho();
     else if (UI.tab === 'pagos') renderPagos();
     else if (UI.tab === 'mostrador') renderMostrador();
@@ -1651,7 +1347,7 @@ function campoCli(c, f, ph, px) {
   return f === 'barrio' ? `<div class="sw">${inp}<div class="sug"></div></div>` : inp;
 }
 /** Barrios precargados de la planilla de GrisalExpress (se escriben igual que allá). */
-const BARRIOS_GRISAL = ["Ciudad Vieja", "Barrio Sur", "Centro", "Palermo", "Cordón", "Cordón Norte", "Parque Rodó", "Parque Rodo", "Punta Carretas", "Pocitos", "Parque Batlle", "La Figurita", "Villa Dolores", "Cordon", "Villa Muñoz", "Reus Al Norte", "Barrio De Los Judios", "Barrio De Los Judíos", "Larrañaga", "Ellauri", "Nuevo Pocitos", "Tres Cruces", "La Blanqueada", "Blanqueda", "La Comercial", "Aguada", "Arroyo Seco", "Goes", "Jacinto Vera", "Bella Vista", "Reducto", "Pocitos Nuevo", "Reus", "La Comercial / Reus", "Parque Batlle / Villa Dolores", "Villa Muñoz / Reus", "Arroyo Seco / Reus", "Pocitos / Villa Dolores", "Reducto / Reus", "La Figurita / Reus", "Unión / Villa Dolores", "Parque Batlle / La Mondiola", "Pocitos / La Mondiola", "Parque Rodó / Barrio Jardin", "Villa Muñoz / La Comercial", "Capurro", "Paso Molino", "Atahualpa", "Brazo Oriental", "Borro", "Gruta De Lourdes", "Gruta De Lurdes", "Pérez Castellanos", "Mercado Modelo", "Villa Española", "Unión", "Union", "La Union", "Piedras Blancas", "Buceo", "Malvín", "Malvin", "Malvín Nuevo", "Barrio Pablo Estramín", "Simón Bolivar", "40 semanas", "Malvín Norte", "Malvin Norte", "Paso De Las Duranas", "Coppola", "Curva De Maroñas", "Maroñas", "Flor De Maroñas", "Jardines Del Hipódromos", "Jardines Del Hipódromo", "Ituzaingó", "Ituzaingo", "Cerrito", "Las Acacias", "Marconi", "Bolivar", "Bolívar", "Cerrito De La Victoria", "Aires Puros", "Nuevo Carlomagno", "Nuevo Centro", "Jardines Del Hipodromo", "Prado", "Paso De Las Dunas", "Sayago", "Peñarol", "Lavalleja Sur", "Lavalleja", "Barrio Lavalleja Sur", "Barrio Lavalleja", "Casavalle", "1 De Mayo", "1ro De Mayo", "Placido Ellauri", "Nuevo Ellauri", "Porvenir", "Ituizango", "Parque Rivera", "La Unión", "Malvin Alto", "Peñarol Lavalleja", "Plácido Ellauri", "Vista Linda", "Ituzaingó / Marconi", "Las Acacias / Unidad Misiones", "Aires Puros / Barrio Lavalleja", "Piedras Blancas / Asentamiento Los Reyes", "Jardines del Hipódromo / Santa María", "Casavalle / Asentamiento Nuestros Hijos", "Peñarol / Barrio Lavalleja", "Malvín Norte / Barrio Ideal", "Flor de Maroñas / Barrio Nuestros Sueños", "Maroñas / Parque Guaraní", "Malvín Norte / Boix Y Merino", "Casavalle / Unidad Casavalle", "Piedras Blancas / Marconi", "Malvín Norte / La Cruz De Carrasco", "Peñarol / Barrio Brazos Unidos", "Flor De Maroñas / Vista Linda", "Malvín Nuevo / Boix Y Merino", "Pérez Castellanos / Cerrito", "Malvin Norte / Boix Y Merino", "Aires Puros / 40 Semanas", "Las Acacias / Cerrito", "Aires Puros / Cerrito", "Maroñas / Barrio Ideal", "Las Acacias / Barrio Cóppola", "Malvín / La Cruz De Carrasco", "Punta Gorda / La Cruz De Carrasco", "Casavalle / Unidad Misiones", "Casavalle / Nuevo Ellauri", "Buceo / Boix Y Merino", "Maroñas / Ch Pantaleón Pérez", "Casavalle / Borro", "Malvín / Parque Rivera", "Brazo Oriental / Cerrito", "Las Acacias / Marconi", "Unión / Boix Y Merino", "Paso De Las Duranas / 40 Semanas", "Piedras Blancas / 30 De Abril", "Buceo / La Mondiola", "Peñarol / 40 Semanas", "Casavalle / Marconi", "Jardines del Hipódromo / Los Milagros", "Buceo / Villa Dolores", "Carrasco", "La Carbonera", "17 De Junio", "Nuevo Capra", "Capra", "24 De Junio", "Carrasco Norte", "Asentamiento El Renuevo", "Cruz De Carrasco", "La Cruz De Carrasco", "Barrio 24 De Junio", "Nuevo Las Flores", "Nuevo Rumbo", "Nuevo Sarandi", "Nuevo Las Torres 2", "Jardines De Carrasco", "Nuevo Sarandí", "Villa Don Bosco", "Baños De Carrasco", "Punta De Rieles", "Punta Rieles", "Asentamiento El Sueño", "Nuevos Rumbos", "Manga", "Artigas", "Colón", "Colon", "Barrio Nuevo Colón", "Lezica", "Conciliacion", "Conciliación", "Nuevo Paris", "Nuevo París", "Belvedere", "Tres Ombues", "3 Ombues", "3 Ombúes", "Barrio De Los Dominicanos", "Tres Ombúes", "La Teja", "Maracaná", "Maracana", "La Paloma", "Cerro Norte", "Cerro", "Villa Del Cerro", "Verdisol", "Bañados De Carrasco", "Villa Prosperidad", "Las Torres", "Barrio Pororó", "Las Flores", "Barrio Nueva España", "Nuevo Las Torres", "La Tablada", "La Cruz De Carraco", "Bella Italia", "Capra II", "Villa Sarandí", "Villa Sarandi", "El Tobogán", "Punta Gorda", "Punta Rieles / Barrio Nueva España", "Colón / Barrio de los Dominicanos", "La Paloma Tomkinson / Primero de Mayo", "Sayago / Torre 8", "Malvín Norte / Parque Rivera", "Colón / Barrio Las Cañas", "Colón / COVICO", "Piedras Blancas / Asentamiento Nuestros Hijos", "Casavalle / Asentamiento 20 de Julio", "Colón / Barrio Las Palmas", "Casavalle / Gruta De Lourdes", "Casavalle / Mendoza", "Casavalle / Tercer Milenio", "Casavalle / Barrio El Milagro", "Casavalle / Barrio Los Reyes", "Paso de las Duranas / Barrio Lavalleja", "La Paloma Tomkinson / Asentamiento 25 de Agosto", "Punta Rieles / Barrio La Chancha", "Colón / COVISUNCA 7", "Casavalle / Asentamiento 21 de Enero", "La Tablada / Verdisol", "Villa García / Nuevo Capra", "Tres Ombúes / 19 de Abril", "Villa García / Barrio Villa Don Bosco", "Sayago / Barrio Jesús Maria-la Falda", "Lezica / Ambientalista", "Manga / Asentamiento Berges", "La Paloma Tomkinson / Cerro Norte", "Nuevo París / Nuevo Sarandí", "Nuevo París / Las Retamas", "Carrasco / Jardines De Carrasco", "Colón / Complejo América", "Carrasco Norte / Acosta Y Lara", "Colón / Torre 8", "Punta Rieles / 17 De Junio", "La Teja / La Boyada", "Colón / Ambientalista", "Punta Rieles / Santo Domingo De Guzmán", "Punta Rieles / El Renuevo", "Cerro / Cerro Norte", "Tres Ombúes / Barrio El Tobogán", "Colón / Las Torres", "Sayago / Las Retamas", "Conciliación / Las Torres", "La Paloma Tomkinson / Nuevo Las Torres", "Punta Rieles / Barrio 50 Semanas", "Carrasco / Acosta Y Lara", "La Paloma Tomkinson / Maracaná", "La Paloma Tomkinson / La Paloma", "Carrasco Norte / San Nicolás", "Carrasco Norte / Parque Rivera", "Carrasco Norte / La Cruz De Carrasco", "Cerro / El Tobogán", "Tres Ombúes / Cauceglia", "Nuevo París / 19 De Abril", "Nuevo París / 6 De Diciembre", "Colón / Barrio Nuevo Colón", "Colón / Pueblo Ferrocarril", "Manga / Mendoza", "Punta Rieles / 30 De Abril", "Cerro Norte / Barrio El Tobogán", "Punta Rieles / Barrio Pablo Estramín", "Carrasco Norte / Barrio Parques", "Conciliación / Torre 8", "Conciliación / Barrio Jesús Maria-la Falda", "Carrasco Norte / Los Olivos", "Tres Ombúes / Primero De Mayo", "Conciliación / Las Retamas", "Tres Ombúes / El Tobogán", "La Paloma Tomkinson / Nuevo Las Torres 2", "Tres Ombúes / La Boyada", "La Paloma Tomkinson / Cotravi", "Manga / Asentamiento El Sueño", "Conciliación / Verdisol", "La Paloma Tomkinson / Cerro Oeste", "Manga / Asentamiento Nuevo Siglo", "Santa Catalina", "Asentamiento Villa Camila", "Barrio Vista Linda", "La Paloma Tomkinson", "Don Marquez", "Barrio La Esperanza", "Abayuba", "Pajas Blancas", "Los Bulevares", "Paso De La Arena", "Abayubá", "Barrio Abayubá", "Toledo Chico", "Mendoza", "Puntas De Manga", "Villa García", "Villa Garcia", "Villa Isabel", "Asentamiento Villa Isabel", "Asentamiento Berges", "Asentamiento Nuevo Siglo", "La Rinconada", "El Monarca", "Puntas De Sayago", "23 De Diciembre", "Casabo", "Casabó", "Melilla", "La Colorada", "Casabó / Cerro Oeste", "Casabó / Barrio 2 De Enero", "Casabó / Barrio 20 De Julio", "Casabó / Cerro Norte", "La Paloma Tomkinson / Nuevo Las Flores", "Paso De La Arena / Los Bulevares", "Villa García / Asentamiento Berges", "Manga / Puntas de Manga", "Santiago Vázquez", "Rincon Del Cerro / Paso De La Arena", "Toledo Chico / Barrio Vista Linda", "Punta Rieles / El Viñedo", "Paso de la Arena / Nuevo Las Flores", "Canelones", "La Paz", "Las Piedras", "28 de Mayo", "Progreso", "Toledo", "Casarino", "Joaquín Suárez", "Barros Blancos", "Pando", "Villa Aeroparque", "La Tahona", "Lomas de Carrasco", "Mirador La Tahona", "Paso Carrasco", "Barra de Carrasco", "Parque Carrasco", "Shangrilá", "Ciudad de la Costa", "Lagomar", "El Bosque", "Solymar", "Lomas de Solymar", "Barrio el Palmar", "Médanos de Solymar", "El Pinar", "Solymar Sur", "Parque Miramar", "Villa Felicidad", "18 de Mayo", "Colonia Nicolich", "San José De Carrasco", "Parque De Miramar", "Castellana Chica", "Lomas de la Tahoja", "Parque de Carrasco", "Villa Las Flores", "Santa Teresita", "Parques Solymar", "La Pilarica", "Colinas de Solymar"];
+// BARRIOS_GRISAL está en negocio.js
 const normB = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 /** Lista sin variantes repetidas (Cordón / Cordon cuentan como uno). */
 const BARRIOS = (() => { const m = new Map(); BARRIOS_GRISAL.forEach(b => { if (!m.has(normB(b))) m.set(normB(b), b); }); return m; })();
@@ -1755,8 +1451,7 @@ function renderClientes() {
   cs = [...cs].sort((a, b) => (b.ultimoUso || '').localeCompare(a.ultimoUso || '') || a.nombre.localeCompare(b.nombre));
   const LIM = 80;
   $('#cl-count').textContent = `${DB.clientes.length} clientas` + (cs.length > LIM ? ` · mostrando ${LIM} de ${cs.length}, buscá para filtrar` : q ? ` · ${cs.length} encontradas` : '');
-  const d = leer('emma_deshacer', null);
-  $('#cl-deshacer').innerHTML = d ? `<div class="alert pe">↩️ Última fusión: ${esc(d.desc)} (${fechaUY(d.fecha.slice(0, 10))}) <button class="b sm" data-act="deshacerFusion">Deshacer</button></div>` : '';
+  $('#cl-deshacer').innerHTML = ''; // acá pedidos4.js agrega el bloque VIP
   $('#lista-clientes').innerHTML = cs.length ? cs.slice(0, LIM).map(c => itemClienta(c, m[c.id] || ST0)).join('') : '<div class="empty">Sin resultados</div>';
 }
 function itemClienta(c, h) {
@@ -1909,115 +1604,9 @@ function enviarAviso(p, tipo) {
   render();
 }
 
-// ─── 10. SALIDAS ──────────────────────────────────────────────
-const TIPO_TXT = { cadeteria: 'CADETERÍA', agencia: 'AGENCIA', retiro: 'RETIRO', sin_definir: 'SIN ENTREGA DEFINIDA' };
+// ─── 10. AYUDAS DE DESPACHO (el panel viejo "Salidas" se sacó: lo reemplaza despacho.js) ───
 const sinSalir = p => ['pendiente', 'listo', 'guardado'].includes(p.estado);
-function iniciarSalida(tipo) {
-  const esperados = todosPedidos().filter(p => (p.estado === 'pendiente' || p.estado === 'listo') && entregaEf(p) === tipo).map(p => p.id);
-  UI.salida = { id: uid('sal'), inicio: ahoraISO(), tipo, esperados, escaneados: [], cerrada: false };
-  $('#scan-res').innerHTML = ''; $('#sal-cierre').innerHTML = '';
-  render();
-  setTimeout(() => $('#scan-in').focus(), 30);
-}
-function renderSalidas() {
-  const s = UI.salida;
-  document.querySelectorAll('[data-act=salTipo]').forEach(b => b.classList.toggle('on', !!s && b.dataset.t === s.tipo));
-  $('#sal-scan').hidden = !s || s.cerrada;
-  if (!s) { $('#sal-lista').innerHTML = '<div class="empty">Elegí el tipo de salida para empezar a escanear</div>'; return; }
-  const esc2 = new Set(s.escaneados);
-  $('#sal-cont').textContent = `${s.esperados.filter(id => esc2.has(id)).length} de ${s.esperados.length} salieron`;
-  // Agrupar por clienta: pedidos de este tipo + otros sin salir de la misma clienta (de cualquier live, incluidos guardados)
-  const grupos = new Map();
-  for (const id of s.esperados.concat(s.escaneados)) {
-    const p = pedById(id); if (!p) continue;
-    if (!grupos.has(p.clienteId)) grupos.set(p.clienteId, new Set());
-    grupos.get(p.clienteId).add(p.id);
-  }
-  for (const [cid, set] of grupos) todosPedidos().forEach(p => { if (p.clienteId === cid && sinSalir(p)) set.add(p.id); });
-  const html = [...grupos.entries()].map(([cid, set]) => {
-    const c = cliById(cid) || { nombre: '?' };
-    const ps = [...set].map(pedById).filter(Boolean);
-    const done = ps.every(p => !sinSalir(p));
-    const varios = ps.filter(sinSalir).length > 1;
-    return `<div class="sg${done ? ' done' : ''}">
-      <div class="row"><b style="font-size:15px">${done ? '✓ ' : ''}${esc(c.nombre)}</b>${ps.length > 1 ? `<span class="chip ac">🔗 ${ps.length} pedidos</span>` : ''}<span class="grow"></span><span class="small muted">${s.tipo === 'cadeteria' ? esc(c.direccion || '⚠️ sin dirección') : s.tipo === 'agencia' ? esc(c.agencia || '⚠️ sin agencia') : ''}</span>
-        ${done || s.cerrada ? '' : `<button class="b sm ok" data-act="salManual" data-cid="${cid}">✓ Sale${varios ? ' todo' : ''}</button>`}</div>
-      <div class="pp">${ps.map(p => varios && sinSalir(p) && !s.cerrada
-        ? `<button class="chip ${ESTADO_CHIP[p.estado]}" style="border:none;cursor:pointer" data-act="salUno" data-id="${p.id}" title="Que salga solo este">#${p.num} · ${p.codigo}${p.estado === 'guardado' ? ' (guardado)' : ''} ➜</button>`
-        : `<span class="chip ${p.estado === 'enviado' ? 'ok' : ESTADO_CHIP[p.estado]}">#${p.num} · ${p.codigo}${p.estado === 'guardado' ? ' (guardado)' : ''}${p.estado === 'enviado' ? ' ✓' : ''}</span>`).join('')}</div>
-      ${varios && !s.cerrada ? '<div class="small muted" style="margin-top:4px">Tocá un # si sale solo ese.</div>' : ''}
-    </div>`;
-  }).join('');
-  const quedan = [...grupos.values()].some(set => [...set].map(pedById).some(p => p && sinSalir(p)));
-  $('#sal-lista').innerHTML = `<div class="list-h"><span class="t">${TIPO_TXT[s.tipo]} · ${grupos.size} clientas</span>${s.tipo === 'cadeteria' ? '<button class="b sm" data-act="copiarGrisal">📋 Copiar para GrisalExpress</button>' : ''}${quedan && !s.cerrada ? '<button class="b sm ok" data-act="salTodos">✓ Salen todos</button>' : ''}</div>` + (html || '<div class="empty">No hay pedidos pendientes de este tipo</div>');
-}
-function resScan(cls, html) { $('#scan-res').innerHTML = `<div class="big-alert ${cls}">${html}</div>`; }
-function procesarScan(raw) {
-  const s = UI.salida; if (!s) return;
-  const d = String(raw).replace(/\D/g, '');
-  if (!d) return;
-  const cod = d.padStart(5, '0');
-  const p = todosPedidos().find(x => x.codigo === cod);
-  if (!p) return resScan('li', `❌ ${esc(cod)}: no encontrado`);
-  const c = cliById(p.clienteId) || { nombre: '?' };
-  if (p.estado === 'enviado') {
-    const madre = p.salioCon && pedById(p.salioCon);
-    if (madre && madre.id !== p.id) return resScan('ok', `✓ #${p.num} ya salió junto con #${madre.num}`);
-    return resScan('mu', `Ya escaneado · #${p.num} ${esc(c.nombre)}`);
-  }
-  if (!esActivo(p.estado)) return resScan('li', `⚠️ #${p.num} está ${ESTADO_TXT[p.estado].toUpperCase()}`);
-  const tipo = entregaEf(p);
-  if (tipo !== s.tipo) return resScan('li', `⚠️ #${p.num} es de ${TIPO_TXT[tipo]}`);
-  const otros = todosPedidos().filter(x => x.clienteId === p.clienteId && x.id !== p.id && sinSalir(x));
-  if (!otros.length) return despachar(p, []);
-  showModal(`<h3>🔗 ${esc(c.nombre)} tiene ${otros.length + 1} pedidos pendientes</h3>
-    <div class="small">#${p.num}${otros.map(x => ' · #' + x.num + (x.estado === 'guardado' ? ' (guardado)' : '') + (x.liveId !== p.liveId ? ' <span class="muted">· ' + esc(liveById(x.liveId).nombre) + '</span>' : '')).join('')}</div>
-    <div class="row mt"><button class="b ok lg" id="btn-juntos" data-act="salJuntos" data-id="${p.id}">✓ Van todos juntos (Enter)</button><button class="b" data-act="salSolo" data-id="${p.id}">Solo este</button></div>`);
-  UI.modalEnter = () => { closeModal(); despachar(p, otros); };
-  setTimeout(() => $('#btn-juntos') && $('#btn-juntos').focus(), 20);
-}
-function despachar(p, otros, manual) {
-  const s = UI.salida;
-  const cd = cliById(p.clienteId) || {};
-  if (s.tipo === 'cadeteria' && !(cd.direccion || '').trim()) {
-    resScan('li', `⚠️ #${p.num} ${esc(cd.nombre || '')}: falta la dirección. Cargala en el pedido antes de darle salida.`);
-    return;
-  }
-  for (const x of [p, ...otros]) {
-    setEstado(x, 'enviado');
-    x.salida = { id: s.id, ts: ahoraISO(), tipo: s.tipo };
-    if (x !== p) x.salioCon = p.id;
-    if (!s.escaneados.includes(x.id)) s.escaneados.push(x.id);
-  }
-  guardar();
-  const c = cliById(p.clienteId) || { nombre: '?' };
-  resScan('ok', `✓ #${p.num} ${esc(c.nombre)}${otros.length ? ' + ' + otros.map(x => '#' + x.num).join(' · ') : ''}`);
-  render();
-  $('#scan-in').value = '';
-  if (!manual) $('#scan-in').focus();
-}
-/** Salida sin escanear: la clienta sale con todos sus pedidos sin salir (los de este tipo primero). */
-function salidaManual(cid) {
-  const s = UI.salida; if (!s) return;
-  const pend = todosPedidos().filter(p => p.clienteId === cid && sinSalir(p));
-  if (!pend.length) return;
-  const madre = pend.find(p => s.esperados.includes(p.id)) || pend[0];
-  despachar(madre, pend.filter(p => p !== madre), true);
-}
-function cerrarSalida() {
-  const s = UI.salida; if (!s) return;
-  s.cerrada = true;
-  const faltan = s.esperados.map(pedById).filter(p => p && sinSalir(p));
-  let html = `<div class="card"><div class="card-t">Salida cerrada · ${TIPO_TXT[s.tipo]}</div>`;
-  html += faltan.length
-    ? `<div class="alert li">⚠️ Faltó escanear ${faltan.length}: ${faltan.map(p => '#' + p.num + ' ' + esc((cliById(p.clienteId) || {}).nombre || '')).join(' · ')}<br><span style="font-weight:500">Siguen pendientes.</span></div>`
-    : '<div class="alert ok">✓ Salió todo</div>';
-  if (s.tipo === 'cadeteria' && s.escaneados.length) html += `<div class="mt">${hojaCadeteHTML(s, true)}</div><div class="row mt"><button class="b pri" data-act="imprimirHoja">🖨️ Imprimir hoja del cadete</button><button class="b" data-act="copiarGrisal">📋 Copiar para GrisalExpress</button></div>`;
-  else if (s.tipo === 'cadeteria') html += `<div class="row mt"><button class="b" data-act="copiarGrisal">📋 Copiar para GrisalExpress</button></div>`;
-  html += `<button class="b blk mt" data-act="nuevaSalida">Nueva salida</button></div>`;
-  $('#sal-cierre').innerHTML = html;
-  render();
-}
+/** Filas de la hoja del cadete: una por clienta, con lo que cobra. s = { escaneados: [ids de pedido] } */
 function filasHoja(s) {
   const grupos = new Map();
   s.escaneados.map(pedById).filter(Boolean).forEach(p => { if (!grupos.has(p.clienteId)) grupos.set(p.clienteId, []); grupos.get(p.clienteId).push(p); });
@@ -2029,96 +1618,18 @@ function filasHoja(s) {
     return { num: ult.num, nombre: c.nombreEnvio || c.nombre || '', tel: c.tel || '', dir: [c.direccion, c.barrio].filter(Boolean).join(' · '), nota: c.notaCadete || '', cobro };
   });
 }
-// ── GrisalExpress: filas listas para pegar en su Google Sheets ──
 const telLegible = t => { const k = telKey(t); if (!k) return ''; const d = '0' + k; return d.length === 9 ? d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6) : d; };
 const limpioTSV = v => String(v ?? '').replace(/[\t\r\n]+/g, ' ').trim();
-/** Clave de la salida de un pedido enviado: la salida registrada, o el día si es de antes de que existiera el registro. */
-const claveSalida = p => p.salida && p.salida.id ? p.salida.id : 'dia:' + (p.fechas.enviado || '');
-/** Salidas de cadetería, de la más nueva a la más vieja: [{ key, ts, dia, ps }] */
-function salidasCadeteria() {
-  const M = new Map();
-  todosPedidos().filter(p => p.estado === 'enviado').forEach(p => {
-    const k = claveSalida(p);
-    if (!M.has(k)) M.set(k, { key: k, ts: '', dia: (p.fechas.enviado || ''), ps: [], cad: false });
-    const g = M.get(k);
-    g.ps.push(p);
-    if (entregaEf(p) === 'cadeteria' && (!p.salida || p.salida.tipo === 'cadeteria' || !p.salida.tipo)) g.cad = true;
-    if (p.salida && p.salida.ts && (!g.ts || p.salida.ts < g.ts)) g.ts = p.salida.ts;
-  });
-  return [...M.values()].filter(g => g.cad && g.dia)
-    .sort((a, b) => (b.ts || b.dia).localeCompare(a.ts || a.dia)).slice(0, 10);
-}
-function cuandoTxt(g) {
-  const hoy = hoyISO(), ayer = sumarDias(hoy, -1);
-  const dia = g.dia === hoy ? 'Hoy' : g.dia === ayer ? 'Ayer' : fechaUY(g.dia, 1);
-  if (!g.ts) return dia + ' (sin hora)';
-  const d = new Date(g.ts);
-  return dia + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-}
-function filasGrisal(key) {
-  const g = salidasCadeteria().find(x => x.key === key);
-  if (!g) return [];
-  const grupos = new Map();
-  // Clientas con algún pedido de cadetería en esa salida; sus otros pedidos de la misma salida van en la misma fila
-  const cids = new Set(g.ps.filter(p => entregaEf(p) === 'cadeteria').map(p => p.clienteId));
-  g.ps.filter(p => cids.has(p.clienteId)).forEach(p => { if (!grupos.has(p.clienteId)) grupos.set(p.clienteId, []); grupos.get(p.clienteId).push(p); });
-  const [y, m, d] = hoyISO().split('-'), fecha = d + '/' + m + '/' + y.slice(2);
-  return [...grupos.entries()].map(([cid, ps]) => {
-    const c = cliById(cid) || {};
-    const ult = [...ps].sort((a, b) => (b.fechas.creado || '').localeCompare(a.fechas.creado || '') || b.num - a.num)[0];
-    const tipo = ps.some(p => tipoEnvioDe(p) === 'cambio') ? 'Cambio' : 'Común';
-    return { n: ult.num, f: ['', tipo, c.nombreEnvio || c.nombre || '', telLegible(c.tel), c.direccion || '', c.barrio || '', cobroGrupo(ps).total, 'Paquete chico', fecha, c.notaCadete || ''].map(limpioTSV) };
-  }).sort((a, b) => a.n - b.n).map(x => x.f);
-}
 async function copiarTexto(txt) {
   try { await navigator.clipboard.writeText(txt); return true; } catch (e) {
     const ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (_) {} ta.remove(); return ok;
   }
 }
-/** Muestra las salidas de cadetería para elegir cuál copiar. */
-function copiarGrisal() {
-  const gs = salidasCadeteria();
-  if (!gs.length) return toast('Todavía no hay salidas de cadetería');
-  const cop = cfg('grisalCopiadas') || {}, actual = UI.salida && UI.salida.id;
-  showModal(`<h3>📋 ¿Qué salida copiás para GrisalExpress?</h3>
-    ${gs.map(g => {
-      const n = new Set(g.ps.filter(p => entregaEf(p) === 'cadeteria').map(p => p.clienteId)).size;
-      const nombres = [...new Set(g.ps.filter(p => entregaEf(p) === 'cadeteria').map(p => (cliById(p.clienteId) || {}).nombre || '?'))];
-      return `<div class="sg${g.key === actual ? ' done' : ''}" style="margin-top:8px">
-        <div class="row"><b style="font-size:15px">${esc(cuandoTxt(g))}</b><span class="chip">${n} clienta${n > 1 ? 's' : ''}</span>${g.key === actual ? '<span class="chip ok">esta salida</span>' : ''}${cop[g.key] ? `<span class="chip ac">✓ copiada ${esc(cuandoTxt({ dia: localISO(new Date(cop[g.key])), ts: cop[g.key] }))}</span>` : ''}<span class="grow"></span><button class="b sm ${cop[g.key] ? '' : 'pri'}" data-act="copiarSalidaGrisal" data-k="${esc(g.key)}">📋 Copiar</button></div>
-        <div class="small muted" style="margin-top:4px">${esc(nombres.slice(0, 6).join(', '))}${nombres.length > 6 ? '…' : ''}</div>
-      </div>`;
-    }).join('')}
-    <div class="row mt"><span class="grow"></span><button class="b gh" data-act="closeModal">Cerrar</button></div>`);
-}
-async function copiarSalidaGrisal(key) {
-  const filas = filasGrisal(key);
-  if (!filas.length) return toast('Esa salida no tiene pedidos de cadetería');
-  const txt = filas.map(f => f.join('\t')).join('\n');
-  const ok = await copiarTexto(txt);
-  closeModal();
-  if (!ok) { showModal(`<h3>📋 Copiá a mano</h3><p class="small muted mb">El navegador no dejó copiar solo. Seleccioná todo y copiá (Ctrl+C):</p><textarea style="min-height:200px;font-family:var(--mono);font-size:12px" onfocus="this.select()">${esc(txt)}</textarea><div class="row mt"><span class="grow"></span><button class="b pri" data-act="closeModal">Listo</button></div>`); }
-  const cop = Object.assign({}, cfg('grisalCopiadas') || {}); cop[key] = ahoraISO();
-  const keys = Object.keys(cop).sort((a, b) => cop[b].localeCompare(cop[a])).slice(0, 30);
-  saveConfig({ grisalCopiadas: Object.fromEntries(keys.map(k => [k, cop[k]])) });
-  const sinDir = filas.filter(f => !f[4]).map(f => f[2]);
-  if (ok) toast(`📋 ${filas.length} fila${filas.length > 1 ? 's' : ''} copiada${filas.length > 1 ? 's' : ''} · pegalas en la columna N Orden de GrisalExpress` + (sinDir.length ? ` · ⚠️ sin dirección: ${sinDir.join(', ')}` : ''), 5000);
-}
 function hojaCadeteHTML(s, pantalla) {
   const filas = filasHoja(s);
   const tabla = `<table class="${pantalla ? 't' : ''}"><thead><tr><th>#</th><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Nota</th><th>Cobro</th></tr></thead><tbody>${filas.map(f => `<tr><td><b>${f.num}</b></td><td>${esc(f.nombre)}</td><td>${esc(f.tel)}</td><td>${esc(f.dir)}</td><td>${esc(f.nota)}</td><td><b>${esc(f.cobro)}</b></td></tr>`).join('')}</tbody></table>`;
-  return pantalla ? `<div style="overflow-x:auto">${tabla}</div>` : `<div class="hoja"><h2>Emma Indumentaria · Hoja del cadete</h2><div>${fechaUY(hoyISO())} · ${filas.length} entregas</div>${tabla}</div>`;
-}
-function renderBuscarCodigo() {
-  const d = $('#bus-cod').value.replace(/\D/g, ''), out = $('#bus-cod-res');
-  if (!d) { out.innerHTML = ''; return; }
-  const p = todosPedidos().find(x => x.codigo === d.padStart(5, '0'));
-  if (!p) { out.innerHTML = '<div class="small muted">No encontrado</div>'; return; }
-  const c = cliById(p.clienteId) || {}, l = liveById(p.liveId);
-  out.innerHTML = `<div class="box"><b>#${p.num} · ${esc(c.nombre)}</b> <span class="chip ${ESTADO_CHIP[p.estado]}">${ESTADO_TXT[p.estado]}</span>
-    <div class="small muted mt">${esc(l.nombre)} · ${fmt(calc(p).total)} · ${ENTREGA_TXT[entregaEf(p)]}</div>
-    <button class="b sm mt" data-act="irPedido" data-id="${p.id}">Ir al pedido</button></div>`;
+  return pantalla ? `<div style="overflow-x:auto">${tabla}</div>` : `<div class="hoja"><h2>${esc(negocio('nombre'))} · Hoja del cadete</h2><div>${fechaUY(hoyISO())} · ${filas.length} entregas</div>${tabla}</div>`;
 }
 
 // ─── 11. MOSTRADOR ────────────────────────────────────────────
@@ -2186,7 +1697,7 @@ function cobrarVenta() {
 }
 function textoBoleta(v) {
   const l = v.prendas.map(pr => { const x = pr.qty > 1 ? ' x' + pr.qty : ''; return pr.precioLista > pr.precio ? `- ${pr.nombre}${x}: ~${fmt(pr.precioLista * pr.qty)}~ *${fmt(pr.precio * pr.qty)}*` : `- ${pr.nombre}${x}: ${fmt(pr.precio * pr.qty)}`; }).join('\n');
-  return `🧾 *Emma Indumentaria*\n${fechaUY(v.fecha)}\n\n${l}\n\n*Total: ${fmt(v.total)}*\nPagado en ${v.medio} ✓\n\n¡Gracias! 💛\n(comprobante interno, no es factura)`;
+  return `🧾 *${negocio('nombre')}*\n${fechaUY(v.fecha)}\n\n${l}\n\n*Total: ${fmt(v.total)}*\nPagado en ${v.medio} ✓\n\n¡Gracias! 💛\n(comprobante interno, no es factura)`;
 }
 function registrarCambio() {
   if (!puedoAgregar()) return;
@@ -2241,19 +1752,9 @@ function barcodeSVG(text) {
 }
 function etqHTML(p) {
   const c = cliById(p.clienteId) || { nombre: '', tel: '' }, l = liveById(p.liveId), t = calc(p);
-  if (c.agencia) {
-    return `<div class="lbl ag">
-      <div class="ag-rem"><div><div class="ag-emma">EMMA INDUMENTARIA</div><div class="ag-emma-d">Tel 097 088 511 · RUT 219683210010</div></div><div style="text-align:right">${p.cambio ? '<div class="l-camb">🔄 CAMBIO</div>' : ''}<div class="l-num">#${p.num}</div><div class="ag-art">${p.cambio ? p.cambio.art : calc(p).art} art.</div></div></div>
-      <div class="ag-dest">
-        <div class="ag-nom">${esc(c.nombreEnvio || c.nombre)}</div>
-        <div>C.I. <b>${esc(c.ci || '________')}</b> · Tel <b>${esc(c.tel || '________')}</b></div>
-        <div><b>${esc([c.ciudad, c.depto].filter(Boolean).join(', ') || '________')}</b></div>${c.direccion ? '<div>' + esc(c.direccion) + '</div>' : ''}
-      </div>
-      <div class="ag-bot"><div class="ag-box"><small>AGENCIA</small><b>${esc(c.agencia)}</b></div><div class="l-bc">${barcodeSVG(p.codigo)}<div class="l-cod">${p.codigo}</div></div></div>
-    </div>`;
-  }
+  // Con agencia: despacho.js la reemplaza por la etiqueta 10×15 nueva (etqAgenciaHTML)
   return `<div class="lbl">
-    <div class="l-top"><b>EMMA INDUMENTARIA</b><span>${fechaUY(l.fecha)}</span></div>
+    <div class="l-top"><b>${esc(negocio('marca'))}</b><span>${fechaUY(l.fecha)}</span></div>
     <div class="l-mid"><div class="l-num">#${p.num}</div>${p.cambio ? '<div class="l-camb">🔄 CAMBIO</div>' : ''}</div>
     <div class="l-nom">${esc(entregaEf(p) === 'cadeteria' && c.nombreEnvio ? c.nombreEnvio : c.nombre)}</div>
     <div class="l-tel">${esc(c.tel || '—')} · ${p.cambio ? p.cambio.art : t.art} art.</div>
@@ -2264,7 +1765,7 @@ function etqCadeteHTML(p) {
   const c = cliById(p.clienteId) || {};
   const env = cobroEnvioDe(p), pago = env === 0;
   return `<div class="lbl cad">
-    <div class="l-top"><b>EMMA INDUMENTARIA · CADETE</b><span>${fechaUY(hoyISO())}</span></div>
+    <div class="l-top"><b>${esc(negocio('marca'))} · CADETE</b><span>${fechaUY(hoyISO())}</span></div>
     <div class="l-mid"><div class="l-num">#${p.num}</div>${tipoEnvioDe(p) === 'cambio' ? '<div class="l-camb">🔄 CAMBIO</div>' : ''}</div>
     <div class="l-nom">${esc(c.nombreEnvio || c.nombre || '')}</div>
     <div class="l-tel">${esc(c.tel || '—')}</div>
@@ -2300,7 +1801,6 @@ function etiquetasLive() {
 }
 
 // ─── 13. CONFIG, BACKUP Y RESPALDOS ───────────────────────────
-const KEYS = ['emma_clientes', 'emma_lives', 'emma_stock', 'emma_movimientos', 'emma_mostrador', 'emma_compras', 'emma_config', 'emma_paquetes', 'emma_pagos'];
 function renderConfig() {
   if (!$('#cf-pago').matches(':focus')) $('#cf-pago').value = cfg('msgPago');
   if (!$('#cf-av1').matches(':focus')) $('#cf-av1').value = cfg('msgAviso1');
@@ -2308,110 +1808,25 @@ function renderConfig() {
   $('#cf-tarifa').value = cfg('tarifaEnvio');
   $('#cf-formato').value = cfg('formatoImpresion');
   renderRespaldos();
-  medirEspacio();
-  if (FALLIDOS.size && ESP.total < LIM_BLOQ) guardarTodo();
-  actualizarAvisos();
-  const pct = ESP.total / 5e6 * 100;
-  $('#cf-espacio').innerHTML = `<div style="font-size:18px;font-weight:700">${mbUso()} de 5 MB</div>
-    <div style="height:8px;background:var(--s3);border-radius:4px;margin-top:8px;overflow:hidden"><div style="height:100%;width:${Math.min(100, pct)}%;background:${ESP.total >= LIM_BLOQ ? 'var(--li)' : ESP.total >= LIM_AVISO ? 'var(--pe)' : 'var(--ok)'}"></div></div>
-    <div class="small muted mt">Aviso a los 4,0 MB · a los 4,5 MB se bloquea la carga de cosas nuevas hasta liberar.</div>
-    ${ESP.total >= LIM_AVISO ? '<div class="alert li">⚠️ Liberá espacio: lo que más rinde es <b>archivar lives viejos</b> y borrar los datos de la v71.</div>' : ''}
-    ${espacioDetalleHTML()}`;
-  const c0 = contarCero();
-  $('#cf-cero').innerHTML = `<p class="small muted mb">Marca como <b>enviado</b> todo lo que hoy figura pendiente, guardado o listo, en todos los lives. Sirve para arrancar a contar desde ahora con la lista limpia. No toca el stock, los liberados ni las deudas, y cuenta como ✅ en el historial. Antes guarda una foto de respaldo, así que se puede volver atrás.</p>
-    ${cfg('ceroDesde') ? `<div class="small mb" style="color:var(--ok)">✓ Último arranque de cero: ${new Date(cfg('ceroDesde')).toLocaleString('es-UY')}</div>` : ''}
-    <div class="small mb">Ahora hay: <b>${c0.pendiente}</b> pendientes · <b>${c0.guardado}</b> guardados · <b>${c0.listo}</b> listos</div>
-    <button class="b dan" data-act="empezarCero"${c0.total ? '' : ' disabled'}>🧹 Marcar los ${c0.total} como enviados</button>`;
-  const viejo = hayV71();
-  $('#cf-viejo-card').hidden = !viejo;
-  if (viejo) $('#cf-viejo').innerHTML = `<p class="small muted mb">Las claves de pedidos-live.html v71 siguen guardadas por seguridad${cfg('migradoV71') ? ' (migradas el ' + fechaUY(String(cfg('migradoV71')).slice(0, 10)) + ')' : ''}. Cuando confirmes que todo está bien, borralas para liberar espacio. Los datos de Stock v5 los limpia Emma Gestión.</p>
-    <div class="row"><button class="b sm" data-act="reBackupViejo">⬇️ Bajar backup v71/v5</button><button class="b sm dan" data-act="borrarViejo">🗑️ Borrar datos v71</button></div>`;
-}
-// ── Espacio: qué ocupa cuánto y cómo liberarlo ──
-const tam = keys => keys.reduce((s, k) => { const v = localStorage.getItem(k); return s + (v == null ? 0 : k.length + v.length); }, 0);
-const mbTxt = n => (n / 1e6).toLocaleString('es-UY', { maximumFractionDigits: 2, minimumFractionDigits: 2 }) + ' MB';
-const MESES_ARCH = { 1: '1 mes', 2: '2 meses', 3: '3 meses', 6: '6 meses' };
-function livesArchivables(meses) {
-  const corte = sumarDias(hoyISO(), -Math.round(meses * 30.4));
-  const act = liveActual();
-  return DB.lives.filter(l => l.id !== act.id && l.fecha <= corte && l.pedidos.some(p => ['enviado', 'liberado', 'abandonado'].includes(p.estado)));
-}
-function espacioDetalleHTML() {
-  const deshacer = tam(['emma_deshacer']), resp = tam(['emma_respaldos']), v71 = tam(V71_KEYS), v5 = tam(V5_KEYS);
-  const trabajo = tam(['emma_clientes', 'emma_lives', 'emma_mostrador', 'emma_config']), stock = tam(['emma_stock', 'emma_movimientos', 'emma_compras']);
-  const fila = (txt, n, btn) => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--bd)"><span class="grow small" style="flex:1">${txt}</span><span class="mono small">${mbTxt(n)}</span>${btn || ''}</div>`;
-  const m = UI.archMeses || 3, arch = livesArchivables(m);
-  const nPed = arch.reduce((s, l) => s + l.pedidos.filter(p => ['enviado', 'liberado', 'abandonado'].includes(p.estado)).length, 0);
-  return `<div class="sec-t mt" style="margin-top:14px">Qué ocupa el espacio</div>
-    ${fila('Clientas, lives y pedidos', trabajo)}
-    ${fila('Stock, movimientos y compras', stock)}
-    ${resp ? fila('📸 Fotos de respaldo viejas (se pasan solas a la memoria aparte)', resp) : ''}
-    ${fila('↩️ Copia para "Deshacer fusión"', deshacer, deshacer ? '<button class="b sm" data-act="borrarDeshacer">Borrar</button>' : '')}
-    ${fila('🧓 Datos de la v71 (incluye su copia lives_backup)', v71, v71 ? '<button class="b sm" data-act="borrarViejo">Borrar</button>' : '')}
-    ${v5 ? fila('🧓 Datos Stock v5 (los limpia Emma Gestión)', v5) : ''}
-    <div class="sec-t" style="margin-top:16px">📦 Archivar lives viejos</div>
-    <p class="small muted mb">Saca de la memoria el detalle de los pedidos ya cerrados (enviados, liberados, abandonados) de lives viejos. <b>El historial ✅|❌ y las deudas de cada clienta quedan igual</b>, y cada live guarda su resumen (cantidad y totales). Los pedidos pendientes, listos o guardados no se tocan. Antes se descarga un backup completo con todo el detalle.</p>
-    <div class="row"><span class="small">Lives de hace más de</span><select data-chg="archMeses" style="width:auto">${Object.entries(MESES_ARCH).map(([k, v]) => `<option value="${k}"${+k === m ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
-    <div class="small mt">${arch.length ? `Se archivarían <b>${arch.length}</b> lives con <b>${nPed}</b> pedidos cerrados.` : 'No hay lives para archivar con ese plazo.'}</div>
-    <button class="b dan mt" data-act="archivar"${arch.length ? '' : ' disabled'}>📦 Archivar</button>`;
-}
-function archivarLives(meses) {
-  const ls = livesArchivables(meses);
-  if (!ls.length) return;
-  const nPed = ls.reduce((s, l) => s + l.pedidos.filter(p => ['enviado', 'liberado', 'abandonado'].includes(p.estado)).length, 0);
-  if (!confirm(`¿Archivar ${ls.length} lives (${nPed} pedidos cerrados)?\n\nPrimero se descarga un backup completo con todo el detalle. El historial de cada clienta queda igual.`)) return;
-  exportarBackup();
-  const antes = tam(KEYS);
-  for (const l of ls) {
-    const r = l.resumen || { pedidos: 0, prendas: 0, prendasManuales: 0, enviados: { n: 0, total: 0 }, liberados: { n: 0, total: 0 }, abandonados: { n: 0, total: 0 } };
-    const quedan = [];
-    for (const p of l.pedidos) {
-      if (!['enviado', 'liberado', 'abandonado'].includes(p.estado)) { quedan.push(p); continue; }
-      if (p.cambio) continue;
-      const t = calc(p), c = cliById(p.clienteId);
-      const tipo = p.estado === 'enviado' ? 'ok' : p.estado;
-      if (c) {
-        const h = { tipo, fecha: p.fechas.creado || l.fecha, total: t.total, cantidad: t.art, ref: '#' + p.num + ' · ' + l.nombre, archivado: true };
-        if (tipo !== 'ok') h.saldado = tipo === 'abandonado' ? true : !!p.deudaSaldada; // abandonado cuenta ❌ sin alerta de deudora
-        c.historialViejo = c.historialViejo || [];
-        c.historialViejo.push(h);
-      }
-      const k = { enviado: 'enviados', liberado: 'liberados', abandonado: 'abandonados' }[p.estado];
-      r[k].n++; r[k].total += t.total;
-      r.pedidos++; r.prendas += t.art; r.prendasManuales += p.prendas.filter(x => !x.stockId).reduce((s, x) => s + (x.qty || 1), 0);
-    }
-    l.pedidos = quedan;
-    l.archivado = true;
-    l.resumen = r;
-  }
-  guardar();
-  toast(`📦 ${ls.length} lives archivados · se liberaron ${mbTxt(Math.max(0, antes - tam(KEYS)))}`, 4000);
-  render();
-}
-function contarCero() {
-  const r = { pendiente: 0, guardado: 0, listo: 0, total: 0 };
-  for (const p of todosPedidos()) if (r[p.estado] !== undefined) { r[p.estado]++; r.total++; }
-  return r;
-}
-/** Arranque de cero: todo lo pendiente/guardado/listo pasa a enviado (con foto de respaldo antes). */
-function empezarCero() {
-  const c0 = contarCero();
-  if (!c0.total) return;
-  if (!confirm(`¿Marcar como ENVIADOS ${c0.total} pedidos?\n\n${c0.pendiente} pendientes · ${c0.guardado} guardados · ${c0.listo} listos\n\nDejan de aparecer en Guardados y en Salidas. Antes se guarda una foto de respaldo (⚙️ Config → Recuperar).`)) return;
-  tomarRespaldo('Antes de "Empezar de cero"');
-  for (const l of DB.lives) for (const p of l.pedidos) {
-    if (!['pendiente', 'guardado', 'listo'].includes(p.estado)) continue;
-    setEstado(p, 'enviado', l.fecha || hoyISO());
-    delete p.salioCon;
-  }
-  guardar();
-  saveConfig({ ceroDesde: ahoraISO() });
-  UI.salida = null; UI.cargaId = null;
-  toast(`✓ ${c0.total} pedidos marcados como enviados. Arrancás de cero.`);
-  render();
+  const ng = Object.assign({}, NEGOCIO_DEF, cfg('negocio') || {});
+  for (const k of ['nombre', 'marca', 'tel', 'rut', 'ciudad']) { const el = $('#cf-ng-' + k); if (el && !el.matches(':focus')) el.value = ng[k] || ''; }
+  if (!$('#cf-extra').matches(':focus')) $('#cf-extra').value = extraCobroCadete();
+  if (!$('#cf-cuentas').matches(':focus')) $('#cf-cuentas').value = cuentasPago().join('\n');
 }
 function guardarConfigUI() {
-  saveConfig({ msgPago: $('#cf-pago').value, msgAviso1: $('#cf-av1').value, msgAviso2: $('#cf-av2').value, tarifaEnvio: num($('#cf-tarifa').value) || 250, formatoImpresion: $('#cf-formato').value });
+  const patch = { msgPago: $('#cf-pago').value, msgAviso1: $('#cf-av1').value, msgAviso2: $('#cf-av2').value, tarifaEnvio: num($('#cf-tarifa').value) || NEGOCIO_DEF.tarifaEnvio, formatoImpresion: $('#cf-formato').value };
+  // Datos del negocio: solo se escribe lo que cambió (así no se copian a la base valores que no se tocaron)
+  const ng = Object.assign({}, cfg('negocio') || {}); let cambioNg = false;
+  for (const k of ['nombre', 'marca', 'tel', 'rut', 'ciudad']) { const v = $('#cf-ng-' + k).value.trim(); if (v !== String(negocio(k) || '')) { ng[k] = v; cambioNg = true; } }
+  if (cambioNg) patch.negocio = ng;
+  const extra = $('#cf-extra').value.trim();
+  if (extra !== '' && num(extra) !== extraCobroCadete()) patch.extraCobroCadete = Math.max(0, num(extra));
+  const ctas = [...new Set($('#cf-cuentas').value.split('\n').map(x => x.trim()).filter(Boolean))];
+  if (ctas.length && ctas.join('\n') !== cuentasPago().join('\n')) {
+    if (!confirm('¿Cambiar las cuentas de cobro?\n\n' + ctas.join(' · ') + '\n\nMabel también usa esta lista.')) return;
+    patch.cuentasPago = ctas;
+  }
+  saveConfig(patch);
   $('#cf-ok').textContent = '✓ Guardado';
   setTimeout(() => $('#cf-ok').textContent = '', 2000);
 }
@@ -2419,25 +1834,7 @@ function exportarBackup() {
   // Exporta lo que está en pantalla (memoria), no lo guardado: así nunca sale una copia vieja.
   descargar(JSON.stringify({ app: 'emma', tipo: 'backup-completo', version: 1, fecha: ahoraISO(), datos: datosMemoria() }, null, 1), 'Emma_backup_' + hoyISO() + '.json', 'application/json');
 }
-function importarBackup(file) {
-  const r = new FileReader();
-  r.onload = async e => {
-    try {
-      const b = JSON.parse(e.target.result);
-      if (b.app !== 'emma' || !b.datos || !b.datos.emma_lives) throw new Error('formato');
-      const d = b.datos, live = (d.emma_lives || []).slice(-1)[0];
-      if (!confirm(`¿Importar el backup del ${new Date(b.fecha).toLocaleString('es-UY')}?\n\n${(d.emma_clientes || []).length} clientas · ${(d.emma_lives || []).length} lives · ${(d.emma_stock || []).length} artículos${live ? '\nÚltimo live: ' + live.nombre + ' (' + (live.pedidos || []).length + ' pedidos)' : ''}\n\nEsto REEMPLAZA todos los datos actuales. Antes se saca una foto de cómo está ahora.`)) return;
-      const txt = {}; for (const k of KEYS) if (d[k] !== undefined) txt[k] = JSON.stringify(d[k]);
-      if (!entraEnMemoria(txt)) return alert('⚠️ Ese backup no entra en la memoria (pasaría los 5 MB). Liberá espacio y probá de nuevo.');
-      await tomarRespaldo('Antes de importar un backup');
-      if (MODO_NUBE) { aplicarDatosEnMemoria(d); toast('✓ Backup cargado; subiendo a la nube…', 4000); }
-      else { for (const k in txt) localStorage.setItem(k, txt[k]); location.reload(); }
-    } catch (err) { alert('Ese archivo no es un backup válido de Emma Pedidos.'); }
-    $('#cf-imp').value = '';
-  };
-  r.readAsText(file);
-}
-// ── Fotos de respaldo: van a IndexedDB (aparte de los 5 MB). Se sacan de lo que está en memoria. ──
+// ── Fotos de este equipo (IndexedDB). Solo se descargan: nunca se suben a la base. ──
 const RESP_MAX = { auto: 12, manual: 8 };
 let _idb = null;
 function idb() {
@@ -2490,28 +1887,11 @@ async function tomarRespaldo(motivo, auto) {
     return false;
   }
 }
-/** Pasa las fotos viejas (guardadas en localStorage) a IndexedDB. */
-async function migrarRespaldosViejos(str) {
-  try {
-    const arr = JSON.parse(str || localStorage.getItem('emma_respaldos') || '[]');
-    for (const r of arr) {
-      if (!r || !r.datos) continue;
-      const tamTot = Object.values(r.datos).reduce((a, v) => a + String(v || '').length, 0);
-      await guardarFoto({ id: 'v' + new Date(r.fecha).getTime().toString(36) + Math.random().toString(36).slice(2, 4), fecha: r.fecha, motivo: r.motivo || 'Foto vieja', auto: false, tam: tamTot, resumen: '' }, r.datos);
-    }
-    return true;
-  } catch (e) { console.error(e); return false; }
-}
-async function migrarRespaldosAlInicio() {
-  const v = localStorage.getItem('emma_respaldos');
-  if (!v) return;
-  if (await migrarRespaldosViejos(v)) { localStorage.removeItem('emma_respaldos'); anotarEspacio('emma_respaldos', null); actualizarAvisos(); }
-}
 async function renderRespaldos() {
   const el = $('#cf-resp'); if (!el) return;
   let rs;
-  try { rs = await respaldosMeta(); } catch (e) { el.innerHTML = '<div class="alert li">⚠️ Este navegador no deja guardar fotos de respaldo. Usá Exportar backup seguido.</div>'; return; }
-  el.innerHTML = rs.length ? rs.map(r => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--bd)"><span class="grow small" style="flex:1">${r.auto ? '🕒' : '📸'}${r.origen === 'gestion' ? ' <span class="chip">Gestión</span>' : ''} <b>${new Date(r.fecha).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}</b> · ${esc(r.motivo)}<br><span class="muted">${esc(r.resumen || '')}</span></span><button class="b sm gh" data-act="bajarFoto" data-id="${esc(r.id)}" title="Descargar como archivo">⬇️</button><button class="b sm" data-act="recuperar" data-id="${esc(r.id)}">↩️ Recuperar</button></div>`).join('')
+  try { rs = await respaldosMeta(); } catch (e) { el.innerHTML = '<div class="alert li">⚠️ Este navegador no deja guardar fotos. Usá Exportar todos los datos.</div>'; return; }
+  el.innerHTML = rs.length ? rs.map(r => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--bd)"><span class="grow small" style="flex:1">${r.auto ? '🕒' : '📸'}${r.origen === 'gestion' ? ' <span class="chip">Gestión</span>' : ''} <b>${new Date(r.fecha).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}</b> · ${esc(r.motivo)}<br><span class="muted">${esc(r.resumen || '')}</span></span><button class="b sm" data-act="bajarFoto" data-id="${esc(r.id)}" title="Descargar como archivo">⬇️ Descargar</button></div>`).join('')
     + `<div class="row mt"><span class="grow"></span><button class="b sm gh" data-act="borrarRespaldos">🗑️ Borrar todas las fotos</button></div>`
     : '<div class="small muted">Todavía no hay fotos. La primera se saca sola en unos minutos.</div>';
 }
@@ -2523,45 +1903,12 @@ async function bajarFoto(id) {
   const f = new Date(m ? m.fecha : Date.now());
   descargar(JSON.stringify({ app: 'emma', tipo: 'backup-completo', version: 1, fecha: m ? m.fecha : ahoraISO(), datos }), 'Emma_foto_' + localISO(f) + '_' + pad2(f.getHours()) + pad2(f.getMinutes()) + '.json', 'application/json');
 }
-async function recuperarRespaldo(id) {
-  const m = (await respaldosMeta()).find(x => x.id === id), r = await leerFoto(id);
-  if (!r || !m) return toast('No se encontró esa foto');
-  if (!confirm(`¿Volver a la foto del ${new Date(m.fecha).toLocaleString('es-UY')}?\n(${m.motivo}${m.resumen ? ' · ' + m.resumen : ''})\n\nSe reemplazan clientas, lives, stock y ventas por los de ese momento. Antes se saca una foto de cómo está ahora, así que se puede deshacer.`)) return;
-  if (!entraEnMemoria(r.datos)) return alert('⚠️ Esa foto no entra en la memoria (pasaría los 5 MB). Liberá espacio (archivá lives viejos o borrá la v71) y probá de nuevo.');
-  await tomarRespaldo('Antes de recuperar una foto');
-  if (MODO_NUBE) { const d = {}; for (const k of KEYS) if (r.datos[k] != null) d[k] = JSON.parse(r.datos[k]); aplicarDatosEnMemoria(d); toast('✓ Foto recuperada; subiendo a la nube…', 4000); return; }
-  try { for (const k of KEYS) if (r.datos[k] != null) localStorage.setItem(k, r.datos[k]); }
-  catch (e) { return alert('⚠️ No entra en la memoria: liberá espacio (archivá lives o borrá la v71) y probá de nuevo.'); }
-  location.reload();
-}
-/** Modo nube: reemplaza lo que hay en memoria por un backup o foto y lo sube. */
-function aplicarDatosEnMemoria(d) {
-  if (d.emma_clientes) DB.clientes = d.emma_clientes;
-  if (d.emma_lives) DB.lives = d.emma_lives;
-  if (d.emma_stock) DB.stock = d.emma_stock;
-  if (d.emma_movimientos) DB.movimientos = d.emma_movimientos;
-  if (d.emma_mostrador) DB.mostrador = d.emma_mostrador;
-  if (d.emma_config) DB.config = d.emma_config;
-  if (d.emma_paquetes) DB.paquetes = d.emma_paquetes;
-  if (d.emma_pagos) DB.pagos = d.emma_pagos;
-  nubeCambioTodo(); render();
-}
-/** ¿Entran estos datos (claves → texto) en lugar de los actuales sin pasar el límite? */
-function entraEnMemoria(datos) {
-  if (MODO_NUBE) return true;
-  let n = ESP.total;
-  for (const k of KEYS) if (datos[k] != null) n += -(ESP.tam[k] || 0) + k.length + String(datos[k]).length;
-  return n < 4.9e6;
-}
 
 // ─── 14. ACCIONES (eventos delegados: los botones pasan IDs, nunca nombres) ───
 const ACT = {
   tab: d => setTab(d.t),
   closeModal: () => closeModal(),
-  reBackupViejo: () => backupViejo(),
-  deshacerFusion: () => deshacerFusion(),
   bbNuevo: () => { UI.cargaId = null; setTab('live'); setTimeout(() => { $('#cpl-in').focus(); $('#np-card').scrollIntoView({ block: 'start' }); }, 30); },
-  bbScan: () => { setTab('despacho'); setTimeout(() => { const el = $('#dsp-q'); if (el) el.focus(); }, 30); },
   // Live
   nuevoLive: () => nuevoLive(),
   cpPick: d => cpPick(d.px, +d.i),
@@ -2612,13 +1959,10 @@ const ACT = {
     }
     p.cobroEnvio = d.v; saveLives(); render();
   },
-  copiarGrisal: () => copiarGrisal(),
-  copiarSalidaGrisal: d => copiarSalidaGrisal(d.k),
   quitarSaldo: d => { const p = pedById(d.id); devolverSaldo(p); p.saldoQuitado = true; guardar(); render(); },
   aplicarSaldo: d => { const p = pedById(d.id); p.saldoQuitado = false; recalcSaldo(p); guardar(); render(); },
   waPedido: d => { const p = pedById(d.id), c = cliById(p.clienteId); if (!p.prendas.length) return toast('Agregá prendas primero'); if (!c.tel && !pedirTel(c)) return; abrirWA(cliById(p.clienteId).tel, mensajePedido(p)); render(); },
   previewMsg: d => { UI.preview.has(d.id) ? UI.preview.delete(d.id) : UI.preview.add(d.id); render(); },
-  etqPedido: d => imprimir(hojasHTML([etqHTML(pedById(d.id))]), 'etiquetas'),
   etqCadete: d => imprimir(hojasHTML([etqCadeteHTML(pedById(d.id))]), 'etiquetas'),
   verFicha: d => verFicha(d.cid),
   editNom: d => { UI.editNom.has(d.id) ? UI.editNom.delete(d.id) : UI.editNom.add(d.id); render(); setTimeout(() => $('#en-' + d.id) && $('#en-' + d.id).focus(), 20); },
@@ -2664,34 +2008,23 @@ const ACT = {
   },
   waCli: d => abrirWA(cliById(d.cid).tel, ''),
   eliminarDuplicadas: () => {
-    snapshotDeshacer('🧹 Eliminar duplicadas');
+    const gs = gruposDuplicadas();
+    if (!gs.length) return toast('✓ No hay duplicadas por teléfono');
+    const fichas = gs.reduce((s, g) => s + g.otras.length, 0);
+    showModal(`<h3>🧹 Eliminar duplicadas</h3>
+      <div class="alert pe">Se van a juntar <b>${fichas}</b> ficha${fichas > 1 ? 's' : ''} dentro de <b>${gs.length}</b> clienta${gs.length > 1 ? 's' : ''} (mismo teléfono). Los pedidos pasan a la ficha que queda. <b>No se puede deshacer.</b></div>
+      <div class="box mt" style="max-height:260px;overflow-y:auto">${gs.map(g => `<div class="small" style="padding:3px 0"><b>${esc(g.keep.nombre)}</b> <span class="muted">← ${esc(g.otras.map(o => o.nombre).join(', '))}</span></div>`).join('')}</div>
+      <div class="row mt"><button class="b gh" data-act="closeModal">Cancelar</button><span class="grow"></span><button class="b dan" data-act="duplicadasOk">🧹 Juntar ${fichas}</button></div>`);
+  },
+  duplicadasOk: () => {
     const res = fusionarDuplicadas();
-    if (!res.length) { localStorage.removeItem('emma_deshacer'); return toast('✓ No hay duplicadas por teléfono'); }
-    guardar();
-    showModal(`<h3>🧹 Duplicadas eliminadas</h3>${resumenFusionHTML(res)}<div class="row mt"><button class="b dan" data-act="deshacerFusion">↩️ Deshacer</button><span class="grow"></span><button class="b pri" data-act="closeModal">Listo</button></div>`);
+    guardar(); closeModal();
+    if (res.length) toast(`✓ ${res.length} clienta${res.length > 1 ? 's' : ''} sin duplicadas`);
     render();
   },
   // Guardados
   aviso: d => enviarAviso(pedById(d.id), d.t),
   abandonar: d => { const p = pedById(d.id); if (!confirm(`¿Marcar #${p.num} como abandonado? La ropa vuelve al stock y cuenta como ❌ (sin alerta de deudora).`)) return; setEstado(p, 'abandonado'); guardar(); render(); },
-  // Salidas
-  salTipo: d => iniciarSalida(d.t),
-  nuevaSalida: () => { UI.salida = null; $('#sal-cierre').innerHTML = ''; $('#scan-res').innerHTML = ''; render(); },
-  salJuntos: d => { const p = pedById(d.id); const otros = todosPedidos().filter(x => x.clienteId === p.clienteId && x.id !== p.id && sinSalir(x)); closeModal(); despachar(p, otros); },
-  salSolo: d => { closeModal(); despachar(pedById(d.id), []); },
-  // Salida manual (sin lector): un clic por clienta, por pedido o todos juntos
-  salManual: d => salidaManual(d.cid),
-  salUno: d => { const p = pedById(d.id); if (p && sinSalir(p)) despachar(p, [], true); },
-  salTodos: () => {
-    const s = UI.salida; if (!s) return;
-    const enLista = new Set(s.esperados.concat(s.escaneados).map(pedById).filter(Boolean).map(p => p.clienteId));
-    const cids = [...enLista].filter(cid => todosPedidos().some(p => p.clienteId === cid && sinSalir(p)));
-    if (!cids.length) return;
-    if (!confirm(`¿Dar salida a las ${cids.length} clientas de la lista? (con todos sus pedidos pendientes y guardados)`)) return;
-    cids.forEach(salidaManual);
-  },
-  cerrarSalida: () => cerrarSalida(),
-  imprimirHoja: () => imprimir(hojaCadeteHTML(UI.salida, false), 'hoja'),
   // Mostrador
   mosModo: d => { UI.mos.modo = d.m; render(); },
   mvMedio: d => { UI.mos.medio = d.m; render(); },
@@ -2706,33 +2039,20 @@ const ACT = {
   cobrarVenta: () => cobrarVenta(),
   mvNueva: () => { $('#mv-boleta').innerHTML = ''; UI.mos.cli = null; render(); $('#cpm-in').focus(); },
   boletaWA: d => { const v = DB.mostrador.find(x => x.id === d.id), c = cliById(v.clienteId); if (!c.tel && !pedirTel(c)) return; abrirWA(c.tel, textoBoleta(v)); },
-  boletaPrint: d => { const v = DB.mostrador.find(x => x.id === d.id); imprimir(`<div class="boleta"><b style="font-size:14pt">🧾 Emma Indumentaria</b><div>${fechaUY(v.fecha)}</div><table class="mt">${v.prendas.map(pr => `<tr><td>${esc(pr.nombre)}${pr.qty > 1 ? ' x' + pr.qty : ''}</td><td style="text-align:right">${pr.precioLista > pr.precio ? '<s>' + fmt(pr.precioLista * pr.qty) + '</s> ' : ''}${fmt(pr.precio * pr.qty)}</td></tr>`).join('')}</table><hr><div style="font-size:14pt"><b>Total: ${fmt(v.total)}</b></div><div>Pagado en ${esc(v.medio)} ✓</div><div style="margin-top:3mm">¡Gracias! 💛</div><div style="font-size:8pt;margin-top:2mm">Comprobante interno, no es factura</div></div>`, 'boleta'); },
+  boletaPrint: d => { const v = DB.mostrador.find(x => x.id === d.id); imprimir(`<div class="boleta"><b style="font-size:14pt">🧾 ${esc(negocio('nombre'))}</b><div>${fechaUY(v.fecha)}</div><table class="mt">${v.prendas.map(pr => `<tr><td>${esc(pr.nombre)}${pr.qty > 1 ? ' x' + pr.qty : ''}</td><td style="text-align:right">${pr.precioLista > pr.precio ? '<s>' + fmt(pr.precioLista * pr.qty) + '</s> ' : ''}${fmt(pr.precio * pr.qty)}</td></tr>`).join('')}</table><hr><div style="font-size:14pt"><b>Total: ${fmt(v.total)}</b></div><div>Pagado en ${esc(v.medio)} ✓</div><div style="margin-top:3mm">¡Gracias! 💛</div><div style="font-size:8pt;margin-top:2mm">Comprobante interno, no es factura</div></div>`, 'boleta'); },
   registrarCambio: () => registrarCambio(),
   // Config
   guardarConfig: () => guardarConfigUI(),
   exportarBackup: () => exportarBackup(),
-  recuperar: d => recuperarRespaldo(d.id),
   bajarFoto: d => bajarFoto(d.id),
-  copiaEmergencia: () => descargarCopiaEmergencia(),
-  irLiberar: () => { closeModal(); setTab('config'); setTimeout(() => { const el = $('#cf-espacio'); if (el) el.scrollIntoView({ block: 'start' }); }, 40); },
-  tomarPestana: () => tomarPestana(),
-  empezarCero: () => empezarCero(),
   borrarRespaldos: async () => {
-    if (!confirm('¿Borrar todas las fotos de respaldo?\n\nNo ocupan los 5 MB, así que borrarlas no libera esa memoria. Solo hacelo si sabés que no las necesitás.')) return;
+    if (!confirm('¿Borrar todas las fotos de este equipo?\n\nLos datos de la base no se tocan.')) return;
     try { await idbTx(['meta', 'datos'], 'readwrite', tx => { tx.objectStore('meta').clear(); tx.objectStore('datos').clear(); }); } catch (e) { /* nada */ }
-    localStorage.removeItem('emma_respaldos'); toast('✓ Fotos borradas'); render();
+    toast('✓ Fotos borradas'); render();
   },
-  borrarDeshacer: () => { if (!confirm('¿Borrar la copia para deshacer la última fusión?\n\nSolo hacelo si ya revisaste que las clientas fusionadas están bien.')) return; localStorage.removeItem('emma_deshacer'); toast('✓ Copia borrada'); render(); },
-  archivar: () => archivarLives(UI.archMeses || 3),
-  borrarViejo: () => {
-    if (!confirm('¿Borrar los datos de pedidos-live.html v71 de este navegador?\n\nAntes se descarga un backup por las dudas.')) return;
-    backupViejo();
-    V71_KEYS.forEach(k => localStorage.removeItem(k));
-    toast('✓ Datos v71 borrados'); render();
-  }
+  tomarPestana: () => tomarPestana()
 };
 const CHG = {
-  cambiarLive: (d, el) => { saveConfig({ liveActualId: el.value }); UI.cargaId = null; UI.abiertos.clear(); render(); },
   fechaPago: (d, el) => { liveActual().fechaPago = el.value.trim(); saveLives(); toast('✓ Fecha de pago guardada'); },
   descLive: (d, el) => { const l = liveActual(); l.descuento = Math.max(0, Math.min(100, num(el.value))); l.pedidos.forEach(recalcSaldo); guardar(); render(); },
   descPedido: (d, el) => { const p = pedById(d.id); p.descuento = el.value.trim() === '' ? null : Math.max(0, Math.min(100, num(el.value))); recalcSaldo(p); guardar(); render(); },
@@ -2744,16 +2064,13 @@ const CHG = {
     }
     const c = c0; const ch = {}; ch[d.f] = el.value; editarClienta(c, ch); if (d.f === 'agencia') render(); },
   cobroMonto: (d, el) => { const p = pedById(d.id); if (!(num(el.value) > 0)) { alert('⚠️ El monto tiene que ser mayor a 0 (si no cobra nada, usá "Envío pago").'); el.value = p.cobroMonto || ''; return; } p.cobroMonto = num(el.value); saveLives(); render(); },
-  archMeses: (d, el) => { UI.archMeses = +el.value; render(); },
-  importarCSV: (d, el) => el.files[0] && importarCSVClientes(el.files[0]),
-  importarBackup: (d, el) => el.files[0] && importarBackup(el.files[0])
+  importarCSV: (d, el) => el.files[0] && importarCSVClientes(el.files[0])
 };
 const INP = {
   mcMonto: el => { UI.cam.monto = el.value; },
   cdCampo: el => { const x = UI.cadDraft[el.dataset.id]; if (x) x[el.dataset.f] = el.value; },
   filtroLive: el => { UI.filtroLive = el.value; renderPedidos(); },
-  filtroClientes: el => { UI.filtroCl = el.value; renderClientes(); },
-  buscarCodigo: () => renderBuscarCodigo()
+  filtroClientes: el => { UI.filtroCl = el.value; renderClientes(); }
 };
 
 document.addEventListener('click', e => {
@@ -2797,25 +2114,15 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { sug.classList.remove('on'); return; }
   }
   if (el.dataset.cptel && e.key === 'Enter') { e.preventDefault(); return cpCrear(el.dataset.cptel); }
-  if (el.id === 'scan-in' && e.key === 'Enter') { e.preventDefault(); const v = el.value; el.value = ''; return procesarScan(v); }
   if (el.matches('.pc-b input') && e.key === 'Enter' && el.id.startsWith('e')) { const id = el.id.slice(3); if (UI.editNom.has(id)) { e.preventDefault(); ACT.guardarNomTel({ id }); } }
   if (e.key === 'Enter' && el.dataset.chg) el.blur();
 });
-// Si Emma Gestión cambia stock o config en otra pestaña, nos enteramos.
+// Una sola pestaña: si se abre otra, esta se bloquea (los datos llegan de la nube, no de localStorage).
 window.addEventListener('storage', e => {
-  if (e.key) anotarEspacio(e.key, e.newValue);
-  if (e.key === TAB_KEY) {
-    if (TAB.bloqueada && TAB.motivo === 'otra' && !e.newValue) { tomarPestana(); return; } // se cerró la otra: esta se activa
-    const t = leerTab();
-    if (!TAB.bloqueada && t && t.id !== TAB.id) bloquearPestana('tomada');
-    return;
-  }
-  if (TAB.bloqueada) return;
-  if (!e.key || !e.key.startsWith('emma_')) return;
-  if (e.key === 'emma_stock' || e.key === 'emma_movimientos') reloadStock();
-  else if (e.key === 'emma_config') DB.config = leer('emma_config', {});
-  else if (e.key === 'emma_clientes' || e.key === 'emma_lives' || e.key === 'emma_mostrador') cargarDB();
-  render();
+  if (e.key !== TAB_KEY) return;
+  if (TAB.bloqueada && TAB.motivo === 'otra' && !e.newValue) { tomarPestana(); return; } // se cerró la otra: esta se activa
+  const t = leerTab();
+  if (!TAB.bloqueada && t && t.id !== TAB.id) bloquearPestana('tomada');
 });
 window.addEventListener('afterprint', () => { $('#print-area').innerHTML = ''; });
 
@@ -2854,30 +2161,20 @@ function init() {
   setInterval(latido, 5000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) latido(); });
   window.addEventListener('pagehide', () => { const x = leerTab(); if (!TAB.bloqueada && x && x.id === TAB.id) localStorage.removeItem(TAB_KEY); });
-  medirEspacio();
-  if (MODO_NUBE) { iniciarNube(); return; }
-  iniciarApp();
+  iniciarNube();
 }
 /** Arranca la app con los datos ya en memoria (en modo nube, después de traerlos). */
 function iniciarApp() {
   montarComponentes();
-  cargarDB();
-  migrarRespaldosAlInicio().then(() => {
-    // Foto al abrir (si la última tiene más de una hora) y después cada 10 minutos si hubo cambios
-    respaldosMeta().then(rs => { if (!rs.length || Date.now() - new Date(rs[0].fecha) > 3600e3) tomarRespaldo('Al abrir la app', true); }).catch(() => {});
-  });
+  // Foto al abrir (si la última tiene más de una hora) y después cada 10 minutos si hubo cambios
+  respaldosMeta().then(rs => { if (!rs.length || Date.now() - new Date(rs[0].fecha) > 3600e3) tomarRespaldo('Al abrir la app', true); }).catch(() => {});
   setInterval(() => { if (!TAB.bloqueada && UI.cambiosSinFoto) tomarRespaldo('Automática', true); }, 10 * 60 * 1000);
-  setInterval(() => { medirEspacio(); actualizarAvisos(); }, 60000);
-  const sinDatos = !localStorage.getItem('emma_lives');
-  if (!MODO_NUBE && sinDatos && hayV71()) { iniciarMigracion(); return; }
   if (!DB.lives.length) {
     const h = hoyISO();
     DB.lives.push({ id: uid('l'), nombre: 'Live ' + fechaUY(h), fecha: h, fechaPago: '', descuento: 0, pedidoCounter: 0, pedidos: [] });
     saveLives();
-    if (!MODO_NUBE && !localStorage.getItem('emma_stock')) put('emma_stock', []);
   }
   render();
-  actualizarAvisos();
 }
 init();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -2892,6 +2189,5 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 <script src="pedidos4.js"></script>
 <script src="mabel.js"></script>
 <script src="mabeltab.js"></script>
-<script src="importar.js"></script>
 </body>
 </html>

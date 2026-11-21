@@ -224,9 +224,9 @@ renderLive = function () {
 
 // ─── Confirmación durante el live (28/10) ─────────────────────
 // Se manda cuando la clienta compra su primera prenda: SIN número de pedido ni total (puede seguir sumando). Una sola vez por clienta en el live.
-const CONF_MSG_DEF = 'Hola {nombre}! De Emma Indumentaria 💛 Te anotamos en el live, ¿me confirmás con un SÍ?';
+const CONF_MSG_DEF = 'Hola {nombre}! De {tienda} 💛 Te anotamos en el live, ¿me confirmás con un SÍ?';
 function primerNombreConf(n) { const w = String(n || '').trim().split(/\s+/)[0] || ''; return w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''; }
-function textoConfirmacion(c) { return (cfg('msgConfirmacion') || CONF_MSG_DEF).replace(/\{nombre\}/g, primerNombreConf(c.nombre)); }
+function textoConfirmacion(c) { return (cfg('msgConfirmacion') || CONF_MSG_DEF).replace(/\{nombre\}/g, primerNombreConf(c.nombre)).replace(/\{tienda\}/g, negocio('nombre')); }
 /** ¿Ya se le mandó la confirmación en este live? (cualquier pedido de la clienta en el mismo live) */
 function confirmacionEnviada(p) { return todosPedidos().some(x => x.clienteId === p.clienteId && x.liveId === p.liveId && x.confirmWA); }
 function confBtnHTML(p) {
@@ -324,7 +324,7 @@ function pintarFechaPago() {
   const l = liveActual(); if (!l) return;
   const d = box.querySelector('#live-fp-d'); if (document.activeElement !== d) d.value = l.fechaPagoISO || '';
   box.querySelector('#live-fp-t').innerHTML = l.fechaPagoISO
-    ? `La clienta ve: "Podés pagarlo hasta <b>${esc(l.fechaPago)}</b>". Se libera el ${fechaPagoTexto(sumarDias(l.fechaPagoISO, 1)).slice(3)} a las 16:00.`
+    ? `La clienta ve: "Podés pagarlo hasta <b>${esc(l.fechaPago)}</b>". Se libera el ${fechaPagoTexto(sumarDias(l.fechaPagoISO, 1)).slice(3)} a las ${CORTES.horaLiberar}:00.`
     : (l.fechaPago ? `Texto anterior: "${esc(l.fechaPago)}". Elegí la fecha para que "Para liberar" la use.` : 'Elegí hasta qué día pagan.');
 }
 const _renderLiveFP = renderLive;
@@ -358,7 +358,7 @@ async function enviarTotalesAPI() {
   if (typeof NUBE === 'undefined' || !NUBE.sb) return toast('Sin conexión con la nube');
   const lista = pendientesTotal(l), sinTel = lista.filter(p => !(cliById(p.clienteId) || {}).tel), ok = lista.filter(p => (cliById(p.clienteId) || {}).tel);
   if (!ok.length) return toast(sinTel.length ? `Quedan ${sinTel.length} sin teléfono` : 'No hay totales para mandar');
-  if (!confirm(`Se van a mandar ${ok.length} totales por WhatsApp desde el número de Emma (cuesta unos $0,45 cada uno).` + (sinTel.length ? `\n${sinTel.length} no tienen teléfono y quedan afuera.` : '') + '\n\n¿Mandar?')) return;
+  if (!confirm(`Se van a mandar ${ok.length} totales por WhatsApp desde el número de ${negocio('nombre')} (cuesta unos ${NEGOCIO_DEF.costoMensaje} cada uno).` + (sinTel.length ? `\n${sinTel.length} no tienen teléfono y quedan afuera.` : '') + '\n\n¿Mandar?')) return;
   const btn = document.getElementById('live-tot-api'); if (btn) btn.disabled = true;
   let bien = 0; const mal = [];
   for (let i = 0; i < ok.length; i += 15) {
@@ -435,14 +435,14 @@ renderLive = function () { _renderLive_sintel.apply(this, arguments); try { pint
 // Yanaina está atendiendo y números del equipo (esto último lo decide la función del servidor, que conoce MABEL_EQUIPO).
 // Una clienta con varios pedidos en la cola recibe UN solo mensaje: "pedido #12 y #15 por $X" (suma).
 const REC = {
-  1: { plantilla: 'emma_recordatorio_1', campo: 'recR1', nombre: 'R1', desde: 20, titulo: 'Último día para pagar' },
-  2: { plantilla: 'emma_recordatorio_2', campo: 'recR2', nombre: 'R2', desde: 10, titulo: 'Pagan hasta hoy 16:00' },
+  1: { plantilla: 'emma_recordatorio_1', campo: 'recR1', nombre: 'R1', desde: CORTES.horaR1, titulo: 'Último día para pagar' },
+  2: { plantilla: 'emma_recordatorio_2', campo: 'recR2', nombre: 'R2', desde: CORTES.horaR2, titulo: 'Pagan hasta hoy ' + CORTES.horaLiberar + ':00' },
 };
 const recFecha = t => t === 1 ? hoyISO() : sumarDias(hoyISO(), -1);
 /** ¿Se puede mandar ahora? Devuelve { ok, aviso, motivo }. Fuera de fecha no se manda; antes de la hora pedimos una confirmación extra. */
 function recVentana(t) {
   const h = new Date().getHours(), r = REC[t];
-  if (t === 2 && h >= (typeof HORA_LIBERAR === 'number' ? HORA_LIBERAR : 16)) return { ok: false, motivo: 'Pasaron las 16:00: el plazo ya venció, el R2 sería engañoso' };
+  if (t === 2 && h >= CORTES.horaLiberar) return { ok: false, motivo: `Pasaron las ${CORTES.horaLiberar}:00: el plazo ya venció, el R2 sería engañoso` };
   return { ok: true, aviso: h < r.desde ? `Todavía no son las ${r.desde}:00 (el horario previsto del ${r.nombre})` : '' };
 }
 function nombresPedidos(ps) {
@@ -567,7 +567,7 @@ function pintarRecordatorios() {
   }
   const t = bar.querySelector('#live-rec-t'); if (!t) return;
   const n1 = colaRecordatorio(1), n2 = colaRecordatorio(2);
-  t.textContent = `R1 (día de pago, 20:00): ${n1.lives.length ? '~' + n1.grupos.length + ' por avisar' : 'ningún live paga hoy'} · R2 (día siguiente, 10:00): ${n2.lives.length ? '~' + n2.grupos.length + ' por avisar' : 'ningún live pagó ayer'}`;
+  t.textContent = `R1 (día de pago, ${CORTES.horaR1}:00): ${n1.lives.length ? '~' + n1.grupos.length + ' por avisar' : 'ningún live paga hoy'} · R2 (día siguiente, ${CORTES.horaR2}:00): ${n2.lives.length ? '~' + n2.grupos.length + ' por avisar' : 'ningún live pagó ayer'}`;
 }
 const _pintarFP_rec = pintarFechaPago;
 pintarFechaPago = function () { _pintarFP_rec.apply(this, arguments); try { pintarRecordatorios(); } catch (e) { console.warn(e); } };

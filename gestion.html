@@ -383,6 +383,7 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 <script src="vendor/supabase-2.45.4.js"></script>
 <script src="vendor/qrcode-generator-1.4.4.js"></script>
 <script src="version.js"></script>
+<script src="negocio.js"></script>
 <script src="promos.js"></script>
 <script src="nube.js"></script>
 <script>
@@ -1433,14 +1434,14 @@ function pdfImportador(c) {
     let y;
     if (pi === 0) {
       rect(M, 806, R - M, 4, '0.91 0.73 0.29');
-      txt(M, 776, 'EMMA INDUMENTARIA', 20, true);
+      txt(M, 776, negocio('marca'), 20, true);
       txt(M, 757, 'Pedido de mercadería', 12, false, true);
       der(R, 776, fechaUY(c.fecha || hoyISO()), 12, true);
       der(R, 760, 'Fecha', 9, false, true);
       if (c.nombre) txt(M, 730, recortar(c.nombre, R - M, 11, true), 11, true);
       y = Y0 + 12;
     } else {
-      txt(M, 806, 'EMMA INDUMENTARIA · ' + recortar(c.nombre || 'Pedido', 330, 9, false), 9, false, true);
+      txt(M, 806, negocio('marca') + ' · ' + recortar(c.nombre || 'Pedido', 330, 9, false), 9, false, true);
       y = Y0b + 12;
     }
     // encabezado de tabla
@@ -1465,7 +1466,7 @@ function pdfImportador(c) {
       der(R - 8, y - 2, 'TOTAL  ' + plata(total) + ' ARS', 15, true);
     }
     der(R, 40, `Página ${pi + 1} de ${pags.length}`, 8.5, false, true);
-    txt(M, 40, 'Emma Indumentaria · Montevideo, Uruguay', 8.5, false, true);
+    txt(M, 40, negocio('nombre') + ' · ' + negocio('ciudad'), 8.5, false, true);
     return k.join('\n');
   });
   // armado del archivo
@@ -1511,7 +1512,7 @@ function exportCSV(src, tipo) {
   const fecha = c.fecha || hoyISO(), nom = nombreArchivo(c.nombre || 'Importacion_' + fecha);
   if (tipo === 'importador') {
     const bytes = pdfImportador(c);
-    compartirArchivo(bytes, 'Pedido_' + nom + '.pdf', 'application/pdf', (c.nombre || 'Pedido') + ' · Emma Indumentaria');
+    compartirArchivo(bytes, 'Pedido_' + nom + '.pdf', 'application/pdf', (c.nombre || 'Pedido') + ' · ' + negocio('nombre'));
   } else {
     const filas = [];
     if (c.tipo === 'local') {

@@ -115,20 +115,9 @@ function camEnDespacho() {
     buscarEnter();
   }, 'Apuntá al QR de la etiqueta (Emma o GrisalExpress)');
 }
-function camEnPagos() {
-  abrirCamara(t => {
-    const v = codigoLeido(t);
-    if (esGrisal(v)) return toast('Esa es la etiqueta de GrisalExpress: para pagos escaneá la de Emma', 4000);
-    const p = todosPedidos().find(x => x.codigo === v);
-    if (!p) { UI.pag.q = v; const q = $('#pg-q'); if (q) q.value = v; renderPagLista(); return toast('No hay un pedido con ese código', 3000); }
-    if (pagado(p)) { const c = cliById(p.clienteId) || { nombre: '?' }; return toast(`#${p.num} ${c.nombre} ya figura pagado${p.pago ? ' (' + p.pago.cuenta + ')' : ''}`, 4000); }
-    ACT.pagElegir({ id: p.id });
-  }, 'Apuntá al QR de la etiqueta del pedido');
-}
 const tactil = () => window.matchMedia && matchMedia('(pointer:coarse)').matches;
 Object.assign(ACT, {
   camDesp: () => camEnDespacho(),
-  camPag: () => camEnPagos(),
   camCerrar: () => cerrarCamara(),
   // Barra del celular: "Escanear" abre Despacho con la cámara directamente
   bbScan: () => { setTab('despacho'); if (tactil()) camEnDespacho(); else setTimeout(() => { const el = $('#dsp-q'); if (el) el.focus(); }, 30); }

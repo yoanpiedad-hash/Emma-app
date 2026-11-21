@@ -142,7 +142,7 @@ mensajePedido = function (p) {
   if (live && live.fechaPago) msg += `\n📅 Podés pagarlo hasta ${live.fechaPago}`;
   const pago = cfg('msgPago');
   if (pago) msg += '\n\n' + pago;
-  msg += '\n\n¡Gracias por elegir Emma Indumentaria! 💕';
+  msg += '\n\n¡Gracias por elegir ' + negocio('nombre') + '! 💕';
   return msg;
 };
 

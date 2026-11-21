@@ -89,7 +89,7 @@ function pagarCobro(k, cuenta, transf, origen) {
 }
 function textoCobro(k) {
   const c = cliById(k.clienteId) || { nombre: '' }, { ps, base } = totalCobro(k);
-  return `¡Hola ${c.nombre}! ¿Cómo estás? 😊\nTe paso el total de tus pedidos guardados:\n\n${ps.map(p => `- Pedido #${p.num}: ${fmt(calc(p).total)}`).join('\n')}${k.envio ? `\n- Envío por cadetería: ${fmt(k.envio)}` : ''}\n\n*Total: ${fmt(base + k.envio)}* ✅` + (cfg('msgPago') ? '\n\n' + cfg('msgPago') : '') + '\n\n¡Gracias por elegir Emma Indumentaria! 💕';
+  return `¡Hola ${c.nombre}! ¿Cómo estás? 😊\nTe paso el total de tus pedidos guardados:\n\n${ps.map(p => `- Pedido #${p.num}: ${fmt(calc(p).total)}`).join('\n')}${k.envio ? `\n- Envío por cadetería: ${fmt(k.envio)}` : ''}\n\n*Total: ${fmt(base + k.envio)}* ✅` + (cfg('msgPago') ? '\n\n' + cfg('msgPago') : '') + '\n\n¡Gracias por elegir ' + negocio('nombre') + '! 💕';
 }
 function modalCobro(cid) {
   const c = cliById(cid), ps = sinPagarDe(cid); if (!c) return;
@@ -128,13 +128,6 @@ function pintarAvisosMabel() {
   let el = document.getElementById('avisos-mabel');
   if (!el) { const a = document.getElementById('avisos'); if (!a) return; el = document.createElement('div'); el.id = 'avisos-mabel'; a.after(el); }
   const h = avisosMabelHTML(); if (el.innerHTML !== h) el.innerHTML = h;
-}
-function convsHTML() {
-  const cv = convActivas(); if (!cv.length) return '';
-  return `<div class="card mb"><div class="card-t">🤖 Para Yanaina (${cv.length})</div>${cv.map(v => { const c = v.clienteId && cliById(v.clienteId);
-    return `<div class="mb-k"><div class="row"><b class="grow" style="flex:1">${esc(c ? c.nombre : v.tel || v.id)}</b><span class="small muted">${fechaHoraCorta(v.desde)}</span></div>
-      <div class="small mt">${esc(v.motivo || 'Sin motivo')}</div>
-      <div class="row mt"><button class="b sm" data-act="convWA" data-id="${esc(v.id)}">💬 Abrir chat</button><button class="b sm ok" data-act="convDevolver" data-id="${esc(v.id)}">↩️ Devolver a Mabel</button><span class="small muted">vuelve sola a las 12 h</span></div></div>`; }).join('')}</div>`;
 }
 const fechaHoraCorta = iso => { const d = new Date(iso); return isNaN(d) ? '' : fechaUY(localISO(d), 1) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 function gspHTML() {
@@ -224,7 +217,7 @@ function pintarCfgMabel() {
   pintarHorariosRetiro();
   pintarIgnorados();
   $('#mb-dia').value = cfgN('diaOtrasAgencias', 'viernes');
-  if (a !== $('#mb-mp')) $('#mb-mp').value = cfgN('mpRecargo', 10);
+  if (a !== $('#mb-mp')) $('#mb-mp').value = cfgN('mpRecargo', NEGOCIO_DEF.mpRecargo);
   if (a !== $('#mb-gsp')) $('#mb-gsp').value = cfgN('guardarSinPagarDias', 30);
 }
 const _renderConfig = renderConfig;
@@ -255,7 +248,6 @@ Object.assign(ACT, {
   },
   cobroCuenta: d => { const k = DB.cobros.find(x => x.id === d.id); if (!k) return; const gs = pagarCobro(k, d.c); closeModal(); toast(`✓ Pagado por ${d.c}: ${gs.length} pedido(s)`); render(); },
   cobroAnular: d => { const k = DB.cobros.find(x => x.id === d.id); if (!k || !confirm('¿Anular este cobro agrupado? Los pedidos quedan como estaban.')) return; k.estado = 'anulado'; saveCobros(); render(); },
-  convWA: d => { const v = DB.conversaciones.find(x => x.id === d.id); if (v) abrirWA(v.tel || (cliById(v.clienteId) || {}).tel, ''); },
   convDevolver: d => { devolverAMabel(d.id); toast('↩️ Mabel vuelve a atender esa conversación'); render(); }
 });
 Object.assign(ACT, {
@@ -291,7 +283,7 @@ Object.assign(CHG, {
 // ─── Plazos: "Más plazo" y "Para liberar" (28/10) ─────────────
 // Más plazo = pasar el pedido a Guardado sin pagar con fecha límite (sirve también para clientas NO autorizadas: excepción puntual).
 // Para liberar = pedidos sin pagar con el plazo vencido. La app solo los marca: liberar es siempre con un toque de Yoan o Yanaina.
-const HORA_LIBERAR = 16;
+const HORA_LIBERAR = CORTES.horaLiberar;   // negocio.js
 const plazoPagoDias = () => Math.max(1, +cfgN('plazoPagoDias', 2) || 2);   // el pago es el día siguiente al live; se libera a las 16:00 del día después
 // Límite del pedido normal (31/10): el día SIGUIENTE a la fecha de pago del live, a las 16:00 (tolerancia que no se le dice a la clienta).
 // Lives viejos sin fecha real: como antes, creado + plazoPagoDias.
