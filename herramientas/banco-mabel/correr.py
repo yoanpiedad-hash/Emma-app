@@ -80,7 +80,7 @@ def correr_caso(c, tel, url, key, ausente):
             if p.get('comprobante'):
                 body['imagen_base64'] = base64.b64encode(comprobante_hoy(p['comprobante'], tel)).decode(); body['mime'] = 'image/jpeg'
             if c.get('fixture') and p is c['pasos'][0]: body['fixture'] = poner(c['fixture'], tel)
-            r = post(url, key, body); pasos.append(r); ultimo = r
+            r = post(url, key, body, intentos=1); pasos.append(r); ultimo = r  # 23/11: un mensaje no se reintenta (el reintento ve el pedido del primero y falla de mentira)
     finally:
         post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
     return revisar(c, ultimo or {}, pasos)
