@@ -965,7 +965,9 @@ export async function confirmarPedido(ctx: Ctx) {
 
 // ─── crear_pedido_web (23/11, Paso 2: catálogo web) ──────────────
 // La clienta arma la bolsa en el catálogo y manda por WhatsApp un mensaje con una línea por prenda:
-//   "• E142 Vestido lino · talle M · $1.290"  (código de modelo + talle + precio; también vale el código de prenda de 4 cifras).
+//   "• RP39 Remera promo · talle Único · $390"  (código del modelo TAL CUAL se ve en Stock de Gestión + talle + precio).
+//   El código es el de numTxt(m) de Gestión: el número del modelo si tiene (ej. "903"), si no su código con letras (alias[0], ej. "RP39").
+//   También se aceptan un código viejo del modelo (cualquier alias), "E" + número (formato anterior) y el código de prenda de 4 cifras.
 // Es la ÚNICA excepción a "vendemos solo en los vivos". La herramienta lee el mensaje tal como llegó (ctx.textos, nunca lo que
 // transcribe el modelo), revisa el stock en la base, aparta cada prenda con su movimiento (mover_stock, motivo 'venta', ref = pedido)
 // y crea el pedido en el registro "Ventas · mes" (live con tipo 'ventas', como ventas.js de Distrito).
@@ -1009,12 +1011,14 @@ export function leerMensajeCatalogo(texto: string) {
   const lineas: { codigo: string; prenda: boolean; talle: string; precio: number | null; nombre: string; linea: string }[] = [], raras: string[] = [];
   for (const l0 of t.split(/\r?\n/)) {
     const l = l0.trim(); if (!l || /quiero pedir/i.test(l) || /^total\b/i.test(l.replace(/^[^a-z]+/i, ''))) continue;
-    const m = l.match(/^[•\-*·▪●◦]*\s*([a-z]{1,3}\.?\s?)?#?(\d{1,6})\b\s*(.*)$/i);
+    // 23/11: el código va tal cual (letras + número, ej. RP39, o solo número): no se separa la letra del número
+    const m = l.match(/^[•\-*·▪●◦]*\s*#?([a-z]{0,4}\d{1,6})(?![a-z0-9])\s*(.*)$/i);
     const tl = l.match(/talle\s*:?\s*([úu]nic[oa]|[a-z0-9]{1,5})\b/i);
     if (m && tl) {
       const pr = l.match(/\$\s*([\d.,]+)/);
-      const nombre = m[3].split(/[·|]?\s*talle\b/i)[0].replace(/^[\s·|\-–]+|[\s·|\-–]+$/g, '').slice(0, 60);
-      lineas.push({ codigo: m[2], prenda: !m[1] && /^\d{4}$/.test(m[2]), talle: normTalle(tl[1]), precio: pr ? plataNum(pr[1]) : null, nombre, linea: l.slice(0, 120) });
+      const nombre = m[2].split(/[·|]?\s*talle\b/i)[0].replace(/^[\s·|\-–]+|[\s·|\-–]+$/g, '').slice(0, 60);
+      const cod = m[1].toUpperCase();
+      lineas.push({ codigo: cod, prenda: /^\d{4}$/.test(cod), talle: normTalle(tl[1]), precio: pr ? plataNum(pr[1]) : null, nombre, linea: l.slice(0, 120) });
     } else if (/^[•\-*·▪●◦]/.test(l) || /talle|\$/i.test(l)) raras.push(l.slice(0, 120));
   }
   return { lineas, raras, esCatalogo: lineas.length > 0 && (cabecera || lineas.every((x) => x.precio !== null)) };
@@ -1069,11 +1073,21 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
       return { ok: true, ya_existia: true, pedido: ya.datos.num, total, pagado: pagado(ya.datos), pagar_hasta: horaPlazoTxt(ya.datos.web.pagarHasta), que_hacer: pagado(ya.datos) ? 'Ese pedido ya está hecho y pagado: no se creó otro. Seguí con la entrega si falta.' : 'Ese pedido ya estaba hecho: no se creó otro ni se apartó nada de nuevo. Recordale el total por transferencia y hasta cuándo paga, sin repetir todo el detalle.' };
     }
   }
-  // Prendas: código de prenda de 4 cifras (una fila de stock) o número de modelo + talle.
-  const cods4 = [...new Set(leido.lineas.filter((x) => x.prenda).map((x) => x.codigo))]; // "E12" es siempre modelo; 4 cifras sin letra, código de prenda
-  const nums = [...new Set(leido.lineas.map((x) => +x.codigo).filter((n) => n > 0))];
-  const { data: mds } = await sb.from('modelos').select('id,num,datos').in('num', nums).eq('borrado', false);
-  const modelos = new Map<string, any>((mds || []).map((m: any) => [m.id, m]));
+  // Prendas: código del modelo (el de Stock: número o letras+número, o un código viejo) + talle; si no es un modelo, código de prenda de 4 cifras.
+  const cods4 = [...new Set(leido.lineas.filter((x) => x.prenda).map((x) => x.codigo))];
+  const numDe = (c: string) => /^\d+$/.test(c) ? +c : /^E\d+$/.test(c) ? +c.slice(1) : 0; // "E" + número: formato anterior
+  const nums = [...new Set(leido.lineas.map((x) => numDe(x.codigo)).filter((n) => n > 0))];
+  const alfa = [...new Set(leido.lineas.map((x) => x.codigo).filter((c) => /^[A-Z]/.test(c)))];
+  const [{ data: md1 }, ...md2] = await Promise.all([
+    nums.length ? sb.from('modelos').select('id,num,datos').in('num', nums).eq('borrado', false) : Promise.resolve({ data: [] as any[] }),
+    ...alfa.map((c) => sb.from('modelos').select('id,num,datos').eq('borrado', false).filter('datos->alias', 'cs', JSON.stringify([c]))),
+  ]);
+  const mds = [...new Map([...(md1 || []), ...md2.flatMap((r: any) => r.data || [])].map((m: any) => [m.id, m])).values()];
+  const modelos = new Map<string, any>(mds.map((m: any) => [m.id, m]));
+  const aliasDe = (m: any) => (m?.datos?.alias || []).map((a: any) => String(a).toUpperCase());
+  // El código que se ve en Stock manda; después un código viejo; después "E" + número
+  const modeloDeCodigo = (c: string) => mds.find((m: any) => (+m.num > 0 ? String(m.num) : aliasDe(m)[0]) === c)
+    || mds.find((m: any) => aliasDe(m).includes(c)) || (numDe(c) ? mds.find((m: any) => +m.num === numDe(c)) : null) || null;
   const { data: s1 } = cods4.length ? await sb.from('stock').select('id,codigo,datos').in('codigo', cods4).eq('borrado', false) : { data: [] as any[] };
   const { data: s2 } = modelos.size ? await sb.from('stock').select('id,codigo,datos').in('datos->>modeloId', [...modelos.keys()]).eq('borrado', false) : { data: [] as any[] };
   const filasStock = new Map<string, any>([...(s1 || []), ...(s2 || [])].map((s: any) => [s.id, s]));
@@ -1083,11 +1097,9 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
   const noExisten: string[] = [], noPublicadas: string[] = [];
   for (const x of leido.lineas) {
     let fila: any = null;
-    if (x.prenda) fila = (s1 || []).find((s: any) => s.codigo === x.codigo) || null;
-    if (!fila) {
-      const md = (mds || []).find((m: any) => +m.num === +x.codigo);
-      if (md) fila = [...filasStock.values()].find((s: any) => s.datos?.modeloId === md.id && normTalle(s.datos?.talle) === x.talle) || null;
-    }
+    const md = modeloDeCodigo(x.codigo);
+    if (md) fila = [...filasStock.values()].find((s: any) => s.datos?.modeloId === md.id && normTalle(s.datos?.talle) === x.talle) || null;
+    if (!fila && !md && x.prenda) fila = (s1 || []).find((s: any) => s.codigo === x.codigo) || null;
     if (!fila) { noExisten.push(x.linea); continue; }
     // Solo modelos publicados en el catálogo (con fotos y 🌐 publicado en Gestión)
     if (!publicado(modelos.get(fila.datos?.modeloId)?.datos)) { noPublicadas.push(x.linea); continue; }

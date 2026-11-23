@@ -45,6 +45,7 @@ def poner(v, tel):
     if isinstance(v, str):
         hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date().isoformat()
         v = re.sub(r'\{M(\d)\}', lambda m: '9' + tel[-3:] + m.group(1), v).replace('{TEL}', tel[-8:])
+        v = re.sub(r'\{([A-Z]{1,3}):(\d)\}', lambda m: m.group(1) + tel[-3:] + m.group(2), v)  # {RP:4} = modelo con código de letras (7º valor del stock)
         return re.sub(r'__hoy_(\d\d)(\d\d)__', lambda m: f'{hoy}T{m.group(1)}:{m.group(2)}:00-03:00', v)
     if isinstance(v, list): return [poner(x, tel) for x in v]
     if isinstance(v, dict): return {k: poner(x, tel) for k, x in v.items()}
