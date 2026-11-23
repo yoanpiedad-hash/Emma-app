@@ -1,5 +1,5 @@
 {
- "nota": "Banco de casos de Mabel. Cada caso usa su propio número de prueba 099000NNN (se limpia antes y después). 'tanda' = desde cuándo tiene que pasar: 'ya' (v110 lo tiene que pasar), 'D' (recién después de la Tanda D). 'cfg' por defecto: sin modo ausente y sin días sin salida. 20/11: 'E' = tanda E (pagos). 23/11: 'W' = pedido del catálogo web (Paso 2). En texto y cfg, {M1}/{M2} = número de modelo de prueba del caso, {TEL} = su número, __hoy_HHMM__ = hoy a esa hora (Uruguay); cfg.vivoPrueba simula vivo sí/no y cfg.ahoraPrueba la hora del pedido (solo para el plazo). 23/11 (b): el mensaje del catálogo lleva el código del modelo TAL CUAL se ve en Stock ({M1} = modelo con número; {RP:4} = modelo con código de letras, 7º valor del stock del fixture).",
+ "nota": "Banco de casos de Mabel. Cada caso usa su propio número de prueba 099000NNN (se limpia antes y después). 'tanda' = desde cuándo tiene que pasar: 'ya' (v110 lo tiene que pasar), 'D' (recién después de la Tanda D). 'cfg' por defecto: sin modo ausente y sin días sin salida. 20/11: 'E' = tanda E (pagos). 23/11: 'W' = pedido del catálogo web (Paso 2). En texto y cfg, {M1}/{M2} = número de modelo de prueba del caso, {TEL} = su número, __hoy_HHMM__ = hoy a esa hora (Uruguay); cfg.vivoPrueba simula vivo sí/no y cfg.ahoraPrueba la hora del pedido (solo para el plazo). 23/11 (b): el mensaje del catálogo lleva el código del modelo TAL CUAL se ve en Stock ({M1} = modelo con número; {RP:4} = modelo con código de letras, 7º valor del stock del fixture; 8º valor = precio para la clienta). Sin \"E\" adelante.",
  "ausente": {
   "activo": true,
   "atiende": true,
@@ -1988,7 +1988,7 @@
    "tanda": "W",
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $X",
+     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $1.880",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2036,7 +2036,7 @@
    "tanda": "W",
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $X",
+     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $1.880",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__",
@@ -2083,7 +2083,7 @@
    "tanda": "W",
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\n• {M1} VESTIDO PRUEBA · talle M · $1.290\nTotal: $X",
+     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\n• {M1} VESTIDO PRUEBA · talle M · $1.290\nTotal: $2.580",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2128,7 +2128,7 @@
    "tanda": "W",
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $X",
+     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $1.880",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2217,7 +2217,7 @@
    "tanda": "W",
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $X",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_2230__"
@@ -2262,7 +2262,7 @@
    "tanda": "W",
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $100\n• y también la campera negra talle M\nTotal: $X",
+     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $100\n• y también la campera negra talle M\nTotal: $100",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2307,7 +2307,7 @@
    "tanda": "W",
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\nTotal: $X",
+     "texto": "Hola Emma! Quiero pedir:\n• {M1} VESTIDO PRUEBA · talle M · $1.290\nTotal: $1.290",
      "cfg": {
       "vivoPrueba": true,
       "ahoraPrueba": "__hoy_1500__"
@@ -2411,7 +2411,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2478,7 +2478,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2552,7 +2552,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2623,7 +2623,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2699,7 +2699,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2772,7 +2772,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2843,7 +2843,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2913,7 +2913,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -2985,7 +2985,7 @@
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $590\nTotal: $590",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -3200,8 +3200,8 @@
    }
   },
   {
-   "id": "W23",
-   "nombre": "Formato anterior \"E\" + número sigue funcionando",
+   "id": "W24",
+   "nombre": "Precio para la clienta (fotos) distinto del de venta: cobra el del catálogo",
    "tanda": "W",
    "fixture": {
     "stock": [
@@ -3210,13 +3210,16 @@
       "REMERA PRUEBA",
       "U",
       3,
-      590
+      590,
+      true,
+      null,
+      450
      ]
     ]
    },
    "pasos": [
     {
-     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "texto": "Hola Emma! Quiero pedir:\n• {M2} REMERA PRUEBA · talle Único · $450\nTotal: $450",
      "cfg": {
       "vivoPrueba": false,
       "ahoraPrueba": "__hoy_1500__"
@@ -3226,8 +3229,52 @@
    "espera": {
     "envia": true,
     "contiene": [
-     "\\b590\\b",
+     "\\b450\\b",
      "17[:.]00"
+    ],
+    "no_contiene": [
+     "\\b590\\b"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W25",
+   "nombre": "Código de letras en minúscula y precio editado en el mensaje: lo encuentra y vale el precio de la base",
+   "tanda": "W",
+   "fixture": {
+    "stock": [
+     [
+      4,
+      "REMERA PROMO",
+      "U",
+      2,
+      390,
+      true,
+      "SL"
+     ]
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• {sl:4} Remera promo · talle Único · $100\nTotal: $100",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "\\b390\\b"
+    ],
+    "no_contiene": [
+     "(?i)total[^\\n]{0,25}\\$ ?100\\b",
+     "(?i)no (la )?encontr"
     ],
     "herramienta": [
      "crear_pedido_web"

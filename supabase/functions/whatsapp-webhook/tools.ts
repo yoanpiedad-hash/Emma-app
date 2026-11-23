@@ -966,8 +966,10 @@ export async function confirmarPedido(ctx: Ctx) {
 // ─── crear_pedido_web (23/11, Paso 2: catálogo web) ──────────────
 // La clienta arma la bolsa en el catálogo y manda por WhatsApp un mensaje con una línea por prenda:
 //   "• RP39 Remera promo · talle Único · $390"  (código del modelo TAL CUAL se ve en Stock de Gestión + talle + precio).
-//   El código es el de numTxt(m) de Gestión: el número del modelo si tiene (ej. "903"), si no su código con letras (alias[0], ej. "RP39").
-//   También se aceptan un código viejo del modelo (cualquier alias), "E" + número (formato anterior) y el código de prenda de 4 cifras.
+//   El código es el de numTxt(m) de Gestión: el número del modelo si tiene (ej. "142"), si no su código viejo (alias[0], ej. "RP39"). Sin "E" adelante.
+//   Solo cifras → número del modelo; con letras → alias del modelo (sin distinguir mayúsculas). NUNCA se toma como código de prenda de 4 cifras.
+//   Precio: el que muestra el catálogo = "precio para la clienta" de las fotos (m.web.precio) o, vacío, el precio de venta del modelo.
+//   Si el mensaje trae otro precio (la clienta pudo editarlo), vale el de la base.
 // Es la ÚNICA excepción a "vendemos solo en los vivos". La herramienta lee el mensaje tal como llegó (ctx.textos, nunca lo que
 // transcribe el modelo), revisa el stock en la base, aparta cada prenda con su movimiento (mover_stock, motivo 'venta', ref = pedido)
 // y crea el pedido en el registro "Ventas · mes" (live con tipo 'ventas', como ventas.js de Distrito).
@@ -1008,7 +1010,7 @@ const plataNum = (v: string) => { const t = String(v || '').replace(/\s/g, ''); 
 /** Lee el mensaje del catálogo: una línea por prenda con código, talle y precio. Lo que no se entiende queda en `raras`. */
 export function leerMensajeCatalogo(texto: string) {
   const t = String(texto || ''), cabecera = /quiero pedir/i.test(t);
-  const lineas: { codigo: string; prenda: boolean; talle: string; precio: number | null; nombre: string; linea: string }[] = [], raras: string[] = [];
+  const lineas: { codigo: string; talle: string; precio: number | null; nombre: string; linea: string }[] = [], raras: string[] = [];
   for (const l0 of t.split(/\r?\n/)) {
     const l = l0.trim(); if (!l || /quiero pedir/i.test(l) || /^total\b/i.test(l.replace(/^[^a-z]+/i, ''))) continue;
     // 23/11: el código va tal cual (letras + número, ej. RP39, o solo número): no se separa la letra del número
@@ -1018,7 +1020,7 @@ export function leerMensajeCatalogo(texto: string) {
       const pr = l.match(/\$\s*([\d.,]+)/);
       const nombre = m[2].split(/[·|]?\s*talle\b/i)[0].replace(/^[\s·|\-–]+|[\s·|\-–]+$/g, '').slice(0, 60);
       const cod = m[1].toUpperCase();
-      lineas.push({ codigo: cod, prenda: /^\d{4}$/.test(cod), talle: normTalle(tl[1]), precio: pr ? plataNum(pr[1]) : null, nombre, linea: l.slice(0, 120) });
+      lineas.push({ codigo: cod, talle: normTalle(tl[1]), precio: pr ? plataNum(pr[1]) : null, nombre, linea: l.slice(0, 120) });
     } else if (/^[•\-*·▪●◦]/.test(l) || /talle|\$/i.test(l)) raras.push(l.slice(0, 120));
   }
   return { lineas, raras, esCatalogo: lineas.length > 0 && (cabecera || lineas.every((x) => x.precio !== null)) };
@@ -1073,39 +1075,35 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
       return { ok: true, ya_existia: true, pedido: ya.datos.num, total, pagado: pagado(ya.datos), pagar_hasta: horaPlazoTxt(ya.datos.web.pagarHasta), que_hacer: pagado(ya.datos) ? 'Ese pedido ya está hecho y pagado: no se creó otro. Seguí con la entrega si falta.' : 'Ese pedido ya estaba hecho: no se creó otro ni se apartó nada de nuevo. Recordale el total por transferencia y hasta cuándo paga, sin repetir todo el detalle.' };
     }
   }
-  // Prendas: código del modelo (el de Stock: número o letras+número, o un código viejo) + talle; si no es un modelo, código de prenda de 4 cifras.
-  const cods4 = [...new Set(leido.lineas.filter((x) => x.prenda).map((x) => x.codigo))];
-  const numDe = (c: string) => /^\d+$/.test(c) ? +c : /^E\d+$/.test(c) ? +c.slice(1) : 0; // "E" + número: formato anterior
-  const nums = [...new Set(leido.lineas.map((x) => numDe(x.codigo)).filter((n) => n > 0))];
-  const alfa = [...new Set(leido.lineas.map((x) => x.codigo).filter((c) => /^[A-Z]/.test(c)))];
+  // Prendas: código del modelo tal cual Stock + talle. Solo cifras → número del modelo; con letras → alias (sin mayúsculas). Nunca código de prenda.
+  const nums = [...new Set(leido.lineas.map((x) => x.codigo).filter((c) => /^\d+$/.test(c)).map((c) => +c).filter((n) => n > 0))];
+  const alfa = [...new Set(leido.lineas.map((x) => x.codigo).filter((c) => /[A-Z]/.test(c)))];
   const [{ data: md1 }, ...md2] = await Promise.all([
     nums.length ? sb.from('modelos').select('id,num,datos').in('num', nums).eq('borrado', false) : Promise.resolve({ data: [] as any[] }),
-    ...alfa.map((c) => sb.from('modelos').select('id,num,datos').eq('borrado', false).filter('datos->alias', 'cs', JSON.stringify([c]))),
+    // el código es solo letras y cifras (lo garantiza leerMensajeCatalogo): se busca dentro de la lista de alias, sin distinguir mayúsculas
+    ...alfa.map((c) => sb.from('modelos').select('id,num,datos').eq('borrado', false).ilike('datos->>alias', '%"' + c + '"%')),
   ]);
   const mds = [...new Map([...(md1 || []), ...md2.flatMap((r: any) => r.data || [])].map((m: any) => [m.id, m])).values()];
   const modelos = new Map<string, any>(mds.map((m: any) => [m.id, m]));
   const aliasDe = (m: any) => (m?.datos?.alias || []).map((a: any) => String(a).toUpperCase());
-  // El código que se ve en Stock manda; después un código viejo; después "E" + número
-  const modeloDeCodigo = (c: string) => mds.find((m: any) => (+m.num > 0 ? String(m.num) : aliasDe(m)[0]) === c)
-    || mds.find((m: any) => aliasDe(m).includes(c)) || (numDe(c) ? mds.find((m: any) => +m.num === numDe(c)) : null) || null;
-  const { data: s1 } = cods4.length ? await sb.from('stock').select('id,codigo,datos').in('codigo', cods4).eq('borrado', false) : { data: [] as any[] };
+  const modeloDeCodigo = (c: string) => /^\d+$/.test(c) ? (mds.find((m: any) => +m.num === +c) || null)
+    : (mds.find((m: any) => !(+m.num > 0) && aliasDe(m)[0] === c) || mds.find((m: any) => aliasDe(m).includes(c)) || null); // el código de Stock primero, después uno viejo
   const { data: s2 } = modelos.size ? await sb.from('stock').select('id,codigo,datos').in('datos->>modeloId', [...modelos.keys()]).eq('borrado', false) : { data: [] as any[] };
-  const filasStock = new Map<string, any>([...(s1 || []), ...(s2 || [])].map((s: any) => [s.id, s]));
-  const faltaMd = [...new Set([...(s1 || [])].map((s: any) => s.datos?.modeloId).filter((id: string) => id && !modelos.has(id)))];
-  if (faltaMd.length) { const { data: m2 } = await sb.from('modelos').select('id,num,datos').in('id', faltaMd); (m2 || []).forEach((m: any) => modelos.set(m.id, m)); }
+  const filasStock = new Map<string, any>((s2 || []).map((s: any) => [s.id, s]));
   const grupos = new Map<string, { fila: any; modelo: any; qty: number; precioDicho: number | null; linea: string }>();
   const noExisten: string[] = [], noPublicadas: string[] = [];
   for (const x of leido.lineas) {
     let fila: any = null;
     const md = modeloDeCodigo(x.codigo);
     if (md) fila = [...filasStock.values()].find((s: any) => s.datos?.modeloId === md.id && normTalle(s.datos?.talle) === x.talle) || null;
-    if (!fila && !md && x.prenda) fila = (s1 || []).find((s: any) => s.codigo === x.codigo) || null;
     if (!fila) { noExisten.push(x.linea); continue; }
     // Solo modelos publicados en el catálogo (con fotos y 🌐 publicado en Gestión)
     if (!publicado(modelos.get(fila.datos?.modeloId)?.datos)) { noPublicadas.push(x.linea); continue; }
     const g = grupos.get(fila.id);
     if (g) g.qty++; else grupos.set(fila.id, { fila, modelo: modelos.get(fila.datos?.modeloId) || null, qty: 1, precioDicho: x.precio, linea: x.linea });
   }
+  // Precio que muestra el catálogo (igual que precioWeb de Gestión): el "precio para la clienta" de las fotos; vacío, el de venta del modelo (o de la fila).
+  const precioCatalogo = (g: any) => Math.round(+g?.modelo?.datos?.web?.precio || +g?.modelo?.datos?.precioVenta || +g?.fila?.datos?.precioVenta || 0);
   const nombreDe = (g: any) => String(g.fila.datos?.descripcion || g.modelo?.datos?.nombre || g.linea).slice(0, 60);
   const sinRef = { no_existen: [...noExisten, ...noPublicadas], no_entendidas: leido.raras };
   if (!grupos.size) return { ok: false, nada_valido: true, ...sinRef, que_hacer: 'Ninguna prenda del mensaje coincide con el catálogo (código o talle que no existe, o la prenda ya no está publicada): no se creó pedido. Decile que no encontramos esas prendas y que las vuelva a elegir desde el catálogo (sin cambiar el mensaje). No pases a Yanaina.' };
@@ -1155,7 +1153,7 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
     const plan = await planJunto(ctx, cfg); // 23/11: ¿ya tiene un pedido del vivo abierto? (sale junto, un solo envío)
     const ahoraT = ahoraMs(), hasta = new Date(plazoPedidoWeb(ahoraT)).toISOString(), hoy = hoyUY();
     const prendas = [...apartadas].map(([sid, qty]) => {
-      const g = grupos.get(sid)!, lista = Math.round(+g.fila.datos?.precioVenta || +g.modelo?.datos?.precioVenta || 0) || (g.precioDicho || 0);
+      const g = grupos.get(sid)!, lista = precioCatalogo(g) || (g.precioDicho || 0);
       return { stockId: sid, codigo: g.fila.codigo || g.fila.datos?.codigo || null, nombre: nombreDe(g), precioLista: lista, precio: lista, qty };
     });
     const precioDistinto = [...apartadas.keys()].map((sid) => { const g = grupos.get(sid)!, pr = prendas.find((x) => x.stockId === sid)!; return g.precioDicho && g.precioDicho !== pr.precio ? { prenda: pr.nombre, en_el_mensaje: g.precioDicho, precio_real: pr.precio } : null; }).filter(Boolean);
@@ -1200,7 +1198,7 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
     if ((+live.datos?.pedidoCounter || 0) < p.num) await sb.from('lives').update({ datos: { ...live.datos, pedidoCounter: p.num }, actualizado: new Date().toISOString() }).eq('id', live.id).eq('actualizado', live.actualizado);
     const { total, detalle } = calcPedido(p, live, modeloDe), mp = mpDe(cfg);
     const junto = plan.modo === 'solo' || plan.modo === 'despachado' ? null : await juntarConVivo(ctx, plan, p, total, hasta);
-    if (prendas.some((x) => !(+grupos.get(x.stockId)?.fila.datos?.precioVenta || +grupos.get(x.stockId)?.modelo?.datos?.precioVenta))) await registrarDerivado(ctx.telKey, c, `Pedido web #${p.num}: hay prendas sin precio en la base (se usó el del mensaje). Revisar el total`, 'pedido', true, 'mabel', ctx.inicio);
+    if (prendas.some((x) => !precioCatalogo(grupos.get(x.stockId)))) await registrarDerivado(ctx.telKey, c, `Pedido web #${p.num}: hay prendas sin precio en la base (se usó el del mensaje). Revisar el total`, 'pedido', true, 'mabel', ctx.inicio);
     return {
       ok: true, pedido: p.num, prendas: prendas.map((x) => ({ prenda: x.nombre, cantidad: x.qty, precio: x.precio })), total, detalle_del_total: detalle,
       mercado_pago: esperadoDe(total, 0, 'Mercado Pago', mp).total, pagar_hasta: horaPlazoTxt(hasta), ...baseNoQueda, precio_distinto: precioDistinto,

@@ -850,10 +850,11 @@ Deno.serve(async (req) => {
         // 23/11 (pedido web): prendas de prueba [k, nombre, talle, stock, precio, publicado?] → modelo num 9<tel3><k> (ej. 91041), stock sb<tel>-<k>
         // El modelo queda 🌐 publicado (m.web.pub con una foto, como Gestión) salvo que el 6º valor sea false.
         // 7º valor = código con letras (ej. "RP"): el modelo queda sin número y con código RP<tel3><k>, como la mayoría de los modelos de la app.
-        for (const [k, nombre, talle, cant, precio, pub, letras] of (Array.isArray(fx.stock) ? fx.stock : [])) {
+        // 8º valor = "precio para la clienta" de las fotos (m.web.precio), el que muestra el catálogo.
+        for (const [k, nombre, talle, cant, precio, pub, letras, precioWeb] of (Array.isArray(fx.stock) ? fx.stock : [])) {
           const mid = 'mdb' + telKey + '-' + k, sid = 'sb' + telKey + '-' + k + '-' + String(talle || 'U'), mnum = letras ? 0 : +('9' + telKey.slice(-3) + k);
           const md = { id: mid, num: mnum, nombre: String(nombre || 'PRENDA PRUEBA'), categoria: 'Otro', tipoTalle: 'letras', precioVenta: +precio || 0, alias: letras ? [String(letras).toUpperCase() + telKey.slice(-3) + k] : [], activo: true, creado: ahoraIso,
-            web: { fotos: [{ p: 'prueba/' + mid + '.jpg', u: 'https://example.invalid/prueba/' + mid + '.jpg' }], pub: pub !== false, ...(pub !== false ? { publicado: ahoraIso } : {}) } };
+            web: { fotos: [{ p: 'prueba/' + mid + '.jpg', u: 'https://example.invalid/prueba/' + mid + '.jpg' }], pub: pub !== false, ...(pub !== false ? { publicado: ahoraIso } : {}), ...(+precioWeb ? { precio: +precioWeb } : {}) } };
           await sb.from('modelos').upsert({ id: mid, num: mnum, datos: md, borrado: false, actualizado: ahoraIso });
           const sd = { id: sid, modeloId: mid, talle: String(talle || 'U'), codigo: 'B' + telKey.slice(-3) + k + String(talle || 'U'), descripcion: md.nombre + (talle && talle !== 'U' ? ' T.' + talle : ''), categoria: 'Otro', stock: +cant || 0, precioVenta: +precio || 0, activo: true };
           const { error: eS } = await sb.from('stock').upsert({ id: sid, codigo: sd.codigo, datos: sd, borrado: false, actualizado: ahoraIso });
