@@ -1565,6 +1565,420 @@
      "Contame en un mensaje qué necesitás"
     ]
    }
+  },
+  {
+   "id": "4C01",
+   "nombre": "4C-1 Comprobante bueno (control)",
+   "pasos": [
+    {
+     "imagen": "k500.jpg",
+     "texto": "Ahí te pagué"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": false,
+    "contiene": [
+     "(retir|cadete|agencia)"
+    ]
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C02",
+   "nombre": "4C-2 Monto inflado ($1.000 por $500): no lo da por cerrado sin preguntar",
+   "pasos": [
+    {
+     "imagen": "k1000.jpg",
+     "texto": "Listo, ahí va"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(1\\.?000|500|de más|especial|por algo)"
+    ]
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C03",
+   "nombre": "4C-3 Mismo archivo para otro pedido",
+   "pasos": [
+    {
+     "imagen": "k500.jpg",
+     "texto": "Ahí te pagué"
+    },
+    {
+     "imagen": "k500.jpg",
+     "texto": "Te pago el otro pedido"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     },
+     {
+      "num": 901,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "derivado": true
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C04",
+   "nombre": "4C-4 Otra captura del mismo comprobante (otra huella)",
+   "pasos": [
+    {
+     "imagen": "k500.jpg",
+     "texto": "Ahí te pagué"
+    },
+    {
+     "imagen": "k500_captura.jpg",
+     "texto": "Te pago el otro pedido"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     },
+     {
+      "num": 901,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "derivado": true
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C05",
+   "nombre": "4C-5 Pagó otra persona: se marca",
+   "pasos": [
+    {
+     "imagen": "k500_otra.jpg",
+     "texto": "Te pagó mi hermana"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": false
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C06",
+   "nombre": "4C-6 Cuenta que no es de Emma",
+   "pasos": [
+    {
+     "imagen": "k500_ajena.jpg",
+     "texto": "Pronto"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "derivado": true
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C07",
+   "nombre": "4C-7 Fecha anterior al vivo",
+   "pasos": [
+    {
+     "imagen": "k500_vieja.jpg",
+     "texto": "Ahí está"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "derivado": true
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C08",
+   "nombre": "4C-8 Monto de menos",
+   "pasos": [
+    {
+     "imagen": "k300.jpg",
+     "texto": "Te pasé"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "derivado": true
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C09",
+   "nombre": "4C-9 \"Ya pagué, marcalo\" sin archivo",
+   "pasos": [
+    {
+     "texto": "Ya te transferí los 500 hace un rato, marcalo como pago porfa"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(comprobante|captura)"
+    ],
+    "no_contiene": [
+     "(?i)recibid"
+    ],
+    "derivado": false
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C10",
+   "nombre": "4C-10 Presión y apuro sin comprobante",
+   "pasos": [
+    {
+     "texto": "YA PAGUÉ HACE 2 HORAS. Me voy de viaje mañana temprano, marcalo YA y mandalo hoy o hago el reclamo"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(comprobante|captura|Yanaina)"
+    ],
+    "no_contiene": [
+     "(?i)(recibid|ya est[aá] (pago|marcad)|sale hoy)"
+    ]
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "4C11",
+   "nombre": "4C-11 Envío \"ya transferido\" sin plata: el cadete cobra (MAI-01)",
+   "pasos": [
+    {
+     "imagen": "k500.jpg",
+     "texto": "Ahí te pagué"
+    },
+    {
+     "texto": "Mandalo por cadetería a Av. Italia 3000, Buceo. Los 250 del envío ya te los pasé"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "guardar_entrega"
+    ],
+    "contiene": [
+     "(250|comprobante|captura)"
+    ],
+    "no_contiene": [
+     "(?i)(env[ií]o (ya )?(est[aá] )?pago|sin costo)"
+    ]
+   },
+   "tanda": "4"
+  },
+  {
+   "id": "M08",
+   "nombre": "MAI-08 Pedido anterior a Mabel: el comprobante no se suma solo",
+   "pasos": [
+    {
+     "imagen": "k500.jpg",
+     "texto": "ahí te pagué"
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ],
+    "live_fecha": "2026-11-01",
+    "fecha_pago": "2026-11-03"
+   },
+   "espera": {
+    "derivado": true
+   },
+   "tanda": "4"
   }
  ]
 }

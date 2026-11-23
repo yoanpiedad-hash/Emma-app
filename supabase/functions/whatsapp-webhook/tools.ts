@@ -57,6 +57,11 @@ export const novedadesVigentes = (c: any) => { const n = c.novedadesHoy; return 
 
 // ─── Reglas de la app ───────────────────────────────────────────
 const pagado = (p: any) => !!p.cambio || !!p.pago || p.estado === 'listo';
+// 21/11 (MAI-08): la fecha desde la que atiende Mabel ya no está fija en el código. Sale de Config (clave mabelInicio, AAAA-MM-DD).
+// Sin la clave vale el 4/11 (activación). Con mabelInicio = "" (o null) la regla de pedidos anteriores se apaga (por ejemplo, después del reinicio).
+const INICIO_MABEL_DEF = '2026-11-04';
+const inicioMabel = (cfg: Record<string, any>) => { const v = cfg?.mabelInicio; if (v === '' || v === null || v === false) return ''; return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : INICIO_MABEL_DEF; };
+const esAnteriorAMabel = (r: any, live: any, cfg: Record<string, any>) => { const ini = inicioMabel(cfg); return !!ini && !!live?.fecha && String(live.fecha).slice(0, 10) < ini && !pagado(r.datos) && r.datos.estado === 'pendiente'; };
 const entregaEf = (p: any, cli: any) => (p.entrega && p.entrega !== 'sin_definir') ? p.entrega : (cli && cli.datos?.agencia ? 'agencia' : (p.entrega || 'sin_definir'));
 // Stock → modelo, para las promos del pedido. Se llena con cargarModelos(filas) antes de calcular (10/11).
 const MODELO_DE = new Map<string, string>();
@@ -158,12 +163,12 @@ export async function buscarPedido(ctx: Ctx) {
   const c = ctx.clienta;
   const { filas, lives, cobros } = await abiertos(ctx);
   const tar = tarifaDe(cfg), mp = mpDe(cfg);
-  // 5/11: pedidos de lives anteriores a la activación de Mabel (4/11) que figuran sin pagar: puede ser que estén pagados y no marcados. No se piden comprobantes: se busca en el historial y, si no se puede confirmar, queda para Yanaina en silencio.
+  // 5/11: pedidos de lives anteriores a la activación de Mabel (Config mabelInicio, por defecto 4/11) que figuran sin pagar: puede ser que estén pagados y no marcados. No se piden comprobantes: se busca en el historial y, si no se puede confirmar, queda para Yanaina en silencio.
   const anteriores = new Set<string>();
   const evidencia: Record<string, any> = {};
   for (const r of filas) {
     const live0 = lives.get(r.live_id);
-    if (live0?.fecha && String(live0.fecha) < '2026-11-04' && !pagado(r.datos) && r.datos.estado === 'pendiente') {
+    if (esAnteriorAMabel(r, live0, cfg)) {
       anteriores.add(r.id);
       try {
         const { data: tot } = await sb.from('mabel_historial').select('fecha').eq('tel_key', ctx.telKey).eq('de', 'equipo').ilike('texto', `%pedido #${r.datos.num}%`).gte('fecha', String(live0.fecha)).order('fecha', { ascending: false }).limit(1);
@@ -478,7 +483,7 @@ async function comprobanteReciente(ctx: Ctx): Promise<Ctx['media']> {
   }
   return null;
 }
-export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number; fecha_comprobante?: string; destino_coincide?: boolean; nota?: string; destino?: string; titular_destino?: string; banco?: string; ordenante?: string }) {
+export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number; fecha_comprobante?: string; destino_coincide?: boolean; nota?: string; destino?: string; titular_destino?: string; banco?: string; ordenante?: string; hora_comprobante?: string; numero_operacion?: string }) {
   const cfg = await leerConfig(), tar = tarifaDe(cfg), mp = mpDe(cfg);
   if (!ctx.clienta) return derivar(ctx, 'No hay ficha de clienta para este número (llegó un comprobante)', 'pago');
   const cuentas = cuentasDe(cfg).filter((x) => medioDe(x) !== 'efectivo');
@@ -499,7 +504,10 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     objetivo = filas.filter((r) => (cobro.datos.pedidos || []).includes(r.id) && !pagado(r.datos));
     envCobro = +cobro.datos.envio || 0;
   } else {
-    const sp = filas.filter((r) => !pagado(r.datos) && r.datos.estado === 'pendiente');
+    // 21/11 (MAI-08): los pedidos anteriores a Mabel no se suman a lo que paga ahora (igual que en buscar_pedido).
+    const ant = filas.filter((r) => esAnteriorAMabel(r, lives.get(r.live_id), cfg));
+    const sp = filas.filter((r) => !pagado(r.datos) && r.datos.estado === 'pendiente' && !ant.includes(r));
+    if (!sp.length && ant.length) return derivar(ctx, `Mandó un comprobante de $${monto} y solo tiene pedidos anteriores a Mabel sin marcar (${ant.map((r) => '#' + r.datos.num).join(', ')}): revisar si es de esos`, 'pago');
     objetivo = sp;
     if (sp.length > 1) {
       // 4/11: varios pedidos sin pagar y sin cobro agrupado: si el monto cierra con el del último live, o con todos juntos, se marca eso
@@ -522,6 +530,15 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   if (ctx.media?.sha256) {
     const { data: dup } = await sb.from('pagos').select('id').eq('borrado', false).filter('datos->>sha256', 'eq', ctx.media.sha256).limit(1);
     if (dup?.length) return derivar(ctx, 'Ese comprobante ya figura en otro pago', 'pago');
+  }
+  // 21/11 (SEG-01 paso 3): otra captura del mismo comprobante tiene otra huella. Se compara lo leído: mismo monto, fecha y cuenta,
+  // y además la misma hora o el mismo número de operación (sin hora ni número no se compara, para no frenar dos pagos iguales del mismo día).
+  const hora = (String(a.hora_comprobante || '').match(/^(\d{1,2}):(\d{2})/) || []).slice(1, 3).map((x, i) => i ? x : x.padStart(2, '0')).join(':');
+  const oper = String(a.numero_operacion || '').replace(/\D/g, '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(f) && (hora || oper.length >= 4)) {
+    const { data: igu } = await sb.from('pagos').select('id,datos').eq('borrado', false).filter('datos->lectura->>fecha', 'eq', f).filter('datos->lectura->>monto', 'eq', String(monto)).limit(20);
+    const rep = (igu || []).find((g: any) => normB(g.datos?.cuenta) === normB(cuenta) && ((hora && g.datos?.lectura?.hora === hora) || (oper.length >= 4 && g.datos?.lectura?.operacion === oper)));
+    if (rep) return derivar(ctx, `Ese comprobante ya figura en otro pago (mismo monto, fecha${hora ? ', hora' : ''}${oper.length >= 4 ? ', n° de operación' : ''} y cuenta)`, 'pago');
   }
   // Esperado (sin cadetería, salvo cobro agrupado que ya la trae) y faltante
   const base = objetivo.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0);
@@ -549,7 +566,7 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     g0.origen = cobro ? 'cobro' : 'mabel';
     if (a.nota) g0.nota = String(a.nota).slice(0, 200);
     { // 20/11 (Tanda E, MAI-01): lo que Mabel leyó del comprobante, para revisarlo después
-      const lec: any = { monto, ...(f ? { fecha: f } : {}), ...(a.destino ? { destino: String(a.destino).slice(0, 80) } : {}), ...(a.titular_destino ? { titular_destino: String(a.titular_destino).slice(0, 80) } : {}), ...(a.banco ? { banco: String(a.banco).slice(0, 40) } : {}), ...(a.ordenante ? { ordenante: String(a.ordenante).slice(0, 80) } : {}), cuenta_dicha: String(a.cuenta || '').slice(0, 40) };
+      const lec: any = { monto, ...(f ? { fecha: f } : {}), ...(hora ? { hora } : {}), ...(oper.length >= 4 ? { operacion: oper.slice(0, 30) } : {}), ...(a.destino ? { destino: String(a.destino).slice(0, 80) } : {}), ...(a.titular_destino ? { titular_destino: String(a.titular_destino).slice(0, 80) } : {}), ...(a.banco ? { banco: String(a.banco).slice(0, 40) } : {}), ...(a.ordenante ? { ordenante: String(a.ordenante).slice(0, 80) } : {}), cuenta_dicha: String(a.cuenta || '').slice(0, 40) };
       g0.lectura = lec;
     }
     if (ctx.media) { g0.comprobante = ctx.media.path; g0.sha256 = ctx.media.sha256; }
@@ -628,7 +645,20 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   let envioASaldo = 0;
   if (tipo !== 'cadeteria') for (const r of objetivo) { const p0 = r.datos; if (p0.entrega === 'cadeteria' && p0.cobroEnvio === 'pago' && p0.pago) { envioASaldo = tar; break; } }
   const cambio = !!a.con_cambio, tarE = cambio ? Math.round(tar * 1.5) : tar; // 4/11: si el cadete además lleva/retira un cambio, cobra un envío y medio
-  const x = Math.max(0, Math.min(tarE, Math.round(num(a.envio_transferido))));
+  const pedido_x = Math.max(0, Math.min(tarE, Math.round(num(a.envio_transferido))));
+  // 21/11 (MAI-01): el envío cuenta como transferido solo si sobra en un pago ya registrado (lo de más del pago, o lo que ya se le había asignado al envío).
+  // Sin pago registrado, o si el pago vino justo, el cadete cobra la tarifa: decirlo no alcanza.
+  let x = 0, pagoEnvio: any = null;
+  if (tipo === 'cadeteria' && pedido_x > 0) {
+    const ids = [...new Set(objetivo.map((r) => r.datos.pago?.id).filter(Boolean))];
+    if (ids.length) {
+      const { data: gs } = await sb.from('pagos').select('*').in('id', ids).eq('borrado', false);
+      const disp = (g: any) => Math.max(0, num(g.datos?.ajuste)) + Math.max(0, num(g.datos?.envio));
+      pagoEnvio = (gs || []).sort((u: any, v: any) => disp(v) - disp(u))[0] || null;
+      if (pagoEnvio) x = Math.min(pedido_x, disp(pagoEnvio));
+    }
+  }
+  const envioNoFigura = tipo === 'cadeteria' && pedido_x > x;
   await conReintento(async () => {
     if (Object.keys(cambiosCli).length) {
       const { data } = await sb.from('clientas').select('*').eq('id', ctx.clienta.id).single();
@@ -662,9 +692,10 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
       }
       await guardarPedido(data, p);
       // El envío ya transferido va a la fila de pago más nueva del pedido (misma convención que la app: envio, ajuste)
-      if (tipo === 'cadeteria' && x > 0 && p.pago?.id) {
-        const { data: g } = await sb.from('pagos').select('*').eq('id', p.pago.id).single();
-        if (g && (g.datos.ajuste || 0) >= x) { const d = { ...g.datos, envio: x, ajuste: (g.datos.ajuste || 0) - x, esperado: (g.datos.esperado || 0) + x }; await sb.from('pagos').update({ datos: d, actualizado: new Date().toISOString() }).eq('id', g.id); }
+      if (tipo === 'cadeteria' && x > 0 && pagoEnvio && p.pago?.id === pagoEnvio.id) {
+        const { data: g } = await sb.from('pagos').select('*').eq('id', pagoEnvio.id).single();
+        const prev = Math.max(0, num(g?.datos?.envio)), aj = num(g?.datos?.ajuste);
+        if (g && aj + prev >= x && prev !== x) { const d = { ...g.datos, envio: x, ajuste: aj + prev - x, esperado: num(g.datos.esperado) - prev + x }; await sb.from('pagos').update({ datos: d, actualizado: new Date().toISOString() }).eq('id', g.id); }
       }
     }
   });
@@ -681,6 +712,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     ...(envioASaldo ? { envio_a_saldo: envioASaldo, que_hacer_saldo: `Decile que los $${envioASaldo} del envío que transfirió le quedan como saldo a favor para la próxima compra.` } : {}),
     ok: true, tipo, pedidos: objetivo.map((r) => r.datos.num), ...hint,
     ...(cadete !== null ? { el_cadete_cobra: cadete } : {}),
+    ...(envioNoFigura ? { envio_no_figura_en_el_pago: true, que_hacer_envio: x > 0 ? `En el pago registrado sobran solo $${x} para el envío: el cadete cobra $${cadete}. Decile cuánto le cobra el cadete, sin discutir.` : `El envío no figura en ningún pago registrado (el pago vino justo o todavía no pagó): el cadete cobra $${cadete}. Decíselo una vez ("El cadete te cobra los $${cadete} del envío al recibir"). Si dice que lo transfirió aparte, pedile la captura de esa transferencia y pasá a Yanaina (pago) con "Dice que transfirió el envío aparte".` } : {}),
     ...(tipo === 'retiro' ? { paga_al_retirar: objetivo.some((r) => !pagado(r.datos)) } : {}),
     ...(tipo === 'cadeteria' && faltaBarrio ? { falta_barrio: true, ...(opBarrio.length ? { opciones: opBarrio } : {}), que_hacer: 'La cadetería YA quedó cargada con la dirección y sale igual. ' + (opBarrio.length ? 'El barrio no es exacto: preguntale cuál de estas opciones es (sin decir que es una lista).' : s(a.barrio) ? 'Ese barrio no está en la lista de GrisalExpress: preguntáselo una vez más (puede estar mal escrito).' : 'Preguntale el barrio.') + ' Una sola vez y en el mismo mensaje del cierre. Si lo contesta, volvé a llamar guardar_entrega con la misma dirección y el barrio. Si no contesta, no insistas ni lo repitas en otro mensaje: el equipo lo completa.' } : {}),
     ...(tipo === 'agencia' && faltaNombre ? { falta_nombre: true, que_hacer: 'La agencia YA quedó cargada. Falta el nombre y apellido de quien retira en la agencia (va en la etiqueta): preguntáselo una vez, en este mismo mensaje. Cuando lo diga, volvé a llamar guardar_entrega con nombre_retira.' } : {}),
@@ -903,12 +935,13 @@ export const HERRAMIENTAS = [
     destino_coincide: { type: 'boolean', description: 'false si el destino no es ninguna cuenta de las FORMAS DE PAGO ni PREX YOAN' },
     destino: { type: 'string', description: 'Cuenta o número de destino tal como se lee' }, titular_destino: { type: 'string', description: 'Titular de destino tal como se lee' },
     banco: { type: 'string', description: 'Banco o app del comprobante' }, ordenante: { type: 'string', description: 'Nombre de quien transfirió, si se lee' },
+    hora_comprobante: { type: 'string', description: 'Hora del comprobante HH:MM, si se lee' }, numero_operacion: { type: 'string', description: 'Número de operación o referencia, si se lee' },
     nota: { type: 'string', description: 'Nota corta opcional' } }, required: ['cuenta', 'monto', 'destino_coincide'] } },
   { name: 'guardar_entrega', description: 'Carga cómo recibe el pedido (retiro, cadeteria en Montevideo o agencia) en todos sus pedidos abiertos. Se puede llamar sin barrio o sin nombre: queda cargada y dice qué preguntar.', input_schema: { type: 'object', properties: {
     tipo: { type: 'string', enum: ['retiro', 'cadeteria', 'agencia'] },
     direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio tal como lo dijo' },
     nota_cadete: { type: 'string', description: 'Cadetería: solo referencias para llegar o el horario de entrega' }, nota_interna: { type: 'string', description: 'Nota para el equipo sobre este pedido (no la ve el cadete)' }, etiqueta: { type: 'string', description: 'Cadetería: casa, trabajo, mamá… si lo dijo' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio' },
-    envio_transferido: { type: 'number', description: 'Cadetería: cuánto del envío ya transfirió (0 si lo paga al cadete)' },
+    envio_transferido: { type: 'number', description: 'Cadetería: cuánto del envío ya transfirió (0 si lo paga al cadete). Solo cuenta si sobra en un pago ya registrado' },
     agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre y apellido de quien recibe o retira (agencia: obligatorio, salvo que ya esté en datos_guardados.nombre_envio)' }, horario_retiro: { type: 'string', description: 'Retiro: cuándo dice que pasa, con día y fecha (ej. "sábado 21/11 a las 18")' }, retiro_fecha: { type: 'string', description: 'Retiro: fecha del día que pasa, AAAA-MM-DD, sacada de HOY. Pasala siempre que diga un día' }, retiro_hora: { type: 'string', description: 'Retiro: hora aproximada, HH:MM en 24 hs' } }, required: ['tipo'] } },
   { name: 'dejar_aviso_despacho', description: 'Aviso de una línea para quien arma el paquete en Despacho (paquete de Yharol para mandar junto, lo retira otra persona…). Va en sus pedidos abiertos.', input_schema: { type: 'object', properties: { texto: { type: 'string', description: 'Ej: "Tiene paquete de Yharol: enviar junto"' } }, required: ['texto'] } },

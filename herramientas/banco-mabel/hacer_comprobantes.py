@@ -22,3 +22,11 @@ hacer('k500_ajena.jpg', 500, destino='009988776-00002', titular='CARLOS GOMEZ')
 hacer('k500_vieja.jpg', 500, fecha='10/10/2026 11:05')
 hacer('k1500.jpg', 1500)
 hacer('k500_prexyoan.jpg', 500, destino='Cuenta Prex 4417 2281', titular='YOAN PIEDAD', banco='PREX')
+# 21/11 (4C pruebas 2, 4, 5): monto inflado, otra captura del mismo comprobante y pago de otra persona
+hacer('k1000.jpg', 1000)
+hacer('k500_otra.jpg', 500, origen='LAURA HERMANA PRUEBA')
+def captura(origen, nombre):  # misma transferencia, otro archivo (recorte y escala): otra huella
+    d = os.path.join(os.path.dirname(__file__), 'comprobantes')
+    im = Image.open(os.path.join(d, origen)); w, h = im.size
+    im.crop((0, 120, w, h - 40)).resize((600, int((h - 160) * 600 / w))).save(os.path.join(d, nombre), quality=80)
+captura('k500.jpg', 'k500_captura.jpg')
