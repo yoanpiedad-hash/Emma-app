@@ -622,7 +622,7 @@ function partir(c) {
   const pub = { v: 3 };
   ['id', 'tipo', 'estado', 'nombre', 'fecha', 'creado', 'recibida'].forEach(k => { if (c[k] !== undefined && c[k] !== null) pub[k] = c[k]; });
   pub.lineas = c.lineas.map(l => ({ lid: l.lid, descripcion: l.descripcion || '', qty: +l.qty || 0, reint: +l.reint || 0,
-    modelos: (l.modelos || []).map(mo => ({ k: mo.k, mid: mo.mid || null, nombre: mo.nombre || '', categoria: mo.categoria || 'Otro', tipoTalle: mo.tipoTalle || 'unico', talles: mo.talles || {}, precioVenta: num(mo.precioVenta), repos: !!mo.repos })) }));
+    modelos: (l.modelos || []).map(mo => ({ k: mo.k, mid: mo.mid || null, nombre: mo.nombre || '', categoria: mo.categoria || 'Otro', tipoTalle: mo.tipoTalle || 'unico', talles: mo.talles || {}, precioVenta: num(mo.precioVenta), repos: !!mo.repos, ...(mo.web ? { web: mo.web } : {}) })) }));
   const priv = { blue: num(c.blue), uyu: num(c.uyu), costoImp: num(c.costoImp), l: {} };
   c.lineas.forEach(l => { const o = {}; PRIV_L.forEach(k => { if (num(l[k])) o[k] = num(l[k]); }); priv.l[l.lid] = o; });
   return { pub, priv };
@@ -1114,6 +1114,7 @@ function entrarModelos(c, lineas) {
         if (mo.tipoTalle && m.tipoTalle !== mo.tipoTalle && mo.tipoTalle !== 'unico') m.tipoTalle = mo.tipoTalle;
       }
       mo.nombre = m.nombre; mo.categoria = m.categoria; if (!num(mo.precioVenta)) mo.precioVenta = num(m.precioVenta);
+      pasarFotosAlModelo(mo, m);   // fotos cargadas con la compra pedida: quedan ✅ listo, no se publican solas
       for (const [t, q] of Object.entries(mo.talles || {})) {
         if (!(+q > 0)) continue;
         const s = asegurarVariante(m, t);
@@ -1231,6 +1232,7 @@ function recepcionHTML(c) {
         const a = ATTR('h', c, l, mo), ix = id + '-' + esc(mo.k), m = mo.mid && modeloById(mo.mid);
         return `<div class="rcm">
           <div class="row"><input class="grow" list="dl-modelos" id="rn-${ix}" data-chg="rcNom" ${a} value="${esc(mo.nombre)}" placeholder="Nombre con el color (ej: ${esc(l.descripcion)} blanca)">
+            <button class="b sm" data-act="ftCompra" ${a} title="Fotos para el catálogo">📷 Fotos${fotosDe(m || mo).length ? ' (' + fotosDe(m || mo).length + ')' : ''}</button>
             <button class="b sm dan" data-act="rcDelMo" ${a} title="Quitar este color">✕</button></div>
           ${m ? `<div class="mt"><span class="chip ac">🔁 Reposición de <b class="mono">${esc(numTxt(m))}</b> · quedan ${totalModelo(m)}</span> <button class="b sm gh" data-act="rcSinRepos" ${a}>No es reposición</button></div>` : ''}
           <div class="grid3 mt">
@@ -1260,6 +1262,7 @@ function rcNombre(d, el) {
   const m = buscarModelo(el.value);
   if (m && mo.mid !== m.id && confirm(`Ya existe "${etiquetaModelo(m)}" (quedan ${totalModelo(m)}).\n\n¿Es reposición del mismo artículo?\nAceptar = se suma a ese modelo (mismo número).\nCancelar = es un modelo nuevo.`)) {
     Object.assign(mo, { mid: m.id, repos: true, nombre: m.nombre, categoria: m.categoria, tipoTalle: m.tipoTalle || 'unico', precioVenta: num(mo.precioVenta) || num(m.precioVenta) });
+    if (mo.web) { pasarFotosAlModelo(mo, m); put('emma_modelos'); }
   } else {
     mo.nombre = String(el.value || '').replace(/^#?\d+\s*·\s*/, '').replace(/\s*\(antes [^)]*\)$/, '').trim();
     if (mo.mid && (!m || m.id !== mo.mid)) { mo.mid = null; mo.repos = false; }
@@ -1565,13 +1568,20 @@ function renderStock() {
     ['Valor a precio de venta', fmt(valVenta), 'c-ac', ''], ['Valor a costo', valCosto ? fmt(valCosto) : '—', '', sinCosto ? `${sinCosto} u. sin costo cargado` : '']
   ].map(([l, v, cl, s]) => tile(l, v, cl, s)).join('');
   const lib = DB.modelos.length - act.length;   // archivados
-  $('#st-f').innerHTML = [['todos', 'Todos'], ['cero', `Sin stock (${cero})`], ['poco', `Poco stock (${poco})`], ['agot', `Talle agotado (${agot})`], ['liberados', `📦 Archivados (${lib})`]]
-    .map(([k, t]) => `<button class="b sm seg${S.f === k ? ' on' : ''}" data-act="stkF" data-f="${k}">${t}</button>`).join('');
+  const sinF = conStockSinFotos(), listos = listosSinPublicar(), pubs = act.filter(m => estadoWeb(m) === 'pub').length;
+  $('#st-f').innerHTML = [['todos', 'Todos'], ['cero', `Sin stock (${cero})`], ['poco', `Poco stock (${poco})`], ['agot', `Talle agotado (${agot})`], ['liberados', `📦 Archivados (${lib})`],
+    ['sinfotos', `📷 Con stock sin fotos (${sinF.length})`], ['listos', `✅ Listos (${listos.length})`], ['publicados', `🌐 Publicados (${pubs})`]]
+    .map(([k, t]) => `<button class="b sm seg${S.f === k ? ' on' : ''}" data-act="stkF" data-f="${k}">${t}</button>`).join('')
+    + (sinF.length && S.f !== 'sinfotos' ? `<div class="alert pe" style="width:100%">📷 ${sinF.length} modelo(s) con stock todavía no tienen fotos. <button class="b sm" data-act="stkF" data-f="sinfotos">Ver cuáles</button></div>` : '')
+    + (listos.length ? `<div class="alert ok" style="width:100%">✅ ${listos.length} modelo(s) listos para publicar. <button class="b sm ok" data-act="ftPubListos">🌐 Publicar todos los listos</button></div>` : '');
   let L = S.f === 'liberados' ? DB.modelos.filter(m => m.activo === false) : q ? DB.modelos : act;   // al buscar aparecen también los archivados
   const T = m => tot.has(m.id) ? tot.get(m.id) : totalModelo(m);
   if (S.f === 'cero') L = L.filter(m => !T(m));
   if (S.f === 'poco') L = L.filter(m => T(m) > 0 && T(m) <= 2);
   if (S.f === 'agot') L = L.filter(m => agotados(m).length);
+  if (S.f === 'sinfotos') L = L.filter(m => T(m) > 0 && !fotosDe(m).length);
+  if (S.f === 'listos') L = L.filter(listoParaPublicar);
+  if (S.f === 'publicados') L = L.filter(m => estadoWeb(m) === 'pub');
   if (S.cat) L = L.filter(m => m.categoria === S.cat);
   if (q) L = L.filter(m => String(m.num) === q || norm(m.nombre).includes(q) || (m.alias || []).some(a => norm(a) === q) || variantesDe(m.id).some(s => norm(s.codigo) === q));
   L = [...L].sort((a, b) => (a.activo === false) - (b.activo === false) || b.num - a.num);
@@ -1583,7 +1593,7 @@ function renderStock() {
     const tall = variantesDe(m.id).filter(s => s.activo !== false).map(s => { const k = +s.stock || 0; return `<span class="tl${k <= 0 ? ' z' : ''}">${s.talle === 'U' ? '' : '<b>' + esc(s.talle) + '</b> '}${k}</span>`; }).join('');
     return `<tr class="${off ? 'off' : ''}">
       <td data-l="N°"><span class="cod">${esc(numTxt(m))}</span>${off ? ' <span class="chip">📦 archivado</span>' : !n ? ' <span class="chip li">sin stock</span>' : ''}</td>
-      <td data-l="" class="full"><b>${esc(m.nombre)}</b> <span class="muted small">${esc(m.categoria || '')}${+m.num && (m.alias || []).length ? ' · antes ' + esc(m.alias.join(', ')) : ''}</span>${ag.length ? ` <span class="chip pe">se acabó: ${esc(ag.map(talleTxt).join(', '))}</span>` : ''}</td>
+      <td data-l="" class="full"><b>${esc(m.nombre)}</b> <span class="muted small">${esc(m.categoria || '')}${+m.num && (m.alias || []).length ? ' · antes ' + esc(m.alias.join(', ')) : ''}</span>${ag.length ? ` <span class="chip pe">se acabó: ${esc(ag.map(talleTxt).join(', '))}</span>` : ''} ${chipWeb(m)}</td>
       <td data-l="Talles"><div class="tls">${tall || '—'}</div></td>
       <td data-l="Total" class="n"><b class="${n <= 0 ? 'c-li' : n <= 2 ? 'c-pe' : 'c-ok'}">${n}</b></td>
       <td data-l="P. venta" class="n">${fmtD(m.precioVenta)}</td>
@@ -1611,6 +1621,9 @@ function detalleModelo(m, costos) {
       <div><label class="lb">Costo (última compra)</label><div class="mono" style="padding:10px 2px">${u ? fmt(u) + (num(m.precioVenta) ? ` · margen <span class="${margenCls((m.precioVenta - u) / m.precioVenta * 100)}">${pctTxt((m.precioVenta - u) / m.precioVenta * 100)}</span>` : '') : '—'}</div></div>
     </div>
     <div class="row mt"><button class="b ok sm" data-act="stkGuardar" data-id="${id}">✓ Guardar</button><span class="grow"></span><button class="b sm dan" data-act="stkLiberar" data-id="${id}">📦 Archivar</button></div>
+    <div class="sec-t">Fotos · catálogo</div>
+    <div class="row">${fotosDe(m).length ? `<img class="ft-min" src="${esc(fotosDe(m)[0].u)}" alt="">` : ''}${chipWeb(m)}<span class="small muted">${fotosDe(m).length} foto(s)${estadoWeb(m) !== 'sin' ? ' · ' + esc(nombreWeb(m)) + ' · ' + fmtD(precioWeb(m)) : ''}</span>
+      <span class="grow"></span><button class="b sm pri" data-act="ftModelo" data-id="${id}">📷 Fotos</button>${estadoWeb(m) === 'listo' ? `<button class="b sm ok" data-act="ftPubModelo" data-id="${id}">🌐 Publicar</button>` : estadoWeb(m) === 'pub' ? `<button class="b sm dan" data-act="ftDespubModelo" data-id="${id}">Despublicar</button>` : ''}</div>
     <div class="sec-t">Talles · stock · etiquetas</div>
     ${filasT || '<div class="small muted">Sin talles</div>'}
     <div class="row mt"><button class="b sm" data-act="etqModelo" data-id="${id}">🏷️ Etiquetas de todo el stock (${totalModelo(m)})</button>
@@ -2090,7 +2103,7 @@ const ACT = {
   rcAbrir: d => { UI.recibir = d.cid; render(); pintarDatalist(); },
   rcCerrar: () => { UI.recibir = null; render(); },
   rcAddMo: d => { const { c, l } = recibirDe(d); if (!l) return; const ult = l.modelos[l.modelos.length - 1]; l.modelos.push(modeloVacio(l, ult ? { categoria: ult.categoria, tipoTalle: ult.tipoTalle, precioVenta: ult.precioVenta } : {})); saveCompras(); render(); },
-  rcDelMo: d => { const { l, mo } = recibirDe(d); if (!mo) return; if (unidadesDe(mo) && !confirm('¿Quitar este color con sus cantidades?')) return; l.modelos = l.modelos.filter(x => x !== mo); saveCompras(); render(); },
+  rcDelMo: d => { const { l, mo } = recibirDe(d); if (!mo) return; if (unidadesDe(mo) && !confirm('¿Quitar este color con sus cantidades?')) return; if (fotosDe(mo).length && !confirm('Este color tiene fotos cargadas: se borran. ¿Seguir?')) return; l.modelos = l.modelos.filter(x => x !== mo); borrarDeStorage(fotosDe(mo).map(f => f.p)); saveCompras(); render(); },
   rcSinRepos: d => { const { mo } = recibirDe(d); if (!mo) return; mo.mid = null; mo.repos = false; saveCompras(); render(); },
   rcOk: d => confirmarRecepcion(d.cid),
   lnLlego: d => llegoDespues(d),
@@ -2228,5 +2241,6 @@ function buscarVersionNueva() { if ('serviceWorker' in navigator) navigator.serv
 document.addEventListener('visibilitychange', () => { if (!document.hidden) buscarVersionNueva(); });
 setInterval(buscarVersionNueva, 30 * 60 * 1000);
 </script>
+<script src="fotos.js"></script>
 </body>
 </html>
