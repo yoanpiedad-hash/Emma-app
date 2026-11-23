@@ -7,11 +7,17 @@ limpia antes y después.
 
 Uso:  MABEL_TEST_KEY=... python3 correr.py [--url URL] [--solo S01,A01] [--tanda ya|D|todas]
 Sale con código 1 si falla algún caso de la tanda pedida: si falla, no se publica.
+
+23/11: por defecto corre contra la función de prueba de la BASE DE PRUEBA (emma-prueba). La clave es la de
+mabel_ajustes de emma-prueba. Para correrlo contra la base real hay que pasar --real (y tener el ok de Yoan).
+Un paso puede traer "comprobante": {"monto": 1090} → se arma al vuelo un comprobante con la fecha y hora de hoy.
 """
 import argparse, base64, concurrent.futures as cf, datetime as dt, json, os, re, sys, time, urllib.request
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-URL = 'https://ssipaovluukkypsbzboe.supabase.co/functions/v1/mabel-prueba'
+URL_PRUEBA = 'https://ctrjlovufdssqgolwnjc.supabase.co/functions/v1/mabel-prueba'  # emma-prueba (base de prueba)
+URL_REAL = 'https://ssipaovluukkypsbzboe.supabase.co/functions/v1/mabel-prueba'    # base real: solo con --real y ok de Yoan
+REAL = 'ssipaovluukkypsbzboe'
 
 
 def post(url, key, body, intentos=2):
@@ -45,6 +51,17 @@ def poner(v, tel):
     return v
 
 
+def comprobante_hoy(c, tel):
+    """23/11: comprobante de prueba con la fecha y hora de ahora (los pedidos web se crean hoy: uno del 19/11 sería anterior al pedido)."""
+    import io, tempfile
+    sys.path.insert(0, AQUI)
+    from hacer_comprobantes import hacer
+    ahora = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))) - dt.timedelta(minutes=int(tel[-2:]) % 50)  # otra hora por caso: dos casos en paralelo no chocan en el control de repetidos
+    with tempfile.NamedTemporaryFile(suffix='.jpg') as f:
+        hacer('', int(c['monto']), fecha=ahora.strftime('%d/%m/%Y %H:%M'), oper=str(c.get('oper') or (tel[-3:] + ahora.strftime('%H%M%S') + str(c['monto']))), ruta=f.name)
+        return open(f.name, 'rb').read()
+
+
 def correr_caso(c, tel, url, key, ausente):
     post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
     pasos, ultimo = [], None
@@ -58,6 +75,8 @@ def correr_caso(c, tel, url, key, ausente):
                 if k in p: body[k] = p[k]
             if p.get('imagen'):
                 body['imagen_base64'] = base64.b64encode(open(os.path.join(AQUI, 'comprobantes', p['imagen']), 'rb').read()).decode(); body['mime'] = 'image/jpeg'
+            if p.get('comprobante'):
+                body['imagen_base64'] = base64.b64encode(comprobante_hoy(p['comprobante'], tel)).decode(); body['mime'] = 'image/jpeg'
             if c.get('fixture') and p is c['pasos'][0]: body['fixture'] = c['fixture']
             r = post(url, key, body); pasos.append(r); ultimo = r
     finally:
@@ -92,8 +111,12 @@ def revisar(c, r, pasos):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--url', default=URL); ap.add_argument('--solo', default=''); ap.add_argument('--tanda', default='todas')
+    ap.add_argument('--url', default=''); ap.add_argument('--solo', default=''); ap.add_argument('--tanda', default='todas')
+    ap.add_argument('--real', action='store_true', help='correr contra la base REAL (solo con ok de Yoan)')
     a = ap.parse_args()
+    if not a.url: a.url = URL_REAL if a.real else URL_PRUEBA
+    if REAL in a.url and not a.real: sys.exit('Esa URL es de la base REAL: hace falta --real (y el ok de Yoan).')
+    print('Corriendo contra', 'la BASE REAL' if REAL in a.url else 'emma-prueba (base de prueba)', '·', a.url)
     key = os.environ.get('MABEL_TEST_KEY') or sys.exit('Falta MABEL_TEST_KEY')
     banco = json.load(open(os.path.join(AQUI, 'casos.json')))
     casos = [c for c in banco['casos'] if (not a.solo or c['id'] in a.solo.split(',')) and (a.tanda == 'todas' or c.get('tanda', 'ya') == a.tanda)]

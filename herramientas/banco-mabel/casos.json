@@ -2365,6 +2365,796 @@
     ],
     "derivado": false
    }
+  },
+  {
+   "id": "W10",
+   "nombre": "Catálogo con pedido del vivo sin pagar: total junto (vivo + catálogo), un solo envío, plazo del catálogo",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria"
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "1\\.?090",
+     "17[:.]00"
+    ],
+    "no_contiene": [
+     "^[\\(\\[]",
+     "(?i)\\bma[ñn]ana\\b(?! a las)",
+     "(?i)c[oó]mo lo (quer[eé]s|recib)"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W11",
+   "nombre": "Vivo sin pagar + catálogo: un pago por el total junto cierra los dos (no pregunta la entrega)",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria"
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    },
+    {
+     "comprobante": {
+      "monto": 1090
+     },
+     "texto": "listo, ahí pagué todo",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "no_contiene": [
+     "(?i)falta",
+     "(?i)c[oó]mo lo (quer[eé]s|recib)",
+     "(?i)retiro, cadeter[ií]a o agencia"
+    ],
+    "herramienta": [
+     "crear_pedido_web",
+     "marcar_pagado"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W12",
+   "nombre": "Vivo sin pagar + catálogo: paga solo lo del catálogo → queda pago eso y le falta el vivo",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria"
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    },
+    {
+     "comprobante": {
+      "monto": 590
+     },
+     "texto": "pagué lo de la web, lo otro después",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "\\b500\\b"
+    ],
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W13",
+   "nombre": "Vivo sin pagar + catálogo: paga una parte de más → cubre el catálogo, lo que sobra a cuenta del vivo (Yanaina en silencio)",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria"
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    },
+    {
+     "comprobante": {
+      "monto": 800
+     },
+     "texto": "te transferí 800 por ahora",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "\\b290\\b"
+    ],
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": true
+   }
+  },
+  {
+   "id": "W14",
+   "nombre": "Catálogo con el vivo ya pago: cobra solo lo nuevo, sin envío extra",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria",
+      "estado": "listo",
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      }
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "\\b590\\b",
+     "(?i)junt"
+    ],
+    "no_contiene": [
+     "1\\.?090",
+     "(?i)env[ií]o[^.\\n]{0,25}\\$ ?250",
+     "840",
+     "(?i)\\bma[ñn]ana\\b(?! a las)"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W15",
+   "nombre": "Catálogo con el vivo ya despachado (etiqueta impresa): sale aparte con su propio envío",
+   "tanda": "W",
+   "fixture": {
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria",
+      "estado": "enviado",
+      "enviado_hace_dias": 1,
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      }
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "\\b590\\b",
+     "(?i)aparte|por separado|propio env|otro env|su env"
+    ],
+    "no_contiene": [
+     "1\\.?090",
+     "(?i)\\bma[ñn]ana\\b(?! a las)"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W16",
+   "nombre": "Vivo ya despachado y pide juntarlo igual → a Yanaina",
+   "tanda": "W",
+   "fixture": {
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria",
+      "estado": "enviado",
+      "enviado_hace_dias": 1,
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      }
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    },
+    {
+     "texto": "no me lo pueden mandar junto con el otro pedido así no pago dos envíos?",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "no_contiene": [
+     "(?i)s[ií] bella,? (te lo|lo) (mandamos|juntamos)"
+    ],
+    "derivado": true
+   }
+  },
+  {
+   "id": "W17",
+   "nombre": "Catálogo con pedido guardado: se suma al guardado y paga solo lo nuevo en su plazo",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria",
+      "estado": "guardado",
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      }
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "\\b590\\b",
+     "(?i)guardad",
+     "17[:.]00"
+    ],
+    "no_contiene": [
+     "1\\.?090",
+     "(?i)\\bma[ñn]ana\\b(?! a las)"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W18",
+   "nombre": "Guardado + catálogo: paga lo nuevo → queda guardado junto (no pregunta la entrega)",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ],
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria",
+      "estado": "guardado",
+      "pagado": {
+       "cuenta": "BROU",
+       "monto": 500
+      }
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $590",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    },
+    {
+     "comprobante": {
+      "monto": 590
+     },
+     "texto": "ahí pagué",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(?i)guardad"
+    ],
+    "no_contiene": [
+     "(?i)retiro, cadeter[ií]a o agencia",
+     "(?i)falta"
+    ],
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W19",
+   "nombre": "Quiere sumar algo sin vivo y hay link del catálogo en Config: le pasa el link",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria"
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "hola! quiero sumar una remera a mi pedido, se puede?",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__",
+      "linkCatalogo": "emma-catalogo-prueba.example/c"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "emma-catalogo-prueba\\.example/c"
+    ],
+    "no_contiene": [
+     "(?i)en el pr[oó]ximo vivo ped[ií]s"
+    ],
+    "no_herramienta": [
+     "crear_pedido_web",
+     "guardar_pedido"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W20",
+   "nombre": "Quiere sumar algo sin vivo y no hay link del catálogo: regla vieja (pagás y te lo guardamos)",
+   "tanda": "W",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "entrega": "cadeteria"
+     }
+    ],
+    "clienta": {
+     "direccion": "Gral. Flores 4241",
+     "barrio": "Ituzaingó"
+    }
+   },
+   "pasos": [
+    {
+     "texto": "hola! quiero sumar una remera a mi pedido, se puede?",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__",
+      "linkCatalogo": null
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(?i)vivo"
+    ],
+    "no_contiene": [
+     "(?i)cat[aá]logo"
+    ],
+    "no_herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W21",
+   "nombre": "Catálogo con un modelo que no está publicado: no se aparta ni se cobra",
+   "tanda": "W",
+   "fixture": {
+    "stock": [
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      3,
+      590
+     ],
+     [
+      3,
+      "BLUSA PRUEBA",
+      "S",
+      2,
+      790,
+      false
+     ]
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M3} BLUSA PRUEBA · talle S · $790\nTotal: $790",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "no_contiene": [
+     "\\b790\\b[^\\n]{0,40}(hasta|transfer)",
+     "(?i)brou|prex"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
   }
  ]
 }

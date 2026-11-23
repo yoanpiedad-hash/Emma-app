@@ -187,7 +187,7 @@ export async function buscarPedido(ctx: Ctx) {
     return {
       ...(anteriores.has(r.id) ? { anterior_a_mabel_sin_marcar_pago: true, indicio_en_historial: evidencia[r.id] || null, aviso: 'NO le pidas comprobante de este pedido y no le digas que lo debe: puede estar pagado y sin marcar. Si hace falta, pasalo a Yanaina en silencio.' } : {}),
       numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: p.web?.pagarHasta ? String(p.web.pagarHasta).slice(0, 10) : (live?.datos?.fechaPagoISO || null),
-      ...(p.web ? { pedido_web: true, pagar_hasta: horaPlazoTxt(p.web.pagarHasta), ...(!pagado(p) && p.estado === 'pendiente' && Date.parse(p.web.pagarHasta) < ahoraMs() ? { plazo_vencido: true, que_hacer_plazo: 'Pedido del catálogo web con el plazo vencido. Si manda el comprobante, registralo normal con marcar_pagado (la ropa sigue apartada hasta que el equipo la libere). Si pregunta si todavía puede pagar o pide más tiempo, no lo prometas: "Bella, el plazo para pagarlo ya venció, lo consulto con Yanaina y te confirma 🫶" y pasá a Yanaina (pago, con_frase_propia).' } : {}) } : {}), ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha, cfg) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
+      ...(p.web ? { pedido_web: true, pagar_hasta: horaPlazoTxt(p.web.pagarHasta), ...(p.web.junto && !p.web.vencido ? { sale_junto_con: p.web.junto.nums, ...(p.web.junto.modo === 'guardado' ? { se_suma_al_guardado: true } : {}) } : {}),...(!pagado(p) && p.estado === 'pendiente' && Date.parse(p.web.pagarHasta) < ahoraMs() ? { plazo_vencido: true, que_hacer_plazo: 'Pedido del catálogo web con el plazo vencido. Si manda el comprobante, registralo normal con marcar_pagado (la ropa sigue apartada hasta que el equipo la libere). Si pregunta si todavía puede pagar o pide más tiempo, no lo prometas: "Bella, el plazo para pagarlo ya venció, lo consulto con Yanaina y te confirma 🫶" y pasá a Yanaina (pago, con_frase_propia).' } : {}) } : {}), ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha, cfg) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
       entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
@@ -546,8 +546,18 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     if (rep) return derivar(ctx, `Ese comprobante ya figura en otro pago (mismo monto, fecha${hora ? ', hora' : ''}${oper.length >= 4 ? ', n° de operación' : ''} y cuenta)`, 'pago');
   }
   // Esperado (sin cadetería, salvo cobro agrupado que ya la trae) y faltante
-  const base = objetivo.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0);
-  const esp = esperadoDe(base, envCobro, cuenta, mp);
+  let base = objetivo.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0);
+  let esp = esperadoDe(base, envCobro, cuenta, mp);
+  // 23/11 (catálogo + vivo sin pagar): en el cobro agrupado, si paga una parte, primero se cubre lo del catálogo (tiene el plazo más corto).
+  let parcial: { resto: any[]; totalResto: number } | null = null;
+  if (monto < esp.total && cobro) {
+    const webs = objetivo.filter((r) => r.datos?.web && !r.datos.web.vencido), resto = objetivo.filter((r) => !webs.includes(r));
+    const bw = webs.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0), ew = esperadoDe(bw, 0, cuenta, mp);
+    if (webs.length && resto.length && monto >= ew.total - 2) {
+      parcial = { resto, totalResto: esp.total - ew.total };
+      objetivo = webs; base = bw; esp = ew; envCobro = 0;
+    }
+  }
   if (monto < esp.total) return derivar(ctx, `Transfirió de menos (faltan $${esp.total - monto}) · esperado $${esp.total}, transfirió $${monto} por ${cuenta}`, 'pago');
 
   // Registrar (misma lógica que registrarPagos de la app)
@@ -563,7 +573,12 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     for (const r of orden) {
       const p = JSON.parse(JSON.stringify(r.datos)); const g: any = { id: uid('g'), pedidoId: p.id, clienteId: p.clienteId, cuenta, medio: medioDe(cuenta), monto: calcTotal(p, lives.get(r.live_id)), fecha: ahora, origen: cobro ? 'cobro' : 'mabel', antes: p.estado };
       p.pago = { id: g.id, cuenta, fecha: ahora };
-      if (p.estado === 'pendiente') { p.estado = 'listo'; p.fechas = p.fechas || {}; p.fechas.listo = hoy; }
+      if (p.estado === 'pendiente') {
+        p.fechas = p.fechas || {};
+        // 23/11: lo del catálogo que se sumó a un pedido guardado queda guardado con él (sale cuando lo levante)
+        if (p.web?.junto?.modo === 'guardado') { p.estado = 'guardado'; p.fechas.guardado = hoy; }
+        else { p.estado = 'listo'; p.fechas.listo = hoy; }
+      }
       gs.push({ g, p, r });
     }
     const g0 = gs[gs.length - 1].g;
@@ -580,12 +595,29 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     for (const { p, r } of gs) await guardarPedido(r, p);
     const { error } = await sb.from('pagos').insert(gs.map(({ g }) => ({ id: g.id, pedido_id: g.pedidoId, cuenta: g.cuenta, monto: g.monto, fecha: g.fecha, comprobante: g.comprobante || null, datos: g, borrado: false })));
     if (error) throw new Error('No se pudo guardar el pago: ' + error.message);
-    if (cobro) {
+    if (cobro && parcial) {
+      // Pagó solo lo del catálogo: el cobro sigue con lo del vivo (o se anula si queda un solo pedido)
+      const quedan = (cobro.datos.pedidos || []).filter((id: string) => !gs.some(({ p }) => p.id === id));
+      const k = quedan.length > 1 ? { ...cobro.datos, pedidos: quedan, pagosParciales: [...(cobro.datos.pagosParciales || []), ...gs.map(({ g }) => g.id)] } : { ...cobro.datos, estado: 'anulado', anulado: ahora, motivo: 'Pagó solo lo del catálogo (' + gs.map(({ g }) => g.id).join(', ') + ')' };
+      await sb.from('cobros').update({ datos: k, actualizado: ahora }).eq('id', cobro.id);
+    } else if (cobro) {
       const k = { ...cobro.datos, estado: 'pagado', pagos: gs.map(({ g }) => g.id), pagado: ahora };
       await sb.from('cobros').update({ datos: k, actualizado: ahora }).eq('id', cobro.id);
     }
     return gs.map(({ p }) => p.num);
   });
+  if (parcial) {
+    const nums = parcial.resto.map((r) => '#' + r.datos.num).join(', '), sobra = Math.max(0, ajuste), falta = Math.max(0, parcial.totalResto - sobra);
+    const plazoV = parcial.resto.map((r) => String(lives.get(r.live_id)?.datos?.fechaPago || lives.get(r.live_id)?.datos?.fechaPagoISO || '')).filter(Boolean)[0] || '';
+    if (sobra > 30) await registrarDerivado(ctx.telKey, ctx.clienta, `Pagó $${monto} por ${cuenta}: cubrió lo del catálogo ($${esp.total}) y sobran $${sobra} a cuenta del vivo ${nums} (faltan $${falta}). Aplicar lo que sobró`, 'pago', true, 'mabel', ctx.inicio);
+    return { ok: true, pago_parcial: true, pedidos_marcados: res, cuenta, cubrio: 'lo del catálogo', esperado_catalogo: esp.total, transferido: monto, falta_del_vivo: falta,
+      que_hacer: `Con lo que transfirió quedó pago lo del catálogo (el total junto era $${esp.total + parcial.totalResto}). Decile que lo del catálogo ya quedó pago y que del pedido del vivo le faltan $${falta}${plazoV ? ', a pagar ' + plazoV : ''}; cuando lo pague salen juntos.${sobra > 30 ? ' Lo que sobró ya lo ve Yanaina (no lo expliques).' : ''} No le preguntes la entrega si ya está cargada.` };
+  }
+  // 23/11: lo del catálogo que sale junto con un pedido del vivo: la entrega ya está cargada (la del vivo)
+  const wj = objetivo.find((r) => r.datos?.web?.junto)?.datos;
+  const webJunto = wj ? { con: wj.web.junto.nums, entrega_cargada: !!(wj.entrega && wj.entrega !== 'sin_definir'),
+    que_decir: wj.web.junto.modo === 'guardado' ? 'Lo del catálogo quedó pago y guardado junto con su pedido guardado: sale cuando lo levante. No preguntes la entrega.'
+      : (wj.entrega && wj.entrega !== 'sin_definir') ? 'Sale junto con su pedido del vivo, con la misma entrega que ya tiene cargada (' + wj.entrega + '): no la preguntes de nuevo; confirmale corto que sale todo junto.' : 'Sale junto con su pedido del vivo: preguntale cómo lo recibe (se carga en los dos).' } : null;
   // 20/11 (Tanda D, pregunta 7): con saldo a favor y un pago de más, lo de más lo ve Yanaina (puede haber pagado sin descontar el saldo).
   const saldoCli = num(ctx.clienta?.datos?.saldoFavor);
   if (saldoCli > 0 && ajuste > 30) {
@@ -594,9 +626,10 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   }
   return {
     ok: true, pedidos_marcados: res, cuenta, esperado: esp.total, transferido: monto, diferencia: ajuste,
-    que_hacer: ajuste <= 30 ? 'Es redondeo o exacto: no digas nada de la diferencia. Seguí con cómo recibe el pedido.'
+    ...(webJunto ? { sale_junto: webJunto } : {}),
+    que_hacer: (webJunto ? webJunto.que_decir + ' ' : '') + (ajuste <= 30 ? 'Es redondeo o exacto: no digas nada de la diferencia.' + (webJunto?.entrega_cargada ? '' : ' Seguí con cómo recibe el pedido.')
       : ajuste === tar ? `Sobran justo $${tar}: preguntale "¿los $${tar} de más son para la cadetería?". Si dice que sí, guardá la entrega con tipo cadetería y envio_transferido=${tar}.`
-      : `Sobran $${ajuste}: preguntale por qué ("Vi que transferiste $${monto} y era $${esp.total}, ¿es por algo en especial?"). Si dice que es por la cadetería (vale $${tar}), guardá la entrega con envio_transferido=${ajuste} y avisale cuánto falta ($${tar - ajuste}) que se lo paga al cadete. Si es por otra cosa o no queda claro, pasalo a Yanaina con la diferencia.`,
+      : `Sobran $${ajuste}: preguntale por qué ("Vi que transferiste $${monto} y era $${esp.total}, ¿es por algo en especial?"). Si dice que es por la cadetería (vale $${tar}), guardá la entrega con envio_transferido=${ajuste} y avisale cuánto falta ($${tar - ajuste}) que se lo paga al cadete. Si es por otra cosa o no queda claro, pasalo a Yanaina con la diferencia.`),
   };
 }
 async function derivar(ctx: Ctx, motivo: string, categoria?: string) { const r = await pasarAYanaina(ctx, motivo, false, categoria || categoriaDe(motivo)); return { ...r, ok: false, motivo }; }
@@ -988,11 +1021,14 @@ export function leerMensajeCatalogo(texto: string) {
 }
 export const pareceCatalogo = (texto: string) => leerMensajeCatalogo(texto).esCatalogo;
 const stockNum = (d: any) => { const n = Math.floor(+d?.stock); return Number.isFinite(n) ? n : 0; };
-/** Registro "Ventas · mes" (lo crea si no existe). En el modo prueba (099000xxx) es el live propio del número, nunca el real. */
+/** 23/11: ¿el modelo está publicado en el catálogo? Mismo campo que Gestión (fotos.js: m.web.pub con al menos una foto). */
+export const publicado = (md: any) => !!(md && md.activo !== false && md.web && md.web.pub === true && Array.isArray(md.web.fotos) && md.web.fotos.some((f: any) => f && f.u));
+/** Registro "Ventas · mes" (lo crea si no existe). En el modo prueba (099000xxx) es un registro propio del número (lbventas-…), nunca el real
+ *  ni el live de prueba del vivo (lbanco-…), para poder probar una clienta con pedido del vivo + catálogo. */
 async function registroVentas(telKey: string) {
   const hoy = hoyUY(), ym = hoy.slice(0, 7), ahora = new Date().toISOString();
   if (esNumPrueba(telKey)) {
-    const id = 'lbanco-' + telKey;
+    const id = 'lbventas-' + telKey;
     const { data: ya } = await sb.from('lives').select('*').eq('id', id).maybeSingle();
     if (ya) return ya;
     const d = { id, tipo: 'ventas', mes: ym, nombre: 'BANCO MABEL (prueba, no tocar)', fecha: hoy, fechaPago: '', fechaPagoISO: '', descuento: 0, pedidoCounter: 0 };
@@ -1044,7 +1080,7 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
   const faltaMd = [...new Set([...(s1 || [])].map((s: any) => s.datos?.modeloId).filter((id: string) => id && !modelos.has(id)))];
   if (faltaMd.length) { const { data: m2 } = await sb.from('modelos').select('id,num,datos').in('id', faltaMd); (m2 || []).forEach((m: any) => modelos.set(m.id, m)); }
   const grupos = new Map<string, { fila: any; modelo: any; qty: number; precioDicho: number | null; linea: string }>();
-  const noExisten: string[] = [];
+  const noExisten: string[] = [], noPublicadas: string[] = [];
   for (const x of leido.lineas) {
     let fila: any = null;
     if (x.prenda) fila = (s1 || []).find((s: any) => s.codigo === x.codigo) || null;
@@ -1053,12 +1089,14 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
       if (md) fila = [...filasStock.values()].find((s: any) => s.datos?.modeloId === md.id && normTalle(s.datos?.talle) === x.talle) || null;
     }
     if (!fila) { noExisten.push(x.linea); continue; }
+    // Solo modelos publicados en el catálogo (con fotos y 🌐 publicado en Gestión)
+    if (!publicado(modelos.get(fila.datos?.modeloId)?.datos)) { noPublicadas.push(x.linea); continue; }
     const g = grupos.get(fila.id);
     if (g) g.qty++; else grupos.set(fila.id, { fila, modelo: modelos.get(fila.datos?.modeloId) || null, qty: 1, precioDicho: x.precio, linea: x.linea });
   }
   const nombreDe = (g: any) => String(g.fila.datos?.descripcion || g.modelo?.datos?.nombre || g.linea).slice(0, 60);
-  const sinRef = { no_existen: noExisten, no_entendidas: leido.raras };
-  if (!grupos.size) return { ok: false, nada_valido: true, ...sinRef, que_hacer: 'Ninguna prenda del mensaje coincide con el catálogo (código o talle que no existe): no se creó pedido. Decile que no encontramos esas prendas y que las vuelva a elegir desde el catálogo (sin cambiar el mensaje). No pases a Yanaina.' };
+  const sinRef = { no_existen: [...noExisten, ...noPublicadas], no_entendidas: leido.raras };
+  if (!grupos.size) return { ok: false, nada_valido: true, ...sinRef, que_hacer: 'Ninguna prenda del mensaje coincide con el catálogo (código o talle que no existe, o la prenda ya no está publicada): no se creó pedido. Decile que no encontramos esas prendas y que las vuelva a elegir desde el catálogo (sin cambiar el mensaje). No pases a Yanaina.' };
   // Apartar: un movimiento por prenda. Si en el medio se vendió (vivo, mostrador), la base compensa con 'sin_stock' y esa unidad no entra.
   const pid = esNumPrueba(ctx.telKey) ? 'pw' + ctx.telKey + '-' + Date.now().toString(36) : uid('p');
   const apartadas = new Map<string, number>(), noQuedan: { prenda: string; pedidas: number; quedaban: number }[] = [];
@@ -1102,6 +1140,7 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
     const c = ctx.clienta;
     const live = await registroVentas(ctx.telKey);
     if (!live) throw new Error('sin registro de ventas');
+    const plan = await planJunto(ctx, cfg); // 23/11: ¿ya tiene un pedido del vivo abierto? (sale junto, un solo envío)
     const ahoraT = ahoraMs(), hasta = new Date(plazoPedidoWeb(ahoraT)).toISOString(), hoy = hoyUY();
     const prendas = [...apartadas].map(([sid, qty]) => {
       const g = grupos.get(sid)!, lista = Math.round(+g.fila.datos?.precioVenta || +g.modelo?.datos?.precioVenta || 0) || (g.precioDicho || 0);
@@ -1117,6 +1156,19 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
     const p: any = { id: pid, codigo: '', num: 0, liveId: live.id, clienteId: c.id, prendas, descuento: null, saldoAplicado: 0, estado: 'pendiente', entrega: c.datos?.agencia ? 'agencia' : 'sin_definir', cobroEnvio: null,
       fechas: { creado: hoy }, avisos: [], notas: '🛒 Pedido del catálogo web (lo cargó Mabel). Paga ' + horaPlazoTxt(hasta), promoCalc: { fecha: hoy, promos, vipPct },
       web: { mensaje: msgId, firma, creado: new Date(ahoraT).toISOString(), pagarHasta: hasta, texto: texto.slice(0, 600) } };
+    if (plan.modo !== 'solo' && plan.modo !== 'despachado') {
+      // Sale junto: se copia la entrega ya cargada en el pedido del vivo (el cadete cobra un solo envío por viaje: la app toma el mayor)
+      const ref = plan.ref[plan.ref.length - 1].datos;
+      if (ref.entrega && ref.entrega !== 'sin_definir') {
+        p.entrega = ref.entrega;
+        for (const k of ['tipoEnvio', 'cobroEnvio', 'cobroMonto', 'retiroCuando']) if (ref[k] !== undefined && ref[k] !== null) p[k] = JSON.parse(JSON.stringify(ref[k]));
+        if (p.entrega !== 'cadeteria') { delete p.cobroEnvio; delete p.cobroMonto; }
+        if (p.entrega !== 'retiro') delete p.retiroCuando;
+      }
+      p.web.junto = { modo: plan.modo, con: plan.ref.map((r: any) => r.id), nums: plan.ref.map((r: any) => r.datos.num) };
+      p.avisoDespacho = (plan.modo === 'guardado' ? '🛒 Web: sale junto con el guardado ' : '🛒 Web: sale junto con ') + plan.ref.map((r: any) => '#' + r.datos.num).join(', ') + ' (un solo envío)';
+      p.notas += '\n🛒 Sale junto con ' + plan.ref.map((r: any) => '#' + r.datos.num).join(', ') + (plan.modo === 'guardado' ? ' (guardado: sale cuando lo levante)' : '') + '. No se cobra otro envío.';
+    }
     // Saldo a favor (como recalcSaldo de la app)
     const sub = calcPedido(p, live, modeloDe).total, saldo = Math.max(0, num(c.datos?.saldoFavor));
     const ap = Math.min(saldo, sub);
@@ -1135,20 +1187,86 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
     if (!creado) throw new Error('pedido: número repetido');
     if ((+live.datos?.pedidoCounter || 0) < p.num) await sb.from('lives').update({ datos: { ...live.datos, pedidoCounter: p.num }, actualizado: new Date().toISOString() }).eq('id', live.id).eq('actualizado', live.actualizado);
     const { total, detalle } = calcPedido(p, live, modeloDe), mp = mpDe(cfg);
+    const junto = plan.modo === 'solo' || plan.modo === 'despachado' ? null : await juntarConVivo(ctx, plan, p, total, hasta);
     if (prendas.some((x) => !(+grupos.get(x.stockId)?.fila.datos?.precioVenta || +grupos.get(x.stockId)?.modelo?.datos?.precioVenta))) await registrarDerivado(ctx.telKey, c, `Pedido web #${p.num}: hay prendas sin precio en la base (se usó el del mensaje). Revisar el total`, 'pedido', true, 'mabel', ctx.inicio);
     return {
       ok: true, pedido: p.num, prendas: prendas.map((x) => ({ prenda: x.nombre, cantidad: x.qty, precio: x.precio })), total, detalle_del_total: detalle,
       mercado_pago: esperadoDe(total, 0, 'Mercado Pago', mp).total, pagar_hasta: horaPlazoTxt(hasta), ...baseNoQueda, precio_distinto: precioDistinto,
-      que_hacer: 'Pedido creado y prendas apartadas. En UN mensaje: ' + (noQuedan.length || noExisten.length ? 'primero, con tacto, lo que no entró (no_quedan: se vendieron; no_existen: no las encontramos en el catálogo); ' : '')
+      ...(junto ? { con_pedido_del_vivo: junto.info } : {}),
+      ...(plan.modo === 'despachado' ? { pedido_del_vivo_ya_despachado: plan.ref.map((r: any) => r.datos.num) } : {}),
+      que_hacer: 'Pedido creado y prendas apartadas. En UN mensaje: ' + (noQuedan.length || sinRef.no_existen.length ? 'primero, con tacto, lo que no entró (no_quedan: se vendieron; no_existen: no las encontramos en el catálogo); ' : '')
         + (precioDistinto.length ? 'que el precio de esa prenda es el del catálogo (precio_real), sin discutir; ' : '')
         + (leido.raras.length ? 'que lo que escribió aparte (no_entendidas) no entra: se pide eligiendo en el catálogo; ' : '')
-        + 'el total por transferencia (total), que tiene para pagar hasta ' + horaPlazoTxt(hasta) + ' y que si no, la ropa se libera; y las cuentas tal cual FORMAS DE PAGO. Mercado Pago (con recargo) solo si lo pide. No preguntes la entrega todavía: la pedís cuando mande el comprobante. No digas número de pedido ni nombres de herramientas.',
+        + (junto ? junto.que_decir
+          : (plan.modo === 'despachado' ? 'que este pedido sale aparte del que ya tiene en camino, con su propio envío (si es cadetería, con su costo; si pide juntarlo igual con el otro, no lo prometas: pasá a Yanaina, entrega); ' : '')
+            + 'el total por transferencia (total), que tiene para pagar hasta ' + horaPlazoTxt(hasta) + ' y que si no, la ropa se libera; y las cuentas tal cual FORMAS DE PAGO. ')
+        + 'Mercado Pago (con recargo) solo si lo pide. ' + (junto?.entrega_copiada ? 'La entrega ya quedó cargada (la misma del pedido del vivo): no la preguntes. ' : 'No preguntes la entrega todavía: la pedís cuando mande el comprobante. ') + 'No digas número de pedido ni nombres de herramientas.',
     };
   } catch (e) {
     await devolver();
     console.error('pedido web (crear):', (e as Error).message);
     return derivar(ctx, 'Pedido del catálogo web: no se pudo crear (' + String((e as Error).message).slice(0, 80) + ')', 'pedido');
   }
+}
+// ─── Clienta con pedido del vivo abierto que compra por el catálogo (23/11, decisión de Yoan) ──
+// Pedido aparte en "Ventas · mes", pero sale junto: se le copia la entrega del pedido del vivo y se cobra UN solo envío.
+// Lo del catálogo se paga en su plazo (2 h / hasta las 11), no se estira a la fecha de pago del vivo.
+//  · cobro:      vivo sin pagar → cobro agrupado (vivo + catálogo, un solo pago cierra los dos; si paga una parte, primero el catálogo).
+//  · pagado:     vivo ya pago (sin etiqueta) → paga solo lo nuevo, sin envío extra.
+//  · guardado:   vivo guardado → lo del catálogo se suma al guardado (al pagarlo queda guardado) y sale cuando lo levante.
+//  · despachado: vivo con etiqueta impresa (enviado, últimos 3 días) y nada más abierto → envío nuevo con su costo; juntarlo, Yanaina.
+const AVISO_ESPERA_WEB = '🛒 Espera pedido web';
+async function planJunto(ctx: Ctx, cfg: Record<string, any>) {
+  const { filas, lives, cobros } = await abiertos(ctx);
+  const vivos = filas.filter((r) => !r.datos?.web && !esVentas(lives.get(r.live_id)?.datos) && !esAnteriorAMabel(r, lives.get(r.live_id), cfg));
+  const sinPagar = vivos.filter((r) => !pagado(r.datos) && r.datos.estado === 'pendiente');
+  const guardados = vivos.filter((r) => r.datos.estado === 'guardado');
+  const pagos = vivos.filter((r) => pagado(r.datos) && r.datos.estado === 'listo');
+  if (sinPagar.length) return { modo: 'cobro', ref: sinPagar, lives, cobros };
+  if (guardados.length) return { modo: 'guardado', ref: guardados, lives, cobros };
+  if (pagos.length) return { modo: 'pagado', ref: pagos, lives, cobros };
+  if (ctx.clientas.length) {
+    const desde = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
+    const { data: en } = await sb.from('pedidos').select('*').in('clienta_id', ctx.clientas.map((k) => k.id)).eq('borrado', false).eq('estado', 'enviado');
+    const rec = (en || []).filter((r: any) => !r.datos?.web && String(r.datos?.fechas?.enviado || r.datos?.fechas?.listo || '') >= desde);
+    if (rec.length) return { modo: 'despachado', ref: rec, lives, cobros };
+  }
+  return { modo: 'solo', ref: [] as any[], lives, cobros };
+}
+const quitarAviso = (av: any, pre: string) => String(av || '').split(' · ').map((x: string) => x.trim()).filter((x: string) => x && !x.startsWith(pre)).join(' · ');
+async function juntarConVivo(ctx: Ctx, plan: any, p: any, totalWeb: number, hasta: string) {
+  const ahora = new Date().toISOString(), cuando = horaPlazoTxt(hasta), ids = plan.ref.map((r: any) => r.id);
+  // Aviso en el pedido del vivo: que no salga sin el web (se saca si el web vence sin pagar)
+  for (const r0 of plan.ref) {
+    await conReintento(async () => {
+      const { data: r } = await sb.from('pedidos').select('*').eq('id', r0.id).single();
+      const d = JSON.parse(JSON.stringify(r.datos));
+      d.avisoDespacho = [AVISO_ESPERA_WEB + ' #' + p.num + ' (paga ' + cuando + '): sale junto', quitarAviso(d.avisoDespacho, AVISO_ESPERA_WEB)].filter(Boolean).join(' · ').slice(0, 200);
+      await guardarPedido(r, d);
+    });
+  }
+  const totVivo = plan.ref.reduce((s: number, r: any) => s + calcTotal(r.datos, plan.lives.get(r.live_id)), 0);
+  const entrega_copiada = !!(p.entrega && p.entrega !== 'sin_definir');
+  if (plan.modo === 'cobro') {
+    // Cobro agrupado: el abierto de la clienta (si la app ya armó uno, se le suma) o uno nuevo. Sin envío en el cobro: el envío sigue como en el pedido del vivo.
+    let k: any = plan.cobros[0]?.datos ? JSON.parse(JSON.stringify(plan.cobros[0].datos)) : null;
+    if (k) { k.pedidos = [...new Set([...(k.pedidos || []), p.id])]; k.web = p.id; }
+    else k = { id: esNumPrueba(ctx.telKey) ? 'kb' + ctx.telKey + '-' + Date.now().toString(36) : uid('cb'), clienteId: p.clienteId, pedidos: [...ids, p.id], envio: 0, estado: 'abierto', creado: ahora, web: p.id, origen: 'mabel' };
+    const enCobro = plan.ref.filter((r: any) => k.pedidos.includes(r.id));
+    const totV = enCobro.reduce((s: number, r: any) => s + calcTotal(r.datos, plan.lives.get(r.live_id)), 0);
+    k.total = totV + totalWeb + (+k.envio || 0);
+    const { error } = await sb.from('cobros').upsert({ id: k.id, datos: k, borrado: false, actualizado: ahora });
+    if (error) throw new Error('cobro: ' + error.message);
+    const { data: pr } = await sb.from('pedidos').select('*').eq('id', p.id).single();
+    await guardarPedido(pr, { ...pr.datos, web: { ...pr.datos.web, junto: { ...pr.datos.web.junto, cobro: k.id } } });
+    const tj = k.total;
+    return { entrega_copiada, info: { modo: 'cobro_agrupado', pedido_del_vivo_sin_pagar: enCobro.map((r: any) => r.datos.num), total_vivo: totV, total_catalogo: totalWeb, total_junto: tj, ...(k.envio ? { incluye_envio_cadeteria: k.envio } : {}) },
+      que_decir: `que como tiene el pedido del vivo sin pagar, le pasás el total junto (pedido del vivo ${plata(totV)} + catálogo ${plata(totalWeb)} = ${plata(tj)}), que salen juntos con un solo envío, y que con un solo pago quedan los dos; que lo del catálogo tiene que estar pago hasta ${cuando} (si no, esa ropa se libera; el pedido del vivo mantiene su fecha de pago). Las cuentas tal cual FORMAS DE PAGO. El total a transferir es total_junto (no digas solo el del catálogo como total). ` };
+  }
+  if (plan.modo === 'guardado') return { entrega_copiada, info: { modo: 'se_suma_al_guardado', pedido_guardado: plan.ref.map((r: any) => r.datos.num), total_a_pagar_ahora: totalWeb },
+    que_decir: `que lo del catálogo se suma a su pedido guardado y sale junto cuando lo levante (no se cobra otro envío); que ahora paga solo lo nuevo, ${plata(totalWeb)} por transferencia, hasta ${cuando} (si no, esa ropa se libera); y las cuentas tal cual FORMAS DE PAGO. ` };
+  return { entrega_copiada, info: { modo: 'vivo_ya_pago', pedido_del_vivo: plan.ref.map((r: any) => r.datos.num), total_a_pagar_ahora: totalWeb },
+    que_decir: `que como su pedido del vivo ya está pago, este sale junto con ese, sin envío extra; que paga solo lo nuevo, ${plata(totalWeb)} por transferencia, hasta ${cuando} (si no, esa ropa se libera); y las cuentas tal cual FORMAS DE PAGO. ` };
 }
 /** Pedidos web sin pagar con el plazo vencido: se marcan "para liberar" (aviso en Despacho + pendiente en la bandeja). No se libera solo. */
 const AVISO_VENCIDO = '⏳ Web sin pagar: venció el plazo, para liberar';
@@ -1165,6 +1283,15 @@ export async function vencerPedidosWeb(cids?: string[]) {
       const d = JSON.parse(JSON.stringify(p)); d.web.vencido = new Date(ahora).toISOString();
       d.avisoDespacho = [AVISO_VENCIDO, ...String(d.avisoDespacho || '').split(' · ').map((t: string) => t.trim()).filter((t: string) => t && t !== AVISO_VENCIDO)].join(' · ').slice(0, 200);
       await guardarPedido(r, d);
+      // 23/11: si salía junto con un pedido del vivo, el del vivo sigue solo (se anula el cobro agrupado y se saca su aviso de espera)
+      const jt = p.web?.junto;
+      if (jt?.cobro) {
+        const { data: kc } = await sb.from('cobros').select('*').eq('id', jt.cobro).maybeSingle();
+        if (kc && kc.datos?.estado === 'abierto') await sb.from('cobros').update({ datos: { ...kc.datos, estado: 'anulado', anulado: new Date().toISOString(), motivo: 'Venció el plazo del pedido web #' + p.num }, actualizado: new Date().toISOString() }).eq('id', kc.id);
+      }
+      for (const id of (jt?.con || [])) {
+        try { await conReintento(async () => { const { data: rv } = await sb.from('pedidos').select('*').eq('id', id).maybeSingle(); if (!rv || !String(rv.datos?.avisoDespacho || '').includes(AVISO_ESPERA_WEB)) return; const dv = JSON.parse(JSON.stringify(rv.datos)); const av = quitarAviso(dv.avisoDespacho, AVISO_ESPERA_WEB); if (av) dv.avisoDespacho = av; else delete dv.avisoDespacho; await guardarPedido(rv, dv); }); } catch (_) { /* sigue */ }
+      }
       const { data: cl } = await sb.from('clientas').select('*').eq('id', r.clienta_id).maybeSingle();
       const tk = cl?.tel_key || telKeyDe(cl?.datos?.tel || '');
       if (tk) await registrarDerivado(tk, cl, `Pedido web #${p.num} sin pagar: venció el plazo (${horaPlazoTxt(p.web.pagarHasta)}). Para liberar (la ropa vuelve al stock) o aplazar`, 'pago', true, 'regla');

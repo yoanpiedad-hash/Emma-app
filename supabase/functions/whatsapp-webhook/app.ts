@@ -331,6 +331,8 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
     salidaCadeteria(cfg),
     // 20/11: link a la página de cambios (Config linkCambios). Sin la clave, Mabel no pasa link.
+    // 23/11: link del catálogo web (Config linkCatalogo). Con él, "sumar algo sin vivo" se resuelve por el catálogo.
+    cfg.linkCatalogo ? 'CATÁLOGO WEB (link para elegir prendas y pedirlas por acá cuando no hay vivo): ' + String(cfg.linkCatalogo) : '',
     cfg.linkCambios ? 'POLÍTICA DE CAMBIOS (link para pasarle si pregunta por cambios): ' + String(cfg.linkCambios) : '',
     // 20/11 (D-3): VIVO siempre dice si hay o no; con vivo, el link fijo (Config linkVivo). TOTAL solo si tiene un pedido de ese vivo.
     !liveActivo ? 'VIVO: no hay vivo en curso. Los totales de los vivos anteriores ya se mandaron: atendé normal (comprobantes, entrega, cuentas si las pide). No digas "cuando termine el vivo" ni pases el link del vivo.'
@@ -816,6 +818,8 @@ Deno.serve(async (req) => {
         await sb.from('pedidos').delete().like('id', 'pb' + telKey + '-%');
         await sb.from('clientas').delete().eq('id', 'cb' + telKey);
         await sb.from('lives').delete().eq('id', 'lbanco-' + telKey);
+        await sb.from('lives').delete().eq('id', 'lbventas-' + telKey);
+        await sb.from('cobros').delete().eq('datos->>clienteId', 'cb' + telKey);
         // 23/11 (pedido web): pedidos web, prendas y modelos de prueba de este número (ids pw<tel>-…, sb<tel>-N, mdb<tel>-N)
         await sb.from('pagos').delete().like('pedido_id', 'pw' + telKey + '-%');
         await sb.from('pedidos').delete().like('id', 'pw' + telKey + '-%');
@@ -823,7 +827,7 @@ Deno.serve(async (req) => {
         await sb.from('stock').delete().like('id', 'sb' + telKey + '-%');
         await sb.from('modelos').delete().like('id', 'mdb' + telKey + '-%');
       }
-      if (b.borrar_live_banco) { await sb.from('pagos').delete().like('pedido_id', 'pb99000%'); await sb.from('pedidos').delete().like('live_id', 'lbanco-%'); await sb.from('clientas').delete().like('id', 'cb99000%'); await sb.from('lives').delete().like('id', 'lbanco-%'); await sb.from('pedidos').delete().like('id', 'pw99000%'); await sb.from('movimientos').delete().like('stock_id', 'sb99000%'); await sb.from('stock').delete().like('id', 'sb99000%'); await sb.from('modelos').delete().like('id', 'mdb99000%'); }
+      if (b.borrar_live_banco) { await sb.from('pagos').delete().like('pedido_id', 'pb99000%'); await sb.from('pedidos').delete().like('live_id', 'lbanco-%'); await sb.from('clientas').delete().like('id', 'cb99000%'); await sb.from('lives').delete().like('id', 'lbanco-%'); await sb.from('lives').delete().like('id', 'lbventas-99000%'); await sb.from('cobros').delete().like('datos->>clienteId', 'cb99000%'); await sb.from('pedidos').delete().like('id', 'pw99000%'); await sb.from('movimientos').delete().like('stock_id', 'sb99000%'); await sb.from('stock').delete().like('id', 'sb99000%'); await sb.from('modelos').delete().like('id', 'mdb99000%'); }
       if (b.solo_limpiar) return Response.json({ ok: true, limpio: telKey });
       if (b.fixture && typeof b.fixture === 'object') { // 19/11: ficha y pedidos de prueba en un live "BANCO MABEL (prueba, no tocar)" propio de ese número (el número de pedido es único por live)
         const fx = b.fixture, ahoraIso = new Date().toISOString(), lf = String(fx.live_fecha || '2026-11-13');
@@ -843,10 +847,12 @@ Deno.serve(async (req) => {
           if (ePd) return Response.json({ error: 'fixture pedido: ' + ePd.message }, { status: 500 });
           if (q.pagado) await sb.from('pagos').upsert({ id: pd.pago.id, pedido_id: pid, cuenta: pd.pago.cuenta, monto: q.pagado.monto || 500, fecha: pd.pago.fecha, comprobante: null, datos: { id: pd.pago.id, pedidoId: pid, clienteId: cid, cuenta: pd.pago.cuenta, monto: q.pagado.monto || 500, fecha: pd.pago.fecha, origen: 'prueba', ajuste: 0 }, borrado: false, actualizado: ahoraIso });
         }
-        // 23/11 (pedido web): prendas de prueba [k, nombre, talle, stock, precio] → modelo num 9<tel3><k> (ej. 91041), stock sb<tel>-<k>
-        for (const [k, nombre, talle, cant, precio] of (Array.isArray(fx.stock) ? fx.stock : [])) {
+        // 23/11 (pedido web): prendas de prueba [k, nombre, talle, stock, precio, publicado?] → modelo num 9<tel3><k> (ej. 91041), stock sb<tel>-<k>
+        // El modelo queda 🌐 publicado (m.web.pub con una foto, como Gestión) salvo que el 6º valor sea false.
+        for (const [k, nombre, talle, cant, precio, pub] of (Array.isArray(fx.stock) ? fx.stock : [])) {
           const mid = 'mdb' + telKey + '-' + k, sid = 'sb' + telKey + '-' + k + '-' + String(talle || 'U'), mnum = +('9' + telKey.slice(-3) + k);
-          const md = { id: mid, num: mnum, nombre: String(nombre || 'PRENDA PRUEBA'), categoria: 'Otro', tipoTalle: 'letras', precioVenta: +precio || 0, alias: [], activo: true, creado: ahoraIso };
+          const md = { id: mid, num: mnum, nombre: String(nombre || 'PRENDA PRUEBA'), categoria: 'Otro', tipoTalle: 'letras', precioVenta: +precio || 0, alias: [], activo: true, creado: ahoraIso,
+            web: { fotos: [{ p: 'prueba/' + mid + '.jpg', u: 'https://example.invalid/prueba/' + mid + '.jpg' }], pub: pub !== false, ...(pub !== false ? { publicado: ahoraIso } : {}) } };
           await sb.from('modelos').upsert({ id: mid, num: mnum, datos: md, borrado: false, actualizado: ahoraIso });
           const sd = { id: sid, modeloId: mid, talle: String(talle || 'U'), codigo: 'B' + telKey.slice(-3) + k + String(talle || 'U'), descripcion: md.nombre + (talle && talle !== 'U' ? ' T.' + talle : ''), categoria: 'Otro', stock: +cant || 0, precioVenta: +precio || 0, activo: true };
           const { error: eS } = await sb.from('stock').upsert({ id: sid, codigo: sd.codigo, datos: sd, borrado: false, actualizado: ahoraIso });
