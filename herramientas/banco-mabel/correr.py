@@ -46,6 +46,7 @@ def poner(v, tel):
         hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date().isoformat()
         v = re.sub(r'\{M(\d)\}', lambda m: '9' + tel[-3:] + m.group(1), v).replace('{TEL}', tel[-8:])
         v = re.sub(r'\{([A-Z]{1,3}):(\d)\}', lambda m: m.group(1) + tel[-3:] + m.group(2), v)  # {RP:4} = modelo con código de letras (7º valor del stock)
+        v = re.sub(r'__fecha_\+(\d+)__', lambda m: (dt.date.fromisoformat(hoy) + dt.timedelta(days=int(m.group(1)))).isoformat(), v)  # hoy + N días (AAAA-MM-DD)
         return re.sub(r'__hoy_(\d\d)(\d\d)__', lambda m: f'{hoy}T{m.group(1)}:{m.group(2)}:00-03:00', v)
     if isinstance(v, list): return [poner(x, tel) for x in v]
     if isinstance(v, dict): return {k: poner(x, tel) for k, x in v.items()}
@@ -78,7 +79,7 @@ def correr_caso(c, tel, url, key, ausente):
                 body['imagen_base64'] = base64.b64encode(open(os.path.join(AQUI, 'comprobantes', p['imagen']), 'rb').read()).decode(); body['mime'] = 'image/jpeg'
             if p.get('comprobante'):
                 body['imagen_base64'] = base64.b64encode(comprobante_hoy(p['comprobante'], tel)).decode(); body['mime'] = 'image/jpeg'
-            if c.get('fixture') and p is c['pasos'][0]: body['fixture'] = c['fixture']
+            if c.get('fixture') and p is c['pasos'][0]: body['fixture'] = poner(c['fixture'], tel)
             r = post(url, key, body); pasos.append(r); ultimo = r
     finally:
         post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})

@@ -1322,11 +1322,12 @@
        ]
       ]
      }
-    ]
+    ],
+    "fecha_pago": "__fecha_+5__"
    },
    "pasos": [
     {
-     "texto": "lo paso a retirar el sábado 21 y pago ahí"
+     "texto": "lo paso a retirar pasado mañana y pago ahí"
     }
    ],
    "espera": {
@@ -1335,7 +1336,8 @@
      "guardar_entrega"
     ],
     "derivado": false
-   }
+   },
+   "nota": "23/11: fecha relativa (antes \"sábado 21\", que ya pasó): plazo de pago en 5 días, retira en 2."
   },
   {
    "id": "D04",
