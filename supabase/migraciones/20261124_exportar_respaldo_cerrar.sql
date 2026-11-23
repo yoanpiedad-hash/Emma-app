@@ -1,3 +1,5 @@
+-- ⚠️ NO APLICAR EN LA BASE REAL (todavía). Aplicada solo en emma-prueba. Se decide aparte, cuando se cierre exportar_respaldo
+-- (la copia nueva tiene que llevar una semana andando bien). No va en la tanda del catálogo (25/11).
 -- 24/11/2026 · Seguridad: exportar_respaldo() sin la clave cargada quedaba ABIERTA.
 -- La comparación `clave <> (select valor …)` da NULL si no existe el secreto 'drive' en privado.secretos,
 -- y NULL no entra al "raise": cualquiera con la clave pública de la app se llevaba la copia completa
