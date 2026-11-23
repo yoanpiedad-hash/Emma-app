@@ -34,14 +34,25 @@ def dias_viaje():
     return [{'fecha': (hoy + dt.timedelta(days=i)).isoformat(), 'motivo': 'viaje'} for i in range(4)]
 
 
+def poner(v, tel):
+    """23/11 (pedido web): {M1} = modelo de prueba del caso (9 + últimas 3 cifras del número + k), {TEL} = número, __hoy_HHMM__ = hoy a esa hora."""
+    if isinstance(v, str):
+        hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date().isoformat()
+        v = re.sub(r'\{M(\d)\}', lambda m: '9' + tel[-3:] + m.group(1), v).replace('{TEL}', tel[-8:])
+        return re.sub(r'__hoy_(\d\d)(\d\d)__', lambda m: f'{hoy}T{m.group(1)}:{m.group(2)}:00-03:00', v)
+    if isinstance(v, list): return [poner(x, tel) for x in v]
+    if isinstance(v, dict): return {k: poner(x, tel) for k, x in v.items()}
+    return v
+
+
 def correr_caso(c, tel, url, key, ausente):
     post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
     pasos, ultimo = [], None
     try:
         for p in c['pasos']:
             cfg = {'mabelAusente': None, 'diasSinSalida': []}
-            cfg.update({k: (dias_viaje() if v == '__viaje__' else v) for k, v in (p.get('cfg') or {}).items()})
-            body = {'tel': tel, 'texto': p.get('texto', ''), 'detalle': True, 'cfg': cfg}
+            cfg.update({k: (dias_viaje() if v == '__viaje__' else poner(v, tel)) for k, v in (p.get('cfg') or {}).items()})
+            body = {'tel': tel, 'texto': poner(p.get('texto', ''), tel), 'detalle': True, 'cfg': cfg}
             if p.get('ausente'): body['ausente'] = ausente; cfg.pop('mabelAusente', None)
             for k in ('previo', 'conv', 'imagen_base64', 'mime'):
                 if k in p: body[k] = p[k]

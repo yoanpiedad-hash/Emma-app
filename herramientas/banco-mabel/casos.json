@@ -1,5 +1,5 @@
 {
- "nota": "Banco de casos de Mabel. Cada caso usa su propio número de prueba 099000NNN (se limpia antes y después). 'tanda' = desde cuándo tiene que pasar: 'ya' (v110 lo tiene que pasar), 'D' (recién después de la Tanda D). 'cfg' por defecto: sin modo ausente y sin días sin salida. 20/11: 'E' = tanda E (pagos).",
+ "nota": "Banco de casos de Mabel. Cada caso usa su propio número de prueba 099000NNN (se limpia antes y después). 'tanda' = desde cuándo tiene que pasar: 'ya' (v110 lo tiene que pasar), 'D' (recién después de la Tanda D). 'cfg' por defecto: sin modo ausente y sin días sin salida. 20/11: 'E' = tanda E (pagos). 23/11: 'W' = pedido del catálogo web (Paso 2). En texto y cfg, {M1}/{M2} = número de modelo de prueba del caso, {TEL} = su número, __hoy_HHMM__ = hoy a esa hora (Uruguay); cfg.vivoPrueba simula vivo sí/no y cfg.ahoraPrueba la hora del pedido (solo para el plazo).",
  "ausente": {
   "activo": true,
   "atiende": true,
@@ -1979,6 +1979,392 @@
     "derivado": true
    },
    "tanda": "4"
+  },
+  {
+   "id": "W01",
+   "nombre": "Pedido web normal: aparta, da total, plazo de 2 h y formas de pago",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M1} VESTIDO PRUEBA · talle M · $1.290\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $X",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "fixture": {
+    "stock": [
+     [
+      1,
+      "VESTIDO PRUEBA",
+      "M",
+      2,
+      1290
+     ],
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      1,
+      590
+     ]
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "1\\.?880",
+     "17[:.]00"
+    ],
+    "no_contiene": [
+     "^[\\(\\[]",
+     "vendemos solo",
+     "(?i)ma[ñn]ana"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W02",
+   "nombre": "Pedido web: la remera se vendió en el vivo justo antes (queda el resto)",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M1} VESTIDO PRUEBA · talle M · $1.290\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $X",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__",
+      "ventaSimultanea": "sb{TEL}-2-U"
+     }
+    }
+   ],
+   "fixture": {
+    "stock": [
+     [
+      1,
+      "VESTIDO PRUEBA",
+      "M",
+      2,
+      1290
+     ],
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      1,
+      590
+     ]
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "1\\.?290",
+     "(?i)remera"
+    ],
+    "no_contiene": [
+     "1\\.?880"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W03",
+   "nombre": "Pedido web con el stock justo (pide las 2 que quedan)",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M1} VESTIDO PRUEBA · talle M · $1.290\n• E{M1} VESTIDO PRUEBA · talle M · $1.290\nTotal: $X",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "fixture": {
+    "stock": [
+     [
+      1,
+      "VESTIDO PRUEBA",
+      "M",
+      2,
+      1290
+     ],
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      1,
+      590
+     ]
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "2\\.?580"
+    ],
+    "no_contiene": [
+     "(?i)no (nos )?qued|agotad|se vendi"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W04",
+   "nombre": "Pedido web sin stock parcial: la remera no queda, sigue con el vestido",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M1} VESTIDO PRUEBA · talle M · $1.290\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $X",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "fixture": {
+    "stock": [
+     [
+      1,
+      "VESTIDO PRUEBA",
+      "M",
+      1,
+      1290
+     ],
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      0,
+      590
+     ]
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "1\\.?290",
+     "(?i)remera"
+    ],
+    "no_contiene": [
+     "1\\.?880"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W05",
+   "nombre": "Pedido web que no pagó en plazo: queda para liberar y no se promete",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola! todavía lo puedo pagar?",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 1,
+      "prendas": [
+       [
+        "VESTIDO PRUEBA",
+        1290,
+        1
+       ]
+      ],
+      "web_vence_min": -15
+     }
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(?i)venci|plazo"
+    ],
+    "no_contiene": [
+     "(?i)s[ií] bella, pod[eé]s pagar"
+    ],
+    "no_herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": true
+   }
+  },
+  {
+   "id": "W06",
+   "nombre": "Pedido web de noche (22:30): paga hasta las 11 de la mañana siguiente",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M2} REMERA PRUEBA · talle único · $590\nTotal: $X",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_2230__"
+     }
+    }
+   ],
+   "fixture": {
+    "stock": [
+     [
+      1,
+      "VESTIDO PRUEBA",
+      "M",
+      2,
+      1290
+     ],
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      1,
+      590
+     ]
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "11"
+    ],
+    "no_contiene": [
+     "(?i)\\bma[ñn]ana\\b(?! a las)"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W07",
+   "nombre": "Mensaje del catálogo editado a mano: precio cambiado y una línea escrita a mano",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M1} VESTIDO PRUEBA · talle M · $100\n• y también la campera negra talle M\nTotal: $X",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "fixture": {
+    "stock": [
+     [
+      1,
+      "VESTIDO PRUEBA",
+      "M",
+      2,
+      1290
+     ],
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      1,
+      590
+     ]
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "1\\.?290"
+    ],
+    "no_contiene": [
+     "(?i)total[^\\n]{0,20}\\$ ?100\\b"
+    ],
+    "herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W08",
+   "nombre": "Mensaje del catálogo durante un vivo: no se crea (catálogo pausado)",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola Emma! Quiero pedir:\n• E{M1} VESTIDO PRUEBA · talle M · $1.290\nTotal: $X",
+     "cfg": {
+      "vivoPrueba": true,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "fixture": {
+    "stock": [
+     [
+      1,
+      "VESTIDO PRUEBA",
+      "M",
+      2,
+      1290
+     ],
+     [
+      2,
+      "REMERA PRUEBA",
+      "U",
+      1,
+      590
+     ]
+    ]
+   },
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(?i)vivo"
+    ],
+    "no_contiene": [
+     "1\\.?290",
+     "(?i)brou|prex"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "W09",
+   "nombre": "Consulta de prenda sin catálogo: sigue \"vendemos solo en los vivos\"",
+   "tanda": "W",
+   "pasos": [
+    {
+     "texto": "Hola! tienen el vestido de lino en talle M?",
+     "cfg": {
+      "vivoPrueba": false,
+      "ahoraPrueba": "__hoy_1500__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "(?i)vivos"
+    ],
+    "no_herramienta": [
+     "crear_pedido_web"
+    ],
+    "derivado": false
+   }
   }
  ]
 }

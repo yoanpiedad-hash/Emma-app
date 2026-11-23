@@ -34,13 +34,15 @@ const CUENTAS_SOLO_MARCAR = ['PREX YOAN'];
 const medioDe = (c: string) => /mercado\s*pago/i.test(c || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(c || '') ? 'efectivo' : 'transferencia';
 const esHabitual = (a: string) => /^(dac|nu[nñ]ez|correo)/.test(normB(a));
 
-export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean; ausente?: boolean; vivo?: boolean };
+export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean; ausente?: boolean; vivo?: boolean; textos?: string[]; mensajeIds?: string[] };
 
 // ─── Config ───────────────────────────────────────────────────────
 // 19/11 (banco de casos): solo el modo prueba (x-mabel-test) pone cfgPrueba, para simular Config sin tocar la real.
 // Va por pedido (AsyncLocalStorage): dos pruebas al mismo tiempo no se pisan y la atención real nunca la ve.
 const ALS_PRUEBA = new AsyncLocalStorage<Record<string, any> | null>();
 export const conCfgPrueba = <T>(c: Record<string, any> | null, f: () => Promise<T>) => ALS_PRUEBA.run(c, f);
+/** 23/11 (pedido web): valor simulado del modo prueba (nunca lo ve la atención real). */
+export const pruebaDe = (k: string) => { const s = ALS_PRUEBA.getStore(); return s ? s[k] : undefined; };
 export async function leerConfig(): Promise<Record<string, any>> {
   const { data } = await sb.from('config').select('clave,valor');
   const o: Record<string, any> = {};
@@ -161,6 +163,7 @@ export async function buscarPedido(ctx: Ctx) {
   const cfg = await leerConfig();
   await cargarClienta(ctx);
   const c = ctx.clienta;
+  await vencerPedidosWeb(ctx.clientas.map((k) => k.id)).catch((e) => console.error('pedido web (vencer):', (e as Error).message || e));
   const { filas, lives, cobros } = await abiertos(ctx);
   const tar = tarifaDe(cfg), mp = mpDe(cfg);
   // 5/11: pedidos de lives anteriores a la activación de Mabel (Config mabelInicio, por defecto 4/11) que figuran sin pagar: puede ser que estén pagados y no marcados. No se piden comprobantes: se busca en el historial y, si no se puede confirmar, queda para Yanaina en silencio.
@@ -183,7 +186,8 @@ export async function buscarPedido(ctx: Ctx) {
     const { total, detalle } = calcPedido(p, live);
     return {
       ...(anteriores.has(r.id) ? { anterior_a_mabel_sin_marcar_pago: true, indicio_en_historial: evidencia[r.id] || null, aviso: 'NO le pidas comprobante de este pedido y no le digas que lo debe: puede estar pagado y sin marcar. Si hace falta, pasalo a Yanaina en silencio.' } : {}),
-      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: live?.datos?.fechaPagoISO || null, ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha, cfg) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
+      numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: p.web?.pagarHasta ? String(p.web.pagarHasta).slice(0, 10) : (live?.datos?.fechaPagoISO || null),
+      ...(p.web ? { pedido_web: true, pagar_hasta: horaPlazoTxt(p.web.pagarHasta), ...(!pagado(p) && p.estado === 'pendiente' && Date.parse(p.web.pagarHasta) < ahoraMs() ? { plazo_vencido: true, que_hacer_plazo: 'Pedido del catálogo web con el plazo vencido. Si manda el comprobante, registralo normal con marcar_pagado (la ropa sigue apartada hasta que el equipo la libere). Si pregunta si todavía puede pagar o pide más tiempo, no lo prometas: "Bella, el plazo para pagarlo ya venció, lo consulto con Yanaina y te confirma 🫶" y pasá a Yanaina (pago, con_frase_propia).' } : {}) } : {}), ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha, cfg) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
       entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
@@ -511,7 +515,8 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     objetivo = sp;
     if (sp.length > 1) {
       // 4/11: varios pedidos sin pagar y sin cobro agrupado: si el monto cierra con el del último live, o con todos juntos, se marca eso
-      const ult = [...sp].sort((x, y) => String(lives.get(y.live_id)?.fecha || '').localeCompare(String(lives.get(x.live_id)?.fecha || '')) || (y.datos.num - x.datos.num))[0];
+      const fq = (r: any) => String(r.datos?.web ? r.datos.web.creado : lives.get(r.live_id)?.fecha || ''); // 23/11: el pedido web, por cuándo se hizo
+      const ult = [...sp].sort((x, y) => fq(y).localeCompare(fq(x)) || (y.datos.num - x.datos.num))[0];
       const cierra = (ps: any[]) => { const b = ps.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0); return [b, b + tar, Math.round(b * (1 + mp / 100)), Math.round((b + tar) * (1 + mp / 100))].some((e) => monto >= e - 2 && monto <= e + 30); };
       if (cierra([ult])) objetivo = [ult];
       else if (cierra(sp)) objetivo = sp;
@@ -523,7 +528,7 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   // Fecha del comprobante vs fecha del live
   const f = String(a.fecha_comprobante || '').slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(f)) {
-    const fl = objetivo.map((r) => lives.get(r.live_id)?.fecha).filter(Boolean).sort()[0];
+    const fl = objetivo.map((r) => r.datos?.web ? r.datos.fechas?.creado : lives.get(r.live_id)?.fecha).filter(Boolean).sort()[0]; // 23/11: el pedido web cuenta desde que se hizo, no desde el registro del mes
     if (fl && f < String(fl).slice(0, 10)) return derivar(ctx, `Comprobante de fecha ${f}, anterior al live (${String(fl).slice(0, 10)})`, 'pago');
   }
   // Comprobante ya usado
@@ -781,8 +786,8 @@ function parecido(a: string, b: string) {
 const NO_ENC = 'No aparece. Si todavía no le preguntaste el usuario de TikTok o el número de pedido, preguntáselo una vez. Si ya lo dijo, pasá a Yanaina (pedido) con lo que dijo.';
 async function dejarEnEspera(ctx: Ctx, a: any) {
   const hoy = hoyUY();
-  const { data: lv } = await sb.from('lives').select('id').eq('datos->>fecha', hoy).limit(1);
-  if (!lv?.length || a?.reintento) return null;
+  const { data: lv } = await sb.from('lives').select('id,datos').eq('datos->>fecha', hoy).limit(5);
+  if (!(lv || []).some((l: any) => !esVentas(l.datos)) || a?.reintento) return null; // 23/11: el registro de ventas del mes no es un vivo
   const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
   const buscar = { nombre: String(a?.nombre || ''), num: a?.num || null, confirmar: !!a?.confirmar, hasta: new Date(Date.now() + 3 * 3600e3).toISOString() };
   const datos = { ...(cv?.datos || { id: ctx.telKey, tel: '0' + ctx.telKey, estado: 'agente' }), buscar };
@@ -925,6 +930,250 @@ export async function confirmarPedido(ctx: Ctx) {
   return { ok: true, pedidos_confirmados: nums, live: lives.get(rs[0].live_id)?.nombre || '' };
 }
 
+// ─── crear_pedido_web (23/11, Paso 2: catálogo web) ──────────────
+// La clienta arma la bolsa en el catálogo y manda por WhatsApp un mensaje con una línea por prenda:
+//   "• E142 Vestido lino · talle M · $1.290"  (código de modelo + talle + precio; también vale el código de prenda de 4 cifras).
+// Es la ÚNICA excepción a "vendemos solo en los vivos". La herramienta lee el mensaje tal como llegó (ctx.textos, nunca lo que
+// transcribe el modelo), revisa el stock en la base, aparta cada prenda con su movimiento (mover_stock, motivo 'venta', ref = pedido)
+// y crea el pedido en el registro "Ventas · mes" (live con tipo 'ventas', como ventas.js de Distrito).
+// Precio: manda el de la base (si el mensaje dice otro, se avisa). Lo que no tiene stock se informa y sigue con el resto.
+// Plazo para pagar: 2 horas; si el pedido llega desde las 21 h (o de madrugada, antes de las 6), hasta las 11 h de la mañana siguiente.
+// Si no paga, el pedido queda marcado "para liberar" (vencerPedidosWeb): aviso en Despacho + pendiente en la bandeja. Liberar lo hace el equipo.
+// Durante un vivo no se crea (el catálogo está pausado).
+export const esVentas = (d: any) => !!(d && d.tipo === 'ventas');
+const esNumPrueba = (telKey: string) => /^99000\d{3}$/.test(telKey);
+const MESES_V = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+/** Hora actual (el modo prueba puede simularla con ahoraPrueba, solo para el plazo del pedido web). */
+export const ahoraMs = () => { const v = pruebaDe('ahoraPrueba'); const t = v ? Date.parse(String(v)) : NaN; return Number.isFinite(t) ? t : Date.now(); };
+const partesUY = (ms: number) => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)).map((x) => [x.type, x.value])); return { fecha: `${p.year}-${p.month}-${p.day}`, h: +p.hour, mi: +p.minute }; };
+const sumarDiaF = (f: string, n = 1) => new Date(new Date(f + 'T12:00:00Z').getTime() + n * 864e5).toISOString().slice(0, 10);
+/** Hasta cuándo paga un pedido web hecho en `ms`. */
+export function plazoPedidoWeb(ms: number): number {
+  const p = partesUY(ms);
+  if (p.h >= 21) return Date.parse(sumarDiaF(p.fecha) + 'T11:00:00-03:00');
+  if (p.h < 6) return Date.parse(p.fecha + 'T11:00:00-03:00');
+  return ms + 2 * 3600e3;
+}
+/** "el lunes 23/11 a las 15:40" (nunca "hoy" ni "mañana"). */
+export function horaPlazoTxt(iso: any) {
+  const t = Date.parse(String(iso || '')); if (!Number.isFinite(t)) return '';
+  const p = partesUY(t), d = new Date(p.fecha + 'T12:00:00Z');
+  return 'el ' + DIAS_NOM[d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1) + ' a las ' + String(p.h).padStart(2, '0') + ':' + String(p.mi).padStart(2, '0');
+}
+/** ¿Hay un vivo en curso? Un live de la app con fecha de hoy (o de ayer antes de las 6). El registro de ventas del mes NO es un vivo. */
+export async function vivoEnCurso(): Promise<string | null> {
+  const pv = pruebaDe('vivoPrueba'); if (pv === true) return hoyUY(); if (pv === false) return null;
+  const hoyF = hoyUY(), h = partesUY(Date.now()).h;
+  const fechas = [hoyF, ...(h < 6 ? [sumarDiaF(hoyF, -1)] : [])];
+  const { data } = await sb.from('lives').select('datos').eq('borrado', false).in('datos->>fecha', fechas);
+  return (data || []).filter((l: any) => !esVentas(l.datos)).map((l: any) => l.datos?.fecha).sort().pop() || null;
+}
+const normTalle = (t: string) => { const x = String(t || '').trim().toUpperCase(); return /^([UÚ]NIC[OA]|U|TU|T\.?U\.?)$/.test(x) ? 'U' : x; };
+const plataNum = (v: string) => { const t = String(v || '').replace(/\s/g, ''); const n = /[.,]\d{3}(?!\d)/.test(t) ? t.replace(/[.,](?=\d{3}(?!\d))/g, '').replace(',', '.') : t.replace(',', '.'); const r = Math.round(+n); return Number.isFinite(r) && r > 0 ? r : null; };
+/** Lee el mensaje del catálogo: una línea por prenda con código, talle y precio. Lo que no se entiende queda en `raras`. */
+export function leerMensajeCatalogo(texto: string) {
+  const t = String(texto || ''), cabecera = /quiero pedir/i.test(t);
+  const lineas: { codigo: string; talle: string; precio: number | null; nombre: string; linea: string }[] = [], raras: string[] = [];
+  for (const l0 of t.split(/\r?\n/)) {
+    const l = l0.trim(); if (!l || /quiero pedir/i.test(l) || /^total\b/i.test(l.replace(/^[^a-z]+/i, ''))) continue;
+    const m = l.match(/^[•\-*·▪●◦]*\s*(?:[a-z]{1,3}\.?\s?)?#?(\d{1,6})\b\s*(.*)$/i);
+    const tl = l.match(/talle\s*:?\s*([úu]nic[oa]|[a-z0-9]{1,5})\b/i);
+    if (m && tl) {
+      const pr = l.match(/\$\s*([\d.,]+)/);
+      const nombre = m[2].split(/[·|]?\s*talle\b/i)[0].replace(/^[\s·|\-–]+|[\s·|\-–]+$/g, '').slice(0, 60);
+      lineas.push({ codigo: m[1], talle: normTalle(tl[1]), precio: pr ? plataNum(pr[1]) : null, nombre, linea: l.slice(0, 120) });
+    } else if (/^[•\-*·▪●◦]/.test(l) || /talle|\$/i.test(l)) raras.push(l.slice(0, 120));
+  }
+  return { lineas, raras, esCatalogo: lineas.length > 0 && (cabecera || lineas.every((x) => x.precio !== null)) };
+}
+export const pareceCatalogo = (texto: string) => leerMensajeCatalogo(texto).esCatalogo;
+const stockNum = (d: any) => { const n = Math.floor(+d?.stock); return Number.isFinite(n) ? n : 0; };
+/** Registro "Ventas · mes" (lo crea si no existe). En el modo prueba (099000xxx) es el live propio del número, nunca el real. */
+async function registroVentas(telKey: string) {
+  const hoy = hoyUY(), ym = hoy.slice(0, 7), ahora = new Date().toISOString();
+  if (esNumPrueba(telKey)) {
+    const id = 'lbanco-' + telKey;
+    const { data: ya } = await sb.from('lives').select('*').eq('id', id).maybeSingle();
+    if (ya) return ya;
+    const d = { id, tipo: 'ventas', mes: ym, nombre: 'BANCO MABEL (prueba, no tocar)', fecha: hoy, fechaPago: '', fechaPagoISO: '', descuento: 0, pedidoCounter: 0 };
+    await sb.from('lives').upsert({ id, nombre: d.nombre, fecha: hoy, datos: d, borrado: false, actualizado: ahora });
+    return (await sb.from('lives').select('*').eq('id', id).single()).data;
+  }
+  const buscar = async () => (await sb.from('lives').select('*').eq('borrado', false).eq('datos->>tipo', 'ventas').eq('datos->>mes', ym).order('actualizado', { ascending: true }).limit(1)).data?.[0] || null;
+  const ya = await buscar(); if (ya) return ya;
+  const id = 'lventas-' + ym, nombre = 'Ventas · ' + MESES_V[+ym.slice(5) - 1] + ' ' + ym.slice(0, 4);
+  const d = { id, tipo: 'ventas', mes: ym, nombre, fecha: hoy, fechaPago: '', fechaPagoISO: '', descuento: 0, pedidoCounter: 0 };
+  const { error } = await sb.from('lives').upsert({ id, nombre, fecha: hoy, datos: d, borrado: false, actualizado: ahora }, { onConflict: 'id', ignoreDuplicates: true });
+  if (error) throw new Error('No se pudo crear el registro de ventas: ' + error.message);
+  return await buscar();
+}
+async function moverUno(stockId: string, cantidad: number, motivo: string, ref: string) {
+  const { error } = await sb.rpc('mover_stock', { p_stock: stockId, p_cantidad: cantidad, p_motivo: motivo, p_ref: ref });
+  if (error) throw new Error('mover_stock: ' + error.message);
+}
+export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
+  const textos = (ctx.textos || []).map((x) => String(x || '')).filter((x) => x.trim());
+  const texto = textos.find(pareceCatalogo) || textos.join('\n');
+  const leido = leerMensajeCatalogo(texto);
+  if (!leido.lineas.length) return { ok: false, no_es_catalogo: true, que_hacer: 'Este mensaje no es una lista del catálogo (código, talle y precio por prenda): no se creó ningún pedido. Seguí las reglas de siempre (vendemos solo en los vivos).' };
+  const cfg = await leerConfig();
+  // Durante un vivo el catálogo está pausado: no se crea el pedido ni se aparta nada.
+  const vivo = ctx.vivo !== undefined ? ctx.vivo : !!(await vivoEnCurso()); // atender ya lo calculó (vivoEnCurso)
+  if (vivo) return { ok: false, vivo_en_curso: true, que_hacer: 'Ahora hay un vivo y el catálogo está pausado: NO se creó el pedido ni se apartó nada. Decile: "Bella, ahora estamos en vivo y el catálogo está pausado. Conectate al vivo y pedilo ahí, o mandanos el pedido del catálogo cuando termine 🫶" con el link de VIVO. No le pases total ni cuentas.' };
+  await cargarClienta(ctx);
+  const firma = leido.lineas.map((x) => x.codigo + '|' + x.talle).sort().join(',');
+  // Mismo mensaje dos veces (reintento o lo mandó de nuevo): si ya hay un pedido web abierto con esas prendas, es ese.
+  const msgId = (ctx.mensajeIds || []).slice(-1)[0] || '';
+  if (ctx.clientas.length) {
+    const { data: ws } = await sb.from('pedidos').select('*').in('clienta_id', ctx.clientas.map((k) => k.id)).eq('borrado', false).in('estado', ['pendiente', 'listo']).not('datos->web', 'is', null);
+    const ya = (ws || []).find((r: any) => (msgId && r.datos.web?.mensaje === msgId) || (r.datos.web?.firma === firma && Date.parse(r.datos.web?.creado || '') > ahoraMs() - 24 * 3600e3));
+    if (ya) {
+      await cargarModelos([ya]);
+      const { total } = calcPedido(ya.datos, null);
+      return { ok: true, ya_existia: true, pedido: ya.datos.num, total, pagado: pagado(ya.datos), pagar_hasta: horaPlazoTxt(ya.datos.web.pagarHasta), que_hacer: pagado(ya.datos) ? 'Ese pedido ya está hecho y pagado: no se creó otro. Seguí con la entrega si falta.' : 'Ese pedido ya estaba hecho: no se creó otro ni se apartó nada de nuevo. Recordale el total por transferencia y hasta cuándo paga, sin repetir todo el detalle.' };
+    }
+  }
+  // Prendas: código de prenda de 4 cifras (una fila de stock) o número de modelo + talle.
+  const cods4 = [...new Set(leido.lineas.map((x) => x.codigo).filter((c) => /^\d{4}$/.test(c)))];
+  const nums = [...new Set(leido.lineas.map((x) => +x.codigo).filter((n) => n > 0))];
+  const { data: mds } = await sb.from('modelos').select('id,num,datos').in('num', nums).eq('borrado', false);
+  const modelos = new Map<string, any>((mds || []).map((m: any) => [m.id, m]));
+  const { data: s1 } = cods4.length ? await sb.from('stock').select('id,codigo,datos').in('codigo', cods4).eq('borrado', false) : { data: [] as any[] };
+  const { data: s2 } = modelos.size ? await sb.from('stock').select('id,codigo,datos').in('datos->>modeloId', [...modelos.keys()]).eq('borrado', false) : { data: [] as any[] };
+  const filasStock = new Map<string, any>([...(s1 || []), ...(s2 || [])].map((s: any) => [s.id, s]));
+  const faltaMd = [...new Set([...(s1 || [])].map((s: any) => s.datos?.modeloId).filter((id: string) => id && !modelos.has(id)))];
+  if (faltaMd.length) { const { data: m2 } = await sb.from('modelos').select('id,num,datos').in('id', faltaMd); (m2 || []).forEach((m: any) => modelos.set(m.id, m)); }
+  const grupos = new Map<string, { fila: any; modelo: any; qty: number; precioDicho: number | null; linea: string }>();
+  const noExisten: string[] = [];
+  for (const x of leido.lineas) {
+    let fila: any = null;
+    if (/^\d{4}$/.test(x.codigo)) fila = (s1 || []).find((s: any) => s.codigo === x.codigo) || null;
+    if (!fila) {
+      const md = (mds || []).find((m: any) => +m.num === +x.codigo);
+      if (md) fila = [...filasStock.values()].find((s: any) => s.datos?.modeloId === md.id && normTalle(s.datos?.talle) === x.talle) || null;
+    }
+    if (!fila) { noExisten.push(x.linea); continue; }
+    const g = grupos.get(fila.id);
+    if (g) g.qty++; else grupos.set(fila.id, { fila, modelo: modelos.get(fila.datos?.modeloId) || null, qty: 1, precioDicho: x.precio, linea: x.linea });
+  }
+  const nombreDe = (g: any) => String(g.fila.datos?.descripcion || g.modelo?.datos?.nombre || g.linea).slice(0, 60);
+  const sinRef = { no_existen: noExisten, no_entendidas: leido.raras };
+  if (!grupos.size) return { ok: false, nada_valido: true, ...sinRef, que_hacer: 'Ninguna prenda del mensaje coincide con el catálogo (código o talle que no existe): no se creó pedido. Decile que no encontramos esas prendas y que las vuelva a elegir desde el catálogo (sin cambiar el mensaje). No pases a Yanaina.' };
+  // Apartar: un movimiento por prenda. Si en el medio se vendió (vivo, mostrador), la base compensa con 'sin_stock' y esa unidad no entra.
+  const pid = esNumPrueba(ctx.telKey) ? 'pw' + ctx.telKey + '-' + Date.now().toString(36) : uid('p');
+  const apartadas = new Map<string, number>(), noQuedan: { prenda: string; pedidas: number; quedaban: number }[] = [];
+  const devolver = async () => { for (const [sid, n] of apartadas) for (let k = 0; k < n; k++) await moverUno(sid, 1, 'devolucion', pid).catch((e) => console.error('pedido web (devolver):', e.message)); };
+  try {
+    for (const [sid, g] of grupos) {
+      const activa = g.fila.datos?.activo !== false && g.modelo?.datos?.activo !== false;
+      const hay = activa ? Math.max(0, stockNum(g.fila.datos)) : 0;
+      const n = Math.min(g.qty, hay);
+      for (let k = 0; k < n; k++) {
+        const sim = pruebaDe('ventaSimultanea'); // modo prueba: el vivo vende esa prenda justo antes de apartarla
+        if (sim && k === 0 && (String(sim) === sid || String(sim) === String(g.fila.codigo))) await moverUno(sid, -1, 'venta', 'prueba-vivo-' + pid);
+        await moverUno(sid, -1, 'venta', pid);
+      }
+      let ok = n;
+      if (n) {
+        const { data: mv } = await sb.from('movimientos').select('id').eq('ref', pid).eq('stock_id', sid).eq('motivo', 'venta');
+        const ids = (mv || []).map((m: any) => m.id + '-sin');
+        const { data: sin } = ids.length ? await sb.from('movimientos').select('id').in('id', ids) : { data: [] as any[] };
+        ok = Math.max(0, n - (sin || []).length);
+      }
+      if (ok) apartadas.set(sid, ok);
+      if (ok < g.qty) noQuedan.push({ prenda: nombreDe(g), pedidas: g.qty, quedaban: ok });
+    }
+  } catch (e) {
+    await devolver();
+    console.error('pedido web (apartar):', (e as Error).message);
+    return derivar(ctx, 'Pedido del catálogo web: no se pudo apartar el stock (' + String((e as Error).message).slice(0, 80) + ')', 'pedido');
+  }
+  const baseNoQueda = { ...sinRef, no_quedan: noQuedan };
+  if (!apartadas.size) return { ok: false, nada_con_stock: true, ...baseNoQueda, que_hacer: 'No queda ninguna de las prendas que pidió (se vendieron): no se creó pedido. Decíselo con tacto, nombrando las prendas, y que puede elegir otras en el catálogo. No pases a Yanaina.' };
+  // Clienta: la de este número o una ficha nueva.
+  try {
+    if (!ctx.clienta) {
+      const ahora = new Date().toISOString(), id = esNumPrueba(ctx.telKey) ? 'cb' + ctx.telKey : uid('c');
+      const datos = { id, nombre: 'Web 0' + ctx.telKey, ref: 'catálogo web', alias: [], tel: '0' + ctx.telKey, telKey: ctx.telKey, nombreEnvio: '', ci: '', agencia: '', depto: '', ciudad: '', direccion: '', barrio: '', notaCadete: '', saldoFavor: 0, historialViejo: [], ultimoUso: ahora, creado: ahora, origen: 'catalogo' };
+      const { error } = await sb.from('clientas').insert({ id, nombre: datos.nombre, tel_key: ctx.telKey, datos, borrado: false, actualizado: ahora });
+      if (error) throw new Error('ficha: ' + error.message);
+      await cargarClienta(ctx);
+    }
+    const c = ctx.clienta;
+    const live = await registroVentas(ctx.telKey);
+    if (!live) throw new Error('sin registro de ventas');
+    const ahoraT = ahoraMs(), hasta = new Date(plazoPedidoWeb(ahoraT)).toISOString(), hoy = hoyUY();
+    const prendas = [...apartadas].map(([sid, qty]) => {
+      const g = grupos.get(sid)!, lista = Math.round(+g.fila.datos?.precioVenta || +g.modelo?.datos?.precioVenta || 0) || (g.precioDicho || 0);
+      return { stockId: sid, codigo: g.fila.codigo || g.fila.datos?.codigo || null, nombre: nombreDe(g), precioLista: lista, precio: lista, qty };
+    });
+    const precioDistinto = [...apartadas.keys()].map((sid) => { const g = grupos.get(sid)!, pr = prendas.find((x) => x.stockId === sid)!; return g.precioDicho && g.precioDicho !== pr.precio ? { prenda: pr.nombre, en_el_mensaje: g.precioDicho, precio_real: pr.precio } : null; }).filter(Boolean);
+    // Promos que valen hoy para esas prendas y % VIP (igual que refrescarPromos de la app)
+    const mids = new Set(prendas.map((x) => grupos.get(x.stockId)?.fila.datos?.modeloId).filter(Boolean));
+    const { data: prs } = await sb.from('promos').select('datos').eq('borrado', false);
+    const promos = (prs || []).map((x: any) => x.datos).filter((x: any) => x && x.activa !== false && !x.borrado && !x.liveId && !(x.desde && hoy < x.desde) && !(x.hasta && hoy > x.hasta) && (x.modelos || []).some((m: string) => mids.has(m)));
+    const vipPct = c.datos?.vip ? Math.max(0, cfg.vipPct === undefined || cfg.vipPct === null || cfg.vipPct === '' ? 5 : +cfg.vipPct || 0) : 0;
+    const modeloDe = (id: string) => grupos.get(id)?.fila.datos?.modeloId || MODELO_DE.get(id);
+    const p: any = { id: pid, codigo: '', num: 0, liveId: live.id, clienteId: c.id, prendas, descuento: null, saldoAplicado: 0, estado: 'pendiente', entrega: c.datos?.agencia ? 'agencia' : 'sin_definir', cobroEnvio: null,
+      fechas: { creado: hoy }, avisos: [], notas: '🛒 Pedido del catálogo web (lo cargó Mabel). Paga ' + horaPlazoTxt(hasta), promoCalc: { fecha: hoy, promos, vipPct },
+      web: { mensaje: msgId, firma, creado: new Date(ahoraT).toISOString(), pagarHasta: hasta, texto: texto.slice(0, 600) } };
+    // Saldo a favor (como recalcSaldo de la app)
+    const sub = calcPedido(p, live, modeloDe).total, saldo = Math.max(0, num(c.datos?.saldoFavor));
+    const ap = Math.min(saldo, sub);
+    if (ap > 0) { await conReintento(async () => { const { data } = await sb.from('clientas').select('*').eq('id', c.id).single(); const disp = Math.max(0, num(data.datos.saldoFavor)); p.saldoAplicado = Math.min(disp, sub); await guardarClienta(data, { ...data.datos, saldoFavor: disp - p.saldoAplicado }); }); }
+    // Número del pedido en el registro y código de 5 cifras, sin repetir (si choca con otro equipo, se prueba el siguiente)
+    const { data: un } = await sb.from('pedidos').select('num').eq('live_id', live.id).order('num', { ascending: false }).limit(1);
+    let n = Math.max(+(un?.[0]?.num) || 0, +live.datos?.pedidoCounter || 0) + 1;
+    const { data: uc } = await sb.from('pedidos').select('codigo').gte('codigo', '00000').lte('codigo', '99999').order('codigo', { ascending: false }).limit(1);
+    let cod = Math.max(parseInt(uc?.[0]?.codigo, 10) || 0, +cfg.codigoCounter || 0) + 1;
+    let creado = false;
+    for (let i = 0; i < 6 && !creado; i++, n++, cod++) {
+      p.num = n; p.codigo = esNumPrueba(ctx.telKey) ? 'W' + ctx.telKey.slice(-3) + n : String(cod).padStart(5, '0');
+      const { error } = await sb.from('pedidos').insert({ id: pid, live_id: live.id, clienta_id: c.id, num: p.num, codigo: p.codigo, estado: 'pendiente', entrega: p.entrega, datos: p, borrado: false, actualizado: new Date().toISOString() });
+      if (!error) creado = true; else if (error.code !== '23505') throw new Error('pedido: ' + error.message);
+    }
+    if (!creado) throw new Error('pedido: número repetido');
+    if ((+live.datos?.pedidoCounter || 0) < p.num) await sb.from('lives').update({ datos: { ...live.datos, pedidoCounter: p.num }, actualizado: new Date().toISOString() }).eq('id', live.id).eq('actualizado', live.actualizado);
+    const { total, detalle } = calcPedido(p, live, modeloDe), mp = mpDe(cfg);
+    if (prendas.some((x) => !(+grupos.get(x.stockId)?.fila.datos?.precioVenta || +grupos.get(x.stockId)?.modelo?.datos?.precioVenta))) await registrarDerivado(ctx.telKey, c, `Pedido web #${p.num}: hay prendas sin precio en la base (se usó el del mensaje). Revisar el total`, 'pedido', true, 'mabel', ctx.inicio);
+    return {
+      ok: true, pedido: p.num, prendas: prendas.map((x) => ({ prenda: x.nombre, cantidad: x.qty, precio: x.precio })), total, detalle_del_total: detalle,
+      mercado_pago: esperadoDe(total, 0, 'Mercado Pago', mp).total, pagar_hasta: horaPlazoTxt(hasta), ...baseNoQueda, precio_distinto: precioDistinto,
+      que_hacer: 'Pedido creado y prendas apartadas. En UN mensaje: ' + (noQuedan.length || noExisten.length ? 'primero, con tacto, lo que no entró (no_quedan: se vendieron; no_existen: no las encontramos en el catálogo); ' : '')
+        + (precioDistinto.length ? 'que el precio de esa prenda es el del catálogo (precio_real), sin discutir; ' : '')
+        + (leido.raras.length ? 'que lo que escribió aparte (no_entendidas) no entra: se pide eligiendo en el catálogo; ' : '')
+        + 'el total por transferencia (total), que tiene para pagar hasta ' + horaPlazoTxt(hasta) + ' y que si no, la ropa se libera; y las cuentas tal cual FORMAS DE PAGO. Mercado Pago (con recargo) solo si lo pide. No preguntes la entrega todavía: la pedís cuando mande el comprobante. No digas número de pedido ni nombres de herramientas.',
+    };
+  } catch (e) {
+    await devolver();
+    console.error('pedido web (crear):', (e as Error).message);
+    return derivar(ctx, 'Pedido del catálogo web: no se pudo crear (' + String((e as Error).message).slice(0, 80) + ')', 'pedido');
+  }
+}
+/** Pedidos web sin pagar con el plazo vencido: se marcan "para liberar" (aviso en Despacho + pendiente en la bandeja). No se libera solo. */
+const AVISO_VENCIDO = '⏳ Web sin pagar: venció el plazo, para liberar';
+export async function vencerPedidosWeb(cids?: string[]) {
+  if (cids && !cids.length) return 0;
+  let q = sb.from('pedidos').select('*').eq('borrado', false).eq('estado', 'pendiente').not('datos->web', 'is', null);
+  if (cids) q = q.in('clienta_id', cids);
+  const { data } = await q.limit(200);
+  const ahora = ahoraMs(); let n = 0;
+  for (const r of data || []) {
+    const p = r.datos;
+    if (pagado(p) || p.pagaAlRetirar || p.web?.vencido || !p.web?.pagarHasta || Date.parse(p.web.pagarHasta) >= ahora) continue;
+    try {
+      const d = JSON.parse(JSON.stringify(p)); d.web.vencido = new Date(ahora).toISOString();
+      d.avisoDespacho = [AVISO_VENCIDO, ...String(d.avisoDespacho || '').split(' · ').map((t: string) => t.trim()).filter((t: string) => t && t !== AVISO_VENCIDO)].join(' · ').slice(0, 200);
+      await guardarPedido(r, d);
+      const { data: cl } = await sb.from('clientas').select('*').eq('id', r.clienta_id).maybeSingle();
+      const tk = cl?.tel_key || telKeyDe(cl?.datos?.tel || '');
+      if (tk) await registrarDerivado(tk, cl, `Pedido web #${p.num} sin pagar: venció el plazo (${horaPlazoTxt(p.web.pagarHasta)}). Para liberar (la ropa vuelve al stock) o aplazar`, 'pago', true, 'regla');
+      n++;
+    } catch (e) { console.error('pedido web (vencer):', (e as Error).message || e); }
+  }
+  return n;
+}
+
 // ─── Definición de herramientas para la API de Claude ─────────────
 export const HERRAMIENTAS = [
   { name: 'buscar_pedido', description: 'Refresca el ESTADO ACTUAL de la clienta (pedidos abiertos, totales, entrega guardada, nota). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
@@ -949,6 +1198,7 @@ export const HERRAMIENTAS = [
   { name: 'guardar_pedido', description: 'Guarda el pedido (que no salga todavía). Decide sola si se puede; si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'AAAA-MM-DD, solo si dijo una fecha' } } } },
   { name: 'confirmar_pedido', description: 'Marca confirmados sus pedidos del vivo más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
   { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina con el motivo en una línea. Devuelve la frase para la clienta.', input_schema: { type: 'object', properties: { motivo: { type: 'string' }, categoria: { type: 'string', enum: CATEGORIAS, description: 'Obligatoria. pedido = problema con el pedido (desconoce la compra, prenda de más o de menos, mal anotado, reclamo, cancelar o sacar una prenda, número sin pedido que no se pudo vincular) · pago = comprobantes, faltantes, plazo para pagar, pedidos viejos sin marcar pago · entrega = cadetería, agencia, retiro, día de salida, juntar paquetes · cambio = cambio de talle o de prenda · especial = pide algo aparte que no podés resolver (guardar sin pagar, avisar cuando haya algo) · yharol = emprendimiento de Yharol · otros = no entra en ninguna. Si hay más de un tema, el que frena el pedido.' }, en_silencio: { type: 'boolean', description: 'true = no se le escribe a la clienta. Para cambios y pedidos anteriores a Mabel; en lo demás lo controla la herramienta.' }, con_frase_propia: { type: 'boolean', description: 'true si ya le dijiste la frase propia del caso: no devuelve frase de pase' } }, required: ['motivo', 'categoria'] } },
+  { name: 'crear_pedido_web', description: 'SOLO para un mensaje del catálogo web (lista de prendas con código, talle y precio). Lee el mensaje tal como llegó, revisa stock, aparta las prendas y crea el pedido. Devuelve total, plazo y qué no queda. Sin parámetros.', input_schema: { type: 'object', properties: {} } },
   { name: 'actualizar_nota', description: 'Reescribe la nota de la clienta: máximo 3 líneas, solo hechos con fecha, sin opiniones ni datos sensibles.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },
 ];
 
@@ -964,6 +1214,7 @@ export async function ejecutar(name: string, input: any, ctx: Ctx) {
     case 'guardar_pedido': return await guardarPedidoCli(ctx, input || {});
     case 'pasar_a_yanaina': return await pasarAYanaina(ctx, input?.motivo, !!input?.en_silencio, CATEGORIAS.includes(String(input?.categoria)) ? String(input.categoria) : categoriaDe(input?.motivo), !!input?.con_frase_propia);
     case 'actualizar_nota': return await actualizarNota(ctx, input?.texto);
+    case 'crear_pedido_web': return await crearPedidoWeb(ctx, input || {});
     default: return { error: 'Herramienta desconocida' };
   }
 }
