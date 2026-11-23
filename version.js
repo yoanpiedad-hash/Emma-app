@@ -1,2 +1,2 @@
 // Versión visible en Config de Pedidos y de Gestión. Cambiarla (y subir la caché de sw.js) en cada publicación.
-const EMMA_VERSION = '23/11 · Gestión: dólar y precios aceptan coma (41,1)';
+const EMMA_VERSION = '23/11 · Página de cambios sin la frase de fallas';
