@@ -476,7 +476,10 @@ table.t td{padding:7px 6px;border-bottom:1px solid var(--bd);vertical-align:top}
       <div><label class="lb">RUT</label><input id="cf-ng-rut" inputmode="numeric"></div>
       <div><label class="lb">Ciudad</label><input id="cf-ng-ciudad"></div>
       <div><label class="lb">Extra que cobra el cadete ($)</label><input id="cf-extra" type="number" inputmode="numeric"></div>
+      <div><label class="lb">WhatsApp del catálogo web</label><input id="cf-ng-whatsapp" inputmode="tel" placeholder="vacío = el teléfono"></div>
+      <div><label class="lb">Link del vivo (TikTok)</label><input id="cf-linkvivo" inputmode="url" placeholder="tiktok.com/@…/live"></div>
     </div>
+    <p class="small muted mt">El catálogo web manda los pedidos a ese WhatsApp y, durante un vivo, muestra el link del vivo (Mabel usa el mismo link).</p>
     <label class="lb mt">Cuentas de cobro (una por renglón · Mabel usa la misma lista)</label>
     <textarea id="cf-cuentas" rows="6"></textarea>
     <button class="b pri blk mt" data-act="guardarConfig">Guardar configuración</button>
@@ -1811,7 +1814,8 @@ function renderConfig() {
   pintarCfgImpresora();
   renderRespaldos();
   const ng = Object.assign({}, NEGOCIO_DEF, cfg('negocio') || {});
-  for (const k of ['nombre', 'marca', 'tel', 'rut', 'ciudad']) { const el = $('#cf-ng-' + k); if (el && !el.matches(':focus')) el.value = ng[k] || ''; }
+  for (const k of ['nombre', 'marca', 'tel', 'rut', 'ciudad', 'whatsapp']) { const el = $('#cf-ng-' + k); if (el && !el.matches(':focus')) el.value = ng[k] || ''; }
+  if (!$('#cf-linkvivo').matches(':focus')) $('#cf-linkvivo').value = cfg('linkVivo') || '';
   if (!$('#cf-extra').matches(':focus')) $('#cf-extra').value = extraCobroCadete();
   if (!$('#cf-cuentas').matches(':focus')) $('#cf-cuentas').value = cuentasPago().join('\n');
 }
@@ -1819,8 +1823,10 @@ function guardarConfigUI() {
   const patch = { msgPago: $('#cf-pago').value, msgAviso1: $('#cf-av1').value, msgAviso2: $('#cf-av2').value, tarifaEnvio: num($('#cf-tarifa').value) || NEGOCIO_DEF.tarifaEnvio };
   // Datos del negocio: solo se escribe lo que cambió (así no se copian a la base valores que no se tocaron)
   const ng = Object.assign({}, cfg('negocio') || {}); let cambioNg = false;
-  for (const k of ['nombre', 'marca', 'tel', 'rut', 'ciudad']) { const v = $('#cf-ng-' + k).value.trim(); if (v !== String(negocio(k) || '')) { ng[k] = v; cambioNg = true; } }
+  for (const k of ['nombre', 'marca', 'tel', 'rut', 'ciudad', 'whatsapp']) { const v = $('#cf-ng-' + k).value.trim(); if (v !== String(negocio(k) || '')) { ng[k] = v; cambioNg = true; } }
   if (cambioNg) patch.negocio = ng;
+  const lv = $('#cf-linkvivo').value.trim();
+  if (lv !== String(cfg('linkVivo') || '')) patch.linkVivo = lv;
   const extra = $('#cf-extra').value.trim();
   if (extra !== '' && num(extra) !== extraCobroCadete()) patch.extraCobroCadete = Math.max(0, num(extra));
   const ctas = [...new Set($('#cf-cuentas').value.split('\n').map(x => x.trim()).filter(Boolean))];
@@ -2192,5 +2198,6 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 <script src="mabel.js"></script>
 <script src="mabeltab.js"></script>
 <script src="stock.js"></script>
+<script src="ventas.js"></script>
 </body>
 </html>

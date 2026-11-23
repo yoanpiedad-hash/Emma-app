@@ -3,7 +3,8 @@
    DATOS DEL NEGOCIO — lo único que cambia de una tienda a otra.
    Para armar la app de otra tienda, se cambia este archivo (y nada más del código).
    Lo que se guarde en ⚙️ Config (tabla config de la base) gana sobre estos valores:
-     · config.negocio = { nombre, marca, tel, rut, ciudad }
+     · config.negocio = { nombre, marca, tel, rut, ciudad, whatsapp }  (whatsapp: el del catálogo web; vacío = tel)
+     · config.linkVivo (link del vivo de TikTok: catálogo web y Mabel)
      · config.tarifaEnvio · config.mpRecargo · config.cuentasPago (Mabel también los lee)
      · config.extraCobroCadete (solo la app)
    Lo usan Pedidos (index.html), Gestión (gestion.html) y los .js de la app.

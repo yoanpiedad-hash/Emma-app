@@ -290,10 +290,20 @@ const plazoPagoDias = () => Math.max(1, +cfgN('plazoPagoDias', 2) || 2);   // el
 function limitePagoNormal(p) { const l = liveById(p.liveId); return l && l.fechaPagoISO ? sumarDias(l.fechaPagoISO, 1) : sumarDias(p.fechas.creado || hoyISO(), plazoPagoDias()); }
 const limiteDe = p => p.estado === 'guardado' ? (p.guardadoSinPagar && p.guardadoSinPagar.hasta) : limitePagoNormal(p);
 const limiteVencido = f => !!f && (f < hoyISO() || (f === hoyISO() && new Date().getHours() >= HORA_LIBERAR));
+// Pedido del catálogo web (24/11): tiene su propio plazo con hora (p.web.pagarHasta: 2 h, o hasta las 11 si se hizo desde las 21).
+// Mientras esté pendiente vence a esa hora exacta; si se aplaza, pasa a Guardado sin pagar como cualquier otro.
+/** "lun 23/11 15:40" */
+function horaWebTxt(iso) {
+  const d = new Date(iso); if (isNaN(d)) return '';
+  return ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+const webPendiente = p => !!(p.web && p.web.pagarHasta && p.estado === 'pendiente');
+const webVencido = p => webPendiente(p) && Date.now() >= Date.parse(p.web.pagarHasta);
 function paraLiberar() {
   return todosPedidos().filter(p => !p.cambio && !pagado(p) && !pagoAlRetirar(p)
-    && (p.estado === 'pendiente' || (p.estado === 'guardado' && p.guardadoSinPagar)) && limiteVencido(limiteDe(p)));
+    && (p.estado === 'pendiente' || (p.estado === 'guardado' && p.guardadoSinPagar)) && (webPendiente(p) ? webVencido(p) : limiteVencido(limiteDe(p))));
 }
+const vencioTxt = p => webPendiente(p) ? '🛒 web, venció el ' + horaWebTxt(p.web.pagarHasta) : 'venció el ' + fechaUY(limiteDe(p), 1) + (p.guardadoSinPagar ? ', con plazo extra' : '');
 function liberadosRecientes() {
   const desde = sumarDias(hoyISO(), -7);
   return todosPedidos().filter(p => !p.cambio && p.estado === 'liberado' && (p.fechas.liberado || '') >= desde)
@@ -335,10 +345,10 @@ function liberarHTML() {
   let h = `<div class="card mb"><div class="card-t" style="margin:0">⏳ Para liberar <span class="bdg">${ps.length}</span></div>`;
   if (!ps.length) h += '<div class="small muted mt">No hay pedidos vencidos 🎉</div>';
   else {
-    h += `<p class="small muted mt">Sin pagar y con el plazo vencido (después de las ${HORA_LIBERAR}:00). La app no libera sola: confirmás vos.</p>`;
+    h += `<p class="small muted mt">Sin pagar y con el plazo vencido (vivo: después de las ${HORA_LIBERAR}:00 · 🛒 web: a las 2 h, o a las 11 si lo hicieron desde las 21). La app no libera sola: confirmás vos.</p>`;
     h += [...porCli].map(([cid, gp]) => { const c = cliById(cid) || { nombre: '?' }, ids = gp.map(p => p.id).join(','), tot = gp.reduce((s2, p) => s2 + calc(p).total, 0);
       return `<div class="mb-k rojo"><div class="row"><b class="grow" style="flex:1">${nomAlias(c)}</b><b class="mono">${fmt(tot)}</b></div>
-        <div class="small muted">${gp.map(p => '#' + p.num + ' (venció el ' + fechaUY(limiteDe(p), 1) + (p.guardadoSinPagar ? ', con plazo extra' : '') + ')').join(' · ')}</div>
+        <div class="small muted">${gp.map(p => '#' + p.num + ' (' + vencioTxt(p) + ')').join(' · ')}</div>
         <div class="row mt">${c.tel ? `<button class="b sm" data-act="waCli" data-cid="${cid}">💬 Chat</button>` : ''}<button class="b sm ok" data-act="despDarSalida" data-cid="${cid}" data-ids="${ids}" data-t="${entregaEf(gp[0])}" title="Si ya salió o se entregó y quedó sin marcar: abre la clienta para darle salida">🚚 Dar salida</button><button class="b sm" data-act="masPlazo" data-ids="${ids}">📅 Aplazar</button><button class="b sm dan" data-act="liberarPeds" data-ids="${ids}">❌ Liberar</button></div></div>`; }).join('');
   }
   if (lib.length) h += `<div class="row mt" data-act="libRecTog" style="cursor:pointer"><span class="small muted">Liberados en los últimos 7 días (${lib.length})</span><span class="grow"></span><span class="muted">${UI.libRec ? '▲' : '▼'}</span></div>`

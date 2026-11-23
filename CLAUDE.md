@@ -23,7 +23,7 @@ En cada publicación:
 
 ## Cómo está armado el código
 - `index.html` y `gestion.html` se editan **directo** (los parches viejos `herramientas/agregar-*.py` ya no existen).
-- Orden de carga en Pedidos: `vendor/supabase` → `version.js` → `negocio.js` → `impresora.js` → `nube.js` → script de `index.html` → `despacho.js` → `pagos.js` → `vendor/qrcode` → `escaner.js` → `etiquetas.js` → `live.js` → `promos.js` → `pedidos4.js` → `mabel.js` → `mabeltab.js` → `stock.js`. Gestión: `vendor/supabase` → `qrcode` → `version.js` → `negocio.js` → `impresora.js` → `promos.js` → `nube.js` → script de `gestion.html`.
+- Orden de carga en Pedidos: `vendor/supabase` → `version.js` → `negocio.js` → `impresora.js` → `nube.js` → script de `index.html` → `despacho.js` → `pagos.js` → `vendor/qrcode` → `escaner.js` → `etiquetas.js` → `live.js` → `promos.js` → `pedidos4.js` → `mabel.js` → `mabeltab.js` → `stock.js` → `ventas.js`. Gestión: `vendor/supabase` → `qrcode` → `version.js` → `negocio.js` → `impresora.js` → `promos.js` → `nube.js` → script de `gestion.html`.
 - Los `.js` **extienden** lo anterior: `const _x = f; f = function () { _x(); … }` y `Object.assign(ACT, {…})`. Una función de `index.html` puede estar reemplazada por un archivo de más abajo (ej. `etqHTML` en `despacho.js`, `etqPedido` y `cambiarLive` en `live.js`, `bbScan` en `escaner.js`). Antes de arreglar algo, buscá la última definición.
 - Botones: `data-act` → `ACT`, `data-chg` → `CHG`, `data-inp` → `INP`.
 - Datos: todo vive en Supabase. `nube.js` carga las tablas al entrar, detecta qué filas cambiaron cuando la app llama a `put('emma_…')` y las sube; si no hay internet, encola. Una fila que falta en memoria se sube como `borrado: true`: **nunca reemplazar `DB.lives`, `DB.clientes`, etc. por una copia vieja** (por eso se sacaron "Recuperar", "Importar backup" y "Empezar de cero").
@@ -37,6 +37,14 @@ En cada publicación:
 - **Código de prenda:** 4 cifras, uno por talle (fila de stock), sube solo (0001, 0002…). El código de barras de la etiqueta es Code 128 con "P" adelante (`P0001`): así el escáner distingue prenda de pedido (5 cifras). Si dos equipos usan el mismo, la base le da el siguiente a la nueva y marca `codigoReasignado`. El número de modelo (`m.num`) sigue existiendo para buscar.
 - Ajuste: cantidad real + motivo (`abrirAjuste`). Reinicio: 📋 Conteo físico en Stock (motivo `conteo`).
 - Una sola configuración de impresora por equipo: `impresora.js` (envíos térmica 10×15 o A4; rollo chico ancho × alto).
+
+## Catálogo web (Paso 3, migración `20261124_catalogo_publico.sql`)
+- `catalogo/index.html` (página para clientas). Lee **solo** `catalogo_publico()` (rol anon): modelos con `web.pub`, número, fotos, precio y stock; más `vivo`, `linkVivo` y `whatsapp`. Nada más es legible sin sesión.
+- Nombre y precio: los de `m.web` (Gestión → 📷 Fotos) o, vacíos, los del modelo. Fotos: rutas del bucket `prendas`.
+- Mensaje (formato de Mabel `crear_pedido_web`): `Hola Emma! Quiero pedir:` + `• E<num> <nombre> · talle <T|único> · $<precio>` por prenda + `Total: $X`.
+- Pausa: durante un vivo (live de hoy, o de ayer antes de las 6, que no sea tipo `ventas`: la misma regla que Mabel) muestra "Estamos en vivo" con `config.linkVivo`.
+- WhatsApp: `config.negocio.whatsapp` → `config.negocio.tel` → `NEGOCIO_DEF.tel`. Se editan en ⚙️ Config de Pedidos (también `linkVivo`).
+- Pedidos web: Mabel los crea en el registro "Ventas · mes" (live con `tipo: 'ventas'`, id `lventas-AAAA-MM`), cada uno con `p.web.pagarHasta`. `ventas.js` (Pedidos, al final) lo reconoce; "Para liberar" (`mabel.js`) usa `p.web.pagarHasta` mientras el pedido está pendiente.
 
 ## Datos del negocio (COD-10)
 - `negocio.js` tiene todo lo que cambia de una tienda a otra: nombre, nombre en etiquetas, teléfono, RUT, ciudad, tarifa, recargo de Mercado Pago, extra del cadete, cuentas de cobro, horarios de corte y barrios de la cadetería. Se usan con `negocio('tel')`, `NEGOCIO_DEF.x`, `CORTES.x`, `BARRIOS_GRISAL`.
