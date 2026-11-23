@@ -973,15 +973,15 @@ const plataNum = (v: string) => { const t = String(v || '').replace(/\s/g, ''); 
 /** Lee el mensaje del catálogo: una línea por prenda con código, talle y precio. Lo que no se entiende queda en `raras`. */
 export function leerMensajeCatalogo(texto: string) {
   const t = String(texto || ''), cabecera = /quiero pedir/i.test(t);
-  const lineas: { codigo: string; talle: string; precio: number | null; nombre: string; linea: string }[] = [], raras: string[] = [];
+  const lineas: { codigo: string; prenda: boolean; talle: string; precio: number | null; nombre: string; linea: string }[] = [], raras: string[] = [];
   for (const l0 of t.split(/\r?\n/)) {
     const l = l0.trim(); if (!l || /quiero pedir/i.test(l) || /^total\b/i.test(l.replace(/^[^a-z]+/i, ''))) continue;
-    const m = l.match(/^[•\-*·▪●◦]*\s*(?:[a-z]{1,3}\.?\s?)?#?(\d{1,6})\b\s*(.*)$/i);
+    const m = l.match(/^[•\-*·▪●◦]*\s*([a-z]{1,3}\.?\s?)?#?(\d{1,6})\b\s*(.*)$/i);
     const tl = l.match(/talle\s*:?\s*([úu]nic[oa]|[a-z0-9]{1,5})\b/i);
     if (m && tl) {
       const pr = l.match(/\$\s*([\d.,]+)/);
-      const nombre = m[2].split(/[·|]?\s*talle\b/i)[0].replace(/^[\s·|\-–]+|[\s·|\-–]+$/g, '').slice(0, 60);
-      lineas.push({ codigo: m[1], talle: normTalle(tl[1]), precio: pr ? plataNum(pr[1]) : null, nombre, linea: l.slice(0, 120) });
+      const nombre = m[3].split(/[·|]?\s*talle\b/i)[0].replace(/^[\s·|\-–]+|[\s·|\-–]+$/g, '').slice(0, 60);
+      lineas.push({ codigo: m[2], prenda: !m[1] && /^\d{4}$/.test(m[2]), talle: normTalle(tl[1]), precio: pr ? plataNum(pr[1]) : null, nombre, linea: l.slice(0, 120) });
     } else if (/^[•\-*·▪●◦]/.test(l) || /talle|\$/i.test(l)) raras.push(l.slice(0, 120));
   }
   return { lineas, raras, esCatalogo: lineas.length > 0 && (cabecera || lineas.every((x) => x.precio !== null)) };
@@ -1034,7 +1034,7 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
     }
   }
   // Prendas: código de prenda de 4 cifras (una fila de stock) o número de modelo + talle.
-  const cods4 = [...new Set(leido.lineas.map((x) => x.codigo).filter((c) => /^\d{4}$/.test(c)))];
+  const cods4 = [...new Set(leido.lineas.filter((x) => x.prenda).map((x) => x.codigo))]; // "E12" es siempre modelo; 4 cifras sin letra, código de prenda
   const nums = [...new Set(leido.lineas.map((x) => +x.codigo).filter((n) => n > 0))];
   const { data: mds } = await sb.from('modelos').select('id,num,datos').in('num', nums).eq('borrado', false);
   const modelos = new Map<string, any>((mds || []).map((m: any) => [m.id, m]));
@@ -1047,7 +1047,7 @@ export async function crearPedidoWeb(ctx: Ctx, a: any = {}) {
   const noExisten: string[] = [];
   for (const x of leido.lineas) {
     let fila: any = null;
-    if (/^\d{4}$/.test(x.codigo)) fila = (s1 || []).find((s: any) => s.codigo === x.codigo) || null;
+    if (x.prenda) fila = (s1 || []).find((s: any) => s.codigo === x.codigo) || null;
     if (!fila) {
       const md = (mds || []).find((m: any) => +m.num === +x.codigo);
       if (md) fila = [...filasStock.values()].find((s: any) => s.datos?.modeloId === md.id && normTalle(s.datos?.talle) === x.talle) || null;
