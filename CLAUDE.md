@@ -39,9 +39,18 @@ En cada publicación:
 - Una sola configuración de impresora por equipo: `impresora.js` (envíos térmica 10×15 o A4; rollo chico ancho × alto).
 
 ## Catálogo web (Paso 3, migración `20261124_catalogo_publico.sql`)
-- `catalogo/index.html` (página para clientas). Lee **solo** `catalogo_publico()` (rol anon): modelos con `web.pub`, número, fotos, precio y stock; más `vivo`, `linkVivo` y `whatsapp`. Nada más es legible sin sesión.
+- `catalogo/index.html` (página para clientas). Lee **solo** `catalogo_publico()` (rol anon): modelos con `web.pub`, código, fotos, precio y stock; más `vivo`, `linkVivo` y `whatsapp`. Nada más es legible sin sesión.
 - Nombre y precio: los de `m.web` (Gestión → 📷 Fotos) o, vacíos, los del modelo. Fotos: rutas del bucket `prendas`.
-- Mensaje (formato de Mabel `crear_pedido_web`): `Hola Emma! Quiero pedir:` + `• E<num> <nombre> · talle <T|único> · $<precio>` por prenda + `Total: $X`.
+- **Código del modelo** = el que se ve en Stock (`numTxt` de Gestión): el número si tiene (`142`), si no el primer alias (`RP39`). Solo letras y números. Es el MISMO en el catálogo, en el mensaje y en Mabel.
+- **Formato del mensaje (catálogo → Mabel `crear_pedido_web`, igual en los dos lados):**
+  ```
+  Hola Emma! Quiero pedir:
+  • RP39 Remera promo · talle Único · $390
+  • 142 Vestido lino · talle M · $1.290
+  Total: $1.680
+  ```
+  Una línea por prenda (repetida si son 2 iguales): `• <código tal cual> <nombre> · talle <T | Único> · $<precio>`. Sin "E" adelante.
+  Mabel busca el modelo por ese código: solo cifras → `num` del modelo; con letras → alias (sin distinguir mayúsculas). Nunca se toma como código de prenda de 4 cifras.
 - Pausa: durante un vivo (live de hoy, o de ayer antes de las 6, que no sea tipo `ventas`: la misma regla que Mabel) muestra "Estamos en vivo" con `config.linkVivo`.
 - WhatsApp: `config.negocio.whatsapp` → `config.negocio.tel` → `NEGOCIO_DEF.tel`. Se editan en ⚙️ Config de Pedidos (también `linkVivo`).
 - Pedidos web: Mabel los crea en el registro "Ventas · mes" (live con `tipo: 'ventas'`, id `lventas-AAAA-MM`), cada uno con `p.web.pagarHasta`. `ventas.js` (Pedidos, al final) lo reconoce; "Para liberar" (`mabel.js`) usa `p.web.pagarHasta` mientras el pedido está pendiente.

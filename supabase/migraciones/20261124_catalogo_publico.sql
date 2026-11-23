@@ -7,8 +7,10 @@
 --   { vivo: true/false,             -- hay un vivo en curso (misma regla que Mabel: un live de hoy, o de ayer antes de las 6; el registro "Ventas · mes" no cuenta)
 --     linkVivo: '…',                 -- config.linkVivo (o null)
 --     whatsapp: '…',                 -- config.negocio.whatsapp, o config.negocio.tel (o null: el catálogo usa el de negocio.js)
---     modelos: [{ num, nombre, categoria, precio, fotos: [rutas en el bucket prendas], talles: { talle: disponible } }] }
--- Solo modelos PUBLICADOS (web.pub), con número de modelo, activos, con fotos, con precio y con al menos una prenda con stock.
+--     modelos: [{ codigo, nombre, categoria, precio, fotos: [rutas en el bucket prendas], talles: { talle: disponible } }] }
+-- codigo = el código del modelo tal como se ve en Stock (numTxt de Gestión): el número si tiene, si no el primer alias (ej. RP39).
+-- Es el que va en el mensaje de WhatsApp ("• RP39 Remera promo · talle Único · $390") y el que busca Mabel.
+-- Solo modelos PUBLICADOS (web.pub), con código, activos, con fotos, con precio y con al menos una prenda con stock.
 -- Nombre y precio: los "para la clienta" (web.nombre / web.precio) y si están vacíos, los del modelo.
 -- No devuelve nada más: ni alias, costos, códigos de prenda, clientas, pedidos, pagos, cuentas ni el resto de config.
 -- Las tablas siguen cerradas para anon (RLS con privado.es_miembro()).
@@ -27,11 +29,12 @@ as $f$
     ) as v
   ), m as (
     select id, datos, datos->'web' as w,
+      case when coalesce(nullif(datos->>'num', '')::numeric, 0) > 0 then (datos->>'num')::numeric::int::text
+           else trim(coalesce(datos->'alias'->>0, '')) end as codigo,
       coalesce(nullif((datos->'web'->>'precio'), '')::numeric, 0) as pw,
       coalesce(nullif((datos->>'precioVenta'), '')::numeric, 0) as pv
     from public.modelos
     where not borrado
-      and coalesce(nullif(datos->>'num', '')::numeric, 0) > 0   -- sin número no se puede pedir ("E" + número)
       and coalesce(datos->>'activo', 'true') <> 'false'
       and coalesce(datos->>'archivado', 'false') <> 'true'
       and coalesce(datos->'web'->>'pub', 'false') = 'true'
@@ -43,7 +46,8 @@ as $f$
     group by 1, 2
   ), sel as (
     select m.*, case when m.pw > 0 then m.pw else m.pv end as precio from m
-    where (m.pw > 0 or m.pv > 0) and exists (select 1 from t where t.mid = m.id and t.q > 0)
+    where m.codigo ~ '^[A-Za-z0-9]+$'   -- sin código (o con espacios) no se puede pedir por mensaje
+      and (m.pw > 0 or m.pv > 0) and exists (select 1 from t where t.mid = m.id and t.q > 0)
   )
   select jsonb_build_object(
     'vivo', (select v from vivo),
@@ -51,7 +55,7 @@ as $f$
     'whatsapp', (select coalesce(nullif(c.valor->>'whatsapp', ''), nullif(c.valor->>'tel', '')) from public.config c where c.clave = 'negocio' and jsonb_typeof(c.valor) = 'object'),
     'modelos', coalesce((
       select jsonb_agg(jsonb_build_object(
-        'num', (sel.datos->>'num')::int,
+        'codigo', sel.codigo,
         'nombre', coalesce(nullif(trim(sel.w->>'nombre'), ''), sel.datos->>'nombre', ''),
         'categoria', coalesce(nullif(sel.datos->>'categoria', ''), 'Otros'),
         'precio', sel.precio,
@@ -59,7 +63,7 @@ as $f$
                   from jsonb_array_elements(sel.w->'fotos') with ordinality as x(f, i)
                   where coalesce(f->>'p', '') <> '' and f->>'p' !~ '\.\.'),
         'talles', (select jsonb_object_agg(t.talle, t.q) from t where t.mid = sel.id)
-      ) order by coalesce(sel.w->>'publicado', '') desc, (sel.datos->>'num')::int desc)
+      ) order by coalesce(sel.w->>'publicado', '') desc, sel.codigo)
       from sel), '[]'::jsonb)
   );
 $f$;
