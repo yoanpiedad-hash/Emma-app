@@ -218,9 +218,9 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
     <div class="grid2">
       <div><label class="lb">Fecha</label><input type="date" id="ai-fecha" data-inp="cab" data-b="imp" data-f="fecha"></div>
       <div><label class="lb">Nombre / referencia</label><input id="ai-nombre" data-inp="cab" data-b="imp" data-f="nombre" placeholder="ej: Importación octubre"></div>
-      <div><label class="lb">Dólar blue (ARS)</label><input type="number" inputmode="decimal" id="ai-blue" data-inp="cab" data-b="imp" data-f="blue" placeholder="ej: 1525"></div>
-      <div><label class="lb">Dólar en pesos uruguayos</label><input type="number" inputmode="decimal" step="0.1" id="ai-uyu" data-inp="cab" data-b="imp" data-f="uyu" placeholder="ej: 40,5"></div>
-      <div class="full"><label class="lb">Gasto de importación en UYU (flete + trámites) <span class="c-ac">— podés dejarlo en 0 y cargarlo cuando llegue</span></label><input type="number" inputmode="decimal" id="ai-costo" data-inp="cab" data-b="imp" data-f="costoImp" placeholder="0"></div>
+      <div><label class="lb">Dólar blue (ARS)</label><input type="text" inputmode="decimal" id="ai-blue" data-inp="cab" data-b="imp" data-f="blue" placeholder="ej: 1525"></div>
+      <div><label class="lb">Dólar en pesos uruguayos</label><input type="text" inputmode="decimal" id="ai-uyu" data-inp="cab" data-b="imp" data-f="uyu" placeholder="ej: 40,5"></div>
+      <div class="full"><label class="lb">Gasto de importación en UYU (flete + trámites) <span class="c-ac">— podés dejarlo en 0 y cargarlo cuando llegue</span></label><input type="text" inputmode="decimal" id="ai-costo" data-inp="cab" data-b="imp" data-f="costoImp" placeholder="0"></div>
     </div>
   </div>
   <div class="card">
@@ -228,8 +228,8 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
     <div class="grid2">
       <div class="full"><label class="lb">Descripción</label><input id="ai-desc" placeholder="ej: Remera broderi" data-enter="addImp"></div>
       <div><label class="lb">Cantidad</label><input type="number" inputmode="numeric" id="ai-qty" data-inp="prev" data-enter="addImp" placeholder="ej: 10"></div>
-      <div><label class="lb">Precio importador (ARS)</label><input type="number" inputmode="decimal" id="ai-pimp" data-inp="prev" data-enter="addImp" placeholder="ej: 8000"></div>
-      <div class="full"><label class="lb">Precio real (ARS)</label><input type="number" inputmode="decimal" id="ai-preal" data-inp="prev" data-enter="addImp" placeholder="ej: 12000"></div>
+      <div><label class="lb">Precio importador (ARS)</label><input type="text" inputmode="decimal" id="ai-pimp" data-inp="prev" data-enter="addImp" placeholder="ej: 8000"></div>
+      <div class="full"><label class="lb">Precio real (ARS)</label><input type="text" inputmode="decimal" id="ai-preal" data-inp="prev" data-enter="addImp" placeholder="ej: 12000"></div>
     </div>
     <div id="ai-prev"></div>
     <button class="b pri blk mt" data-act="addImp">+ Agregar al pedido</button>
@@ -264,8 +264,8 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
       <div><label class="lb">Categoría</label><select id="al-cat"></select></div>
       <div><label class="lb">Talles</label><select id="al-tipo" data-chg="formTipo" data-px="al"></select></div>
       <div class="full" id="al-tg"></div>
-      <div><label class="lb">Precio de compra por unidad (UYU)</label><input type="number" inputmode="decimal" id="al-pcomp" data-inp="prev" data-enter="addLocal" placeholder="ej: 450"></div>
-      <div><label class="lb">Precio de venta</label><input type="number" inputmode="numeric" id="al-pv" data-inp="prev" data-enter="addLocal" placeholder="$ venta"></div>
+      <div><label class="lb">Precio de compra por unidad (UYU)</label><input type="text" inputmode="decimal" id="al-pcomp" data-inp="prev" data-enter="addLocal" placeholder="ej: 450"></div>
+      <div><label class="lb">Precio de venta</label><input type="text" inputmode="decimal" id="al-pv" data-inp="prev" data-enter="addLocal" placeholder="$ venta"></div>
     </div>
     <div id="al-prev"></div>
     <button class="b pri blk mt" data-act="addLocal">+ Agregar prenda</button>
@@ -293,7 +293,7 @@ header .nube{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
       <div><label class="lb">Categoría</label><select id="sa-cat"></select></div>
       <div><label class="lb">Talles</label><select id="sa-tipo" data-chg="formTipo" data-px="sa"></select></div>
       <div class="full" id="sa-tg"></div>
-      <div class="full"><label class="lb">Precio de venta</label><input id="sa-pv" type="number" inputmode="numeric" data-enter="stkAlta" placeholder="ej: 990"></div>
+      <div class="full"><label class="lb">Precio de venta</label><input id="sa-pv" type="text" inputmode="decimal" data-enter="stkAlta" placeholder="ej: 990"></div>
     </div>
     <button class="b pri blk mt" data-act="stkAlta">+ Agregar al stock</button>
     <div class="err" id="sa-err"></div>
@@ -1028,7 +1028,7 @@ function agregarLocal() {
   $('#al-nom').focus();
 }
 const ATTR = (ctx, c, l, mo) => `data-ctx="${ctx}" data-cid="${esc(c.id || '')}" data-lid="${esc(l.lid)}"${mo ? ` data-k="${esc(mo.k)}"` : ''}`;
-const inNum = (cls, id, chg, attrs, val, ph, extra) => `<input class="${cls}" type="number" inputmode="decimal" id="${id}" data-chg="${chg}" ${attrs} value="${num(val) || ''}" placeholder="${ph}"${extra || ''}>`;
+const inNum = (cls, id, chg, attrs, val, ph, extra) => `<input class="${cls}" type="text" inputmode="decimal" id="${id}" data-chg="${chg}" ${attrs} value="${num(val) || ''}" placeholder="${ph}"${extra || ''}>`;
 /** Tabla de líneas de una importación (pedido o recibida). */
 function tablaLineasImp(c, ctx) {
   const bloq = c._bloqueada, recib = c.estado === 'recibida';
@@ -1193,11 +1193,11 @@ function detalleCompra(c) {
     <div class="grid3">
       <input id="ha-desc-${id}" placeholder="Descripción" class="full">
       <input id="ha-qty-${id}" type="number" inputmode="numeric" placeholder="Cantidad">
-      <input id="ha-pimp-${id}" type="number" inputmode="decimal" placeholder="P. importador ARS">
-      <input id="ha-preal-${id}" type="number" inputmode="decimal" placeholder="P. real ARS">
+      <input id="ha-pimp-${id}" type="text" inputmode="decimal" placeholder="P. importador ARS">
+      <input id="ha-preal-${id}" type="text" inputmode="decimal" placeholder="P. real ARS">
       <button class="b pri" data-act="histAdd" data-cid="${id}">+ Agregar</button>
     </div>` : '';
-  const f = (k, lb, tipo, cls) => `<div${cls ? ' class="' + cls + '"' : ''}><label class="lb">${lb}</label><input id="hc-${k}-${id}" ${tipo === 'date' ? 'type="date"' : tipo ? 'type="number" inputmode="decimal"' : ''} value="${esc(k === 'fecha' ? c.fecha : tipo ? (num(c[k]) || '') : c[k])}"></div>`;
+  const f = (k, lb, tipo, cls) => `<div${cls ? ' class="' + cls + '"' : ''}><label class="lb">${lb}</label><input id="hc-${k}-${id}" ${tipo === 'date' ? 'type="date"' : tipo ? 'type="text" inputmode="decimal"' : ''} value="${esc(k === 'fecha' ? c.fecha : tipo ? (num(c[k]) || '') : c[k])}"></div>`;
   const edit = UI.cabEdit === c.id && !c._bloqueada ? `<div class="alert ac" style="font-weight:500">
     <div class="grid2">${f('nombre', 'Nombre / referencia')}${f('fecha', 'Fecha', 'date')}${imp ? f('blue', 'Dólar blue (ARS)', 1) + f('uyu', 'Dólar en pesos uruguayos', 1) + f('costoImp', 'Gasto de importación en UYU (flete + trámites)', 1, 'full') : ''}</div>
     <div class="small mt" style="color:var(--tx)">Al cambiar el dólar o el gasto se recalculan los costos y márgenes.</div>
@@ -1606,7 +1606,7 @@ function detalleModelo(m, costos) {
   return `<div style="width:100%">
     ${off ? `<div class="alert pe">📦 Archivado${m.archivado ? ' el ' + fechaUY(m.archivado) : ''}: no aparece en Pedidos ni en Stock. El historial se conserva y el número no se vuelve a usar.</div><button class="b sm mt" data-act="stkReactivar" data-id="${id}">↩️ Volver a usar${+m.num ? '' : ' (recibe número nuevo)'}</button>` : `<div class="grid3">
       <div class="full"><label class="lb">Nombre (con el color)</label><input id="sd-nom-${id}" value="${esc(m.nombre)}"></div>
-      <div><label class="lb">Precio de venta</label><input id="sd-pv-${id}" type="number" inputmode="numeric" value="${num(m.precioVenta) || ''}"></div>
+      <div><label class="lb">Precio de venta</label><input id="sd-pv-${id}" type="text" inputmode="decimal" value="${num(m.precioVenta) || ''}"></div>
       <div><label class="lb">Categoría</label><select id="sd-cat-${id}">${optsCat(m.categoria)}</select></div>
       <div><label class="lb">Costo (última compra)</label><div class="mono" style="padding:10px 2px">${u ? fmt(u) + (num(m.precioVenta) ? ` · margen <span class="${margenCls((m.precioVenta - u) / m.precioVenta * 100)}">${pctTxt((m.precioVenta - u) / m.precioVenta * 100)}</span>` : '') : '—'}</div></div>
     </div>
