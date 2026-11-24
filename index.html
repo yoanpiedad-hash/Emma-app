@@ -648,7 +648,7 @@ const ENTREGA_TXT = { sin_definir: 'Sin definir', retiro: '🏠 Retiro', agencia
 
 function nuevaClienta(nombre, tel, ref) {
   return { id: uid('c'), nombre: String(nombre || '').trim(), ref: String(ref || '').trim(), alias: [], tel: String(tel || '').trim(), telKey: telKey(tel),
-    nombreEnvio: '', ci: '', agencia: '', depto: '', ciudad: '', direccion: '', barrio: '', notaCadete: '',
+    nombreEnvio: '', ci: '', agencia: '', depto: '', ciudad: '', direccion: '', barrio: '', notaCadete: '', horarioPref: '',
     saldoFavor: 0, historialViejo: [], ultimoUso: '', creado: ahoraISO() };
 }
 const clientaPorTel = (tel, exceptoId) => { const k = telKey(tel); return k ? DB.clientes.find(c => c.telKey === k && c.id !== exceptoId) : null; };
@@ -852,7 +852,7 @@ function fusionar(keep, otras) {
   for (const o of otras) {
     keep.saldoFavor = (+keep.saldoFavor || 0) + (+o.saldoFavor || 0);
     keep.historialViejo = (keep.historialViejo || []).concat(o.historialViejo || []);
-    for (const f of ['tel', 'nombreEnvio', 'ci', 'agencia', 'depto', 'ciudad', 'direccion', 'barrio', 'notaCadete']) if (!keep[f] && o[f]) keep[f] = o[f];
+    for (const f of ['tel', 'nombreEnvio', 'ci', 'agencia', 'depto', 'ciudad', 'direccion', 'barrio', 'notaCadete', 'horarioPref']) if (!keep[f] && o[f]) keep[f] = o[f];
     agregarAlias(keep, o.nombre);
     (o.alias || []).forEach(a => agregarAlias(keep, a));
     if ((o.ultimoUso || '') > (keep.ultimoUso || '')) keep.ultimoUso = o.ultimoUso;
@@ -908,7 +908,7 @@ function editarClienta(c, cambios) {
       fusionada = otras.map(o => o.nombre);
     }
   }
-  for (const f of ['ref', 'nombreEnvio', 'ci', 'agencia', 'depto', 'ciudad', 'direccion', 'barrio', 'notaCadete']) if (cambios[f] !== undefined) c[f] = f === 'barrio' ? barrioCanon(cambios[f]) : String(cambios[f]).trim();
+  for (const f of ['ref', 'nombreEnvio', 'ci', 'agencia', 'depto', 'ciudad', 'direccion', 'barrio', 'notaCadete', 'horarioPref']) if (cambios[f] !== undefined) c[f] = f === 'barrio' ? barrioCanon(cambios[f]) : String(cambios[f]).trim();
   guardar();
   if (fusionada) toast('🔗 Mismo teléfono: se fusionó con ' + fusionada.join(', '));
   return fusionada;
@@ -1218,7 +1218,7 @@ function cuerpoPedido(p, c, live, t, h) {
   if (ent === 'cadeteria') detEnt = `<div class="box mt">
       ${campoCli(c, 'nombreEnvio', 'Nombre para la etiqueta (opcional, si no va el de TikTok)')}
       <div class="grid2 mt">${campoCli(c, 'direccion', 'Dirección (queda en la ficha)')}${campoCli(c, 'barrio', 'Barrio (opcional)')}</div>
-      <div class="mt">${campoCli(c, 'notaCadete', 'Nota para el cadete (horario, referencia…)')}</div>
+      <div class="grid2 mt">${campoCli(c, 'notaCadete', 'Nota para el cadete (timbre, portón, apto)')}${campoCli(c, 'horarioPref', 'Horario de preferencia (Mabel lo confirma en cada envío)')}</div>${horarioEnvioDe([p]) ? `<div class="small muted mt">🕒 Este envío: ${esc(horarioEnvioDe([p]))}</div>` : ''}
       <div class="row mt">${tipoBtnsHTML(p)}</div>
       <div class="row mt">${cobroBtnsHTML(p)}</div></div>`;
   const editNom = UI.editNom.has(id) ? `<div class="box mt"><div class="grid2"><input id="en-${id}" value="${esc(c.nombre)}" placeholder="Nombre"><input id="er-${id}" value="${esc(c.ref || '')}" placeholder="Referencia (apellido, emoji…)"><input id="et-${id}" value="${esc(c.tel)}" placeholder="Teléfono" inputmode="tel"></div>
@@ -1266,7 +1266,7 @@ function entregaDetHTML(p, c, ent, px) {
   if (ent === 'cadeteria') return `<div class="box mt">
       ${campoCli(c, 'nombreEnvio', 'Nombre para la etiqueta (opcional, si no va el de TikTok)', px)}
       <div class="grid2 mt">${campoCli(c, 'direccion', 'Dirección (queda en la ficha)', px)}${campoCli(c, 'barrio', 'Barrio (opcional)', px)}</div>
-      <div class="mt">${campoCli(c, 'notaCadete', 'Nota para el cadete (horario, referencia…)', px)}</div>
+      <div class="grid2 mt">${campoCli(c, 'notaCadete', 'Nota para el cadete (timbre, portón, apto)', px)}${campoCli(c, 'horarioPref', 'Horario de preferencia (Mabel lo confirma en cada envío)', px)}</div>
       ${p ? `<div class="row mt">${tipoBtnsHTML(p)}</div><div class="row mt">${cobroBtnsHTML(p)}</div>` : ''}</div>`;
   return '';
 }
@@ -1331,7 +1331,7 @@ function cadDraftHTML(p) {
     <label class="lb">Nombre para la etiqueta (opcional)</label><input id="cd-nom-${id}" data-inp="cdCampo" data-id="${id}" data-f="nom" value="${esc(d.nom || '')}" placeholder="Si lo dejás vacío va el de TikTok">
     <label class="lb mt">Dirección *</label><input id="cd-dir-${id}" data-inp="cdCampo" data-id="${id}" data-f="dir" value="${esc(d.dir)}" placeholder="Calle, número, apto">
     <label class="lb mt">Barrio (opcional)</label><div class="sw"><input id="cd-barrio-${id}" data-barrio="1" data-inp="cdCampo" data-id="${id}" data-f="barrio" value="${esc(d.barrio || '')}" placeholder="Escribí y elegí de la lista (o dejalo vacío)" autocomplete="off"><div class="sug"></div></div>
-    <label class="lb mt">Nota para el cadete (opcional)</label><input id="cd-nota-${id}" data-inp="cdCampo" data-id="${id}" data-f="nota" value="${esc(d.nota)}" placeholder="Horario, referencia…">
+    <label class="lb mt">Nota para el cadete (opcional)</label><input id="cd-nota-${id}" data-inp="cdCampo" data-id="${id}" data-f="nota" value="${esc(d.nota)}" placeholder="Timbre, portón, apto (el horario va aparte)">
     <label class="lb mt">Tipo de envío</label>
     <div class="row"><button class="b sm seg${d.tipo === 'comun' ? ' on' : ''}" data-act="cdTipo" data-id="${id}" data-v="comun">📦 Común</button><button class="b sm seg${d.tipo === 'cambio' ? ' on' : ''}" data-act="cdTipo" data-id="${id}" data-v="cambio">🔄 Cambio</button></div>
     <label class="lb mt">Cobro *</label>
@@ -1347,6 +1347,10 @@ function faltaCadeteria(dir, cobro, monto) {
   else if (cobro === 'monto' && !(num(monto) > 0)) f.push('el monto a cobrar');
   return f;
 }
+/** 24/11 (caso Carolina #85): horario confirmado para ESTE envío (lo pone Mabel o el equipo en el pedido). El horario de la ficha nunca sale solo. */
+function horarioEnvioDe(ps) { return [...new Set((ps || []).map(p => String((p && p.horarioEnvio) || '').trim()).filter(Boolean))].join(' / '); }
+/** Lo que va a Grisal: nota fija de la ficha + horario de este envío ("Portón negro · No hay quien reciba de 17 a 20"). */
+function notaCadeteEnvio(c, ps) { return [String((c && c.notaCadete) || '').trim(), horarioEnvioDe(ps)].filter(Boolean).join(' · '); }
 function campoCli(c, f, ph, px) {
   const inp = `<input data-chg="cliCampo" data-cid="${c.id}" data-f="${f}" id="${px || 'cf'}-${f}-${c.id}" value="${esc(c[f])}" placeholder="${esc(ph)}"${f === 'barrio' ? ' data-barrio="1" autocomplete="off"' : ''}>`;
   return f === 'barrio' ? `<div class="sw">${inp}<div class="sug"></div></div>` : inp;
@@ -1496,7 +1500,7 @@ function fichaEditHTML(c) {
   const sep = UI.clSep && UI.clSep.cid === c.id ? separarHTML(c) : '';
   return `<div class="box mt">
     <div class="grid2">${f('nombre', 'Nombre / usuario TikTok')}${f('ref', 'Referencia (apellido, emoji…)')}${f('tel', 'Teléfono', 'tel')}${f('nombreEnvio', 'Nombre real (envíos)')}${f('ci', 'C.I.')}${f('agencia', 'Agencia')}${f('depto', 'Departamento')}${f('ciudad', 'Ciudad')}${f('direccion', 'Dirección')}${f('barrio', 'Barrio (cadetería)')}</div>
-    <div class="mt">${f('notaCadete', 'Nota para el cadete')}</div>
+    <div class="grid2 mt">${f('notaCadete', 'Nota para el cadete (timbre, portón, apto)')}${f('horarioPref', 'Horario de preferencia')}</div>
     <div class="mt"><label class="lb">💰 Saldo a favor ($)</label><input id="fe-saldoFavor-${c.id}" type="number" inputmode="numeric" value="${+c.saldoFavor || 0}" style="max-width:160px"></div>
     ${c.alias.length ? `<div class="mt"><div class="sec-t">Alias (nombres anteriores)</div>${c.alias.map((a, i) => `<div class="row" style="padding:3px 0"><span class="grow" style="flex:1">${esc(a)}</span><button class="b sm" data-act="sepIni" data-cid="${c.id}" data-i="${i}" title="Es otra persona con el mismo número">✂️ Separar</button><button class="b sm gh" data-act="delAlias" data-cid="${c.id}" data-i="${i}">✕</button></div>`).join('')}</div>` : ''}
     ${sep}
@@ -1620,7 +1624,7 @@ function filasHoja(s) {
     const ult = ps.sort((a, b) => (b.fechas.creado || '').localeCompare(a.fechas.creado || '') || b.num - a.num)[0];
     const g = cobroGrupo(ps);
     const cobro = g.total ? 'Cobrar ' + fmt(g.total) : 'Envío pago';
-    return { num: ult.num, nombre: c.nombreEnvio || c.nombre || '', tel: c.tel || '', dir: [c.direccion, c.barrio].filter(Boolean).join(' · '), nota: c.notaCadete || '', cobro };
+    return { num: ult.num, nombre: c.nombreEnvio || c.nombre || '', tel: c.tel || '', dir: [c.direccion, c.barrio].filter(Boolean).join(' · '), nota: notaCadeteEnvio(c, ps), cobro };
   });
 }
 const telLegible = t => { const k = telKey(t); if (!k) return ''; const d = '0' + k; return d.length === 9 ? d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6) : d; };
@@ -1774,7 +1778,7 @@ function etqCadeteHTML(p) {
     <div class="l-mid"><div class="l-num">#${p.num}</div>${tipoEnvioDe(p) === 'cambio' ? '<div class="l-camb">🔄 CAMBIO</div>' : ''}</div>
     <div class="l-nom">${esc(c.nombreEnvio || c.nombre || '')}</div>
     <div class="l-tel">${esc(c.tel || '—')}</div>
-    <div class="l-ag-d">📍 <b>${esc(c.direccion || '________')}</b>${c.barrio ? ' · ' + esc(c.barrio) : ''}${c.notaCadete ? '<br>📝 ' + esc(c.notaCadete) : ''}</div>
+    <div class="l-ag-d">📍 <b>${esc(c.direccion || '________')}</b>${c.barrio ? ' · ' + esc(c.barrio) : ''}${notaCadeteEnvio(c, [p]) ? '<br>📝 ' + esc(notaCadeteEnvio(c, [p])) : ''}</div>
     <div class="ag-bot"><div class="l-cob${pago ? ' pago' : ''}" style="flex:1;display:flex;align-items:center;justify-content:center">${pago ? '✓ ENVÍO PAGO' : (p.cobroEnvio === 'monto' ? 'COBRAR ' : 'COBRAR ENVÍO ') + fmt(env)}</div><div class="l-bc">${barcodeSVG(p.codigo)}<div class="l-cod">${p.codigo}</div></div></div>
   </div>`;
 }
@@ -1994,7 +1998,7 @@ const ACT = {
     const c = cliById(d.cid), g = k => $('#fe-' + k + '-' + c.id).value;
     if (!g('nombre').trim()) return toast('El nombre no puede quedar vacío');
     c.saldoFavor = Math.max(0, num(g('saldoFavor')));
-    editarClienta(c, { nombre: g('nombre'), ref: g('ref'), tel: g('tel'), nombreEnvio: g('nombreEnvio'), ci: g('ci'), agencia: g('agencia'), depto: g('depto'), ciudad: g('ciudad'), direccion: g('direccion'), barrio: g('barrio'), notaCadete: g('notaCadete') });
+    editarClienta(c, { nombre: g('nombre'), ref: g('ref'), tel: g('tel'), nombreEnvio: g('nombreEnvio'), ci: g('ci'), agencia: g('agencia'), depto: g('depto'), ciudad: g('ciudad'), direccion: g('direccion'), barrio: g('barrio'), notaCadete: g('notaCadete'), horarioPref: g('horarioPref') });
     recalcSaldosClienta(c.id); guardar();
     UI.clEdit.delete(d.cid); toast('✓ Ficha guardada'); render();
   },

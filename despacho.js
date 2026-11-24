@@ -355,7 +355,8 @@ function salidaHTML(c, ps) {
     const b = (fk, v, txt) => `<button class="b sm seg${f[fk] === v ? ' on' : ''}" data-act="despFv" data-f="${fk}" data-v="${v}">${txt}</button>`;
     form = `<div class="mt">${campoD('nombreEnvio', 'Nombre para la etiqueta (opcional)', 'Si queda vacío va ' + c.nombre)}</div>
       <div class="grid2 mt">${campoD('direccion', 'Dirección *', 'Calle, número, apto')}${campoD('barrio', 'Barrio (opcional)', 'Escribí y elegí de la lista')}</div>
-      <div class="mt">${campoD('notaCadete', 'Nota para el cadete (opcional)', 'Horario, referencia…')}</div>
+      <div class="mt">${campoD('notaCadete', 'Nota fija para el cadete (queda en la ficha)', 'Timbre, portón, apto')}</div>
+      <div class="mt">${campoD('notaGrisal', 'Nota que va a Grisal (solo este envío)', 'Nota fija · horario confirmado')}${horarioEnvioDe(ps) ? `<div class="small muted">🕒 Horario confirmado para este envío: ${esc(horarioEnvioDe(ps))}</div>` : c.horarioPref ? `<div class="small muted">🕒 En la ficha dice "${esc(c.horarioPref)}", pero no está confirmado para este envío: no va.</div>` : ''}</div>
       <label class="lb mt">Tipo de envío</label><div class="row">${b('tipo', 'comun', '📦 Común')}${b('tipo', 'cambio', '🔄 Cambio')}</div>
       <label class="lb mt">Cobro del envío *</label><div class="row">${b('cobro', 'cobrar', 'Cobrar ' + fmt(cfg('tarifaEnvio')))}${b('cobro', 'pago', '✓ Envío pago')}${b('cobro', 'monto', '✏️ Otro monto')}<button class="b sm" data-act="despCobraTodo" title="La clienta le paga todo al cadete (pedido + envío + extra de cobro). Lo autoriza Yanaina.">💵 Cobra todo (+${fmt(extraCobroCadete())})</button>${f.cobro === 'monto' ? `<input id="dsf-monto" type="number" inputmode="numeric" data-inp="despF" data-f="monto" value="${esc(f.monto || '')}" placeholder="$ total" style="width:110px">` : ''}</div>`;
   }
@@ -407,7 +408,7 @@ function elegirSalida(t) {
   const D = UI.desp, c = cliById(D.cid) || {}, ps = [...D.sel].map(pedById).filter(Boolean);
   D.salida = t;
   const m = ps.length ? principal(ps) : null;
-  D.f = { agencia: c.agencia || '', nombreEnvio: c.nombreEnvio || '', ci: c.ci || '', ciudad: c.ciudad || '', depto: c.depto || '', direccion: c.direccion || '', barrio: c.barrio || '', notaCadete: c.notaCadete || '',
+  D.f = { agencia: c.agencia || '', nombreEnvio: c.nombreEnvio || '', ci: c.ci || '', ciudad: c.ciudad || '', depto: c.depto || '', direccion: c.direccion || '', barrio: c.barrio || '', notaCadete: c.notaCadete || '', notaGrisal: notaCadeteEnvio(c, ps), notaGrisalEdit: false,
     tipo: ps.some(p => tipoEnvioDe(p) === 'cambio') ? 'cambio' : 'comun',
     cobro: m && m.cobroEnvio && m.entrega === 'cadeteria' ? m.cobroEnvio : null, monto: m && m.cobroMonto ? String(m.cobroMonto) : '',
     cuenta: (D.f && D.f.cuenta) || null, plazo: '', dos: !!(D.f && D.f.dos), cuenta2: (D.f && D.f.cuenta2) || null, monto2: (D.f && D.f.monto2) || '', conEnvio: false, transf: '', transfEdit: false };
@@ -420,7 +421,7 @@ function crearPaquete(c, ps, tipo, f, sinPago) {
   const m = principal(ps);
   const cobro = tipo === 'cadeteria' ? (f.cobro === 'pago' ? 0 : f.cobro === 'monto' ? num(f.monto) : +cfg('tarifaEnvio') || 0) : null;
   const envio = tipo === 'agencia' ? { nombre: c.nombreEnvio || c.nombre, tel: c.tel || '', agencia: c.agencia, ci: c.ci || '', ciudad: c.ciudad || '', depto: c.depto || '', direccion: c.direccion || '' }
-    : tipo === 'cadeteria' ? { nombre: c.nombreEnvio || c.nombre, tel: c.tel || '', direccion: c.direccion || '', barrio: c.barrio || '', nota: c.notaCadete || '' }
+    : tipo === 'cadeteria' ? { nombre: c.nombreEnvio || c.nombre, tel: c.tel || '', direccion: c.direccion || '', barrio: c.barrio || '', nota: String(f.notaGrisal ?? notaCadeteEnvio(c, ps)).trim() }
     : { nombre: c.nombre, tel: c.tel || '' };
   const k = { id: uid('k'), tipo, fecha: ahoraISO(), pedidos: ps.map(p => p.id), nums: ps.map(p => p.num), clienteId: c.id, principal: m.id, codigo: m.codigo,
     cobro, tipoEnvio: tipo === 'cadeteria' ? (f.tipo || 'comun') : null, envio, sinPago: sinPago || [], grisalOrden: null,
@@ -647,7 +648,7 @@ async function copiarGrisalHoy() {
   const [y, mo, d] = hoyISO().split('-'), fecha = d + '/' + mo + '/' + y.slice(2);
   const filas = usar.map(k => {
     const c = cliById(k.clienteId) || {}, e = k.envio || {};
-    return ['', k.tipoEnvio === 'cambio' ? 'Cambio' : 'Común', e.nombre || c.nombreEnvio || c.nombre || '', telLegible(e.tel || c.tel), e.direccion || c.direccion || '', e.barrio || c.barrio || '', k.cobro || 0, 'Paquete chico', fecha, e.nota || c.notaCadete || ''].map(limpioTSV);
+    return ['', k.tipoEnvio === 'cambio' ? 'Cambio' : 'Común', e.nombre || c.nombreEnvio || c.nombre || '', telLegible(e.tel || c.tel), e.direccion || c.direccion || '', e.barrio || c.barrio || '', k.cobro || 0, 'Paquete chico', fecha, ('nota' in e ? e.nota : c.notaCadete) || ''].map(limpioTSV);
   });
   const txt = filas.map(f => f.join('\t')).join('\n');
   const ok = await copiarTexto(txt);
@@ -818,6 +819,11 @@ Object.assign(INP, {
   despF: el => {
     UI.desp.f[el.dataset.f] = el.value;
     if (el.dataset.f === 'transf') UI.desp.f.transfEdit = true;
+    if (el.dataset.f === 'notaGrisal') UI.desp.f.notaGrisalEdit = true;
+    if (el.dataset.f === 'notaCadete' && !UI.desp.f.notaGrisalEdit) { // la nota a Grisal sigue a la fija mientras no la toquen a mano
+      const D = UI.desp, ps = [...D.sel].map(pedById).filter(Boolean), g = [el.value.trim(), horarioEnvioDe(ps)].filter(Boolean).join(' · ');
+      D.f.notaGrisal = g; const x = $('#dsf-notaGrisal'); if (x) x.value = g;
+    }
     if (el.dataset.f === 'plazo') { const b = $('#dsp-go'); if (b && el.value) b.textContent = '⏸️ Guardar sin pagar hasta el ' + fechaUY(el.value, 1); }
     if (el.dataset.f === 'monto2') {
       const D = UI.desp, f = D.f, porCob = [...D.sel].map(pedById).filter(p => p && sinSalir(p) && porCobrar(p)), v = dosV0(porCob, D.salida, f);
@@ -883,7 +889,7 @@ async function pasarAGrisal(solo) {
   savePaquetes();   // el código queda guardado antes de mandar: si se reintenta, no se duplica la fila
   const filas = ks.map(k => {
     const c = cliById(k.clienteId) || {}, e = k.envio || {};
-    return { orden: k.grisalOrden, tipo: k.tipoEnvio === 'cambio' ? 'Cambio' : 'Común', nombre: e.nombre || c.nombreEnvio || c.nombre || '', tel: telLegible(e.tel || c.tel), direccion: e.direccion || c.direccion || '', zona: e.barrio || c.barrio || '', cobrar: k.cobro || 0, producto: 'Paquete chico', fecha, detalles: e.nota || c.notaCadete || '' };
+    return { orden: k.grisalOrden, tipo: k.tipoEnvio === 'cambio' ? 'Cambio' : 'Común', nombre: e.nombre || c.nombreEnvio || c.nombre || '', tel: telLegible(e.tel || c.tel), direccion: e.direccion || c.direccion || '', zona: e.barrio || c.barrio || '', cobrar: k.cobro || 0, producto: 'Paquete chico', fecha, detalles: ('nota' in e ? e.nota : c.notaCadete) || '' };
   });
   _grisalOcupado = true; toast('🚴 Pasando ' + filas.length + ' a Grisal…', 3000);
   try {
@@ -939,7 +945,7 @@ function etqGrisalHTML(k) {
   const nom = String(e.nombre || c.nombreEnvio || c.nombre || '').trim();
   const [y, mo, d] = localISO(new Date(k.fecha || Date.now())).split('-');
   const cobro = +k.cobro || 0, pago = cobro ? 'A cobrar ' + fmt(cobro) : 'Pagado';
-  const det = String(e.nota || c.notaCadete || '').trim(), zona = String(e.barrio || c.barrio || '').trim();
+  const det = String(('nota' in e ? e.nota : c.notaCadete) || '').trim(), zona = String(e.barrio || c.barrio || '').trim();
   const nomS = nom.length > 26 ? 14 : nom.length > 16 ? 17 : 22;
   return `<div class="lbl grs">
     <div class="grs-top"><div class="grs-logo"><img src="${GRISAL_LOGO}" alt=""><div class="grs-web">www.GrisalExpress.com.uy</div></div>
