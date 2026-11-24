@@ -184,7 +184,7 @@ export async function buscarPedido(ctx: Ctx) {
     return {
       ...(anteriores.has(r.id) ? { anterior_a_mabel_sin_marcar_pago: true, indicio_en_historial: evidencia[r.id] || null, aviso: 'NO le pidas comprobante de este pedido y no le digas que lo debe: puede estar pagado y sin marcar. Si hace falta, pasalo a Yanaina en silencio.' } : {}),
       numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: live?.datos?.fechaPagoISO || null, ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha, cfg) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
-      entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar,
+      entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar, ...(p.horarioEnvio ? { horario_de_este_envio: p.horarioEnvio } : {}),
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
     };
@@ -233,7 +233,7 @@ export async function buscarPedido(ctx: Ctx) {
     enviados_recientes,
     clienta_encontrada: !!c,
     nota_de_la_clienta: c?.datos?.notaMabel || '',
-    datos_guardados: c ? { direccion: c.datos.direccion || '', barrio: c.datos.barrio || '', agencia: c.datos.agencia || '', ciudad: c.datos.ciudad || '', departamento: c.datos.depto || '', nombre_envio: c.datos.nombreEnvio || '', ci: c.datos.ci || '', nota_cadete: c.datos.notaCadete || '', otras_direcciones: (c.datos.direcciones || []).filter((x: any) => normD(x.direccion) !== normD(c.datos.direccion)).map((x: any) => ({ direccion: x.direccion, barrio: x.barrio || '', etiqueta: x.etiqueta || '' })), puede_guardar_sin_pagar: !!c.datos.puedeGuardarSinPagar } : null,
+    datos_guardados: c ? { direccion: c.datos.direccion || '', barrio: c.datos.barrio || '', agencia: c.datos.agencia || '', ciudad: c.datos.ciudad || '', departamento: c.datos.depto || '', nombre_envio: c.datos.nombreEnvio || '', ci: c.datos.ci || '', nota_cadete: c.datos.notaCadete || '', horario_preferencia: c.datos.horarioPref || '', otras_direcciones: (c.datos.direcciones || []).filter((x: any) => normD(x.direccion) !== normD(c.datos.direccion)).map((x: any) => ({ direccion: x.direccion, barrio: x.barrio || '', etiqueta: x.etiqueta || '' })), puede_guardar_sin_pagar: !!c.datos.puedeGuardarSinPagar } : null,
     ...(c && num(c.datos.saldoFavor) > 0 ? { saldo_a_favor: num(c.datos.saldoFavor), ...(c.datos.saldoVence ? { saldo_vence: c.datos.saldoVence } : {}) } : {}), // 20/11 (D-10)
     pedidos_abiertos: pedidos,
     a_transferir,
@@ -618,13 +618,20 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   // 11/11 (Yoan, caso Xime): el barrio ya no frena la carga. Si falta o no se reconoce, la cadetería se carga igual con la dirección,
   // queda el aviso "Falta el barrio" en Despacho y Mabel lo pregunta una sola vez; si la clienta contesta, se vuelve a llamar con el barrio.
   let faltaBarrio = false, faltaNombre = false, opBarrio: string[] = [];
+  let horarioSet: string | null = null, preguntarHorario = false; // 24/11: horario de ESTE envío ('' = sin horario)
   if (tipo === 'cadeteria') {
     if (!s(a.direccion)) return { error: 'Falta la dirección.' };
     const barrio = barrioCanon(s(a.barrio));
     if (!barrio) { faltaBarrio = true; opBarrio = s(a.barrio) ? barrioOpciones(s(a.barrio)) : []; }
     cambiosCli.direccion = s(a.direccion); if (barrio) cambiosCli.barrio = barrio;
     if (s(a.nombre_retira)) cambiosCli.nombreEnvio = s(a.nombre_retira);
-    if (s(a.nota_cadete)) cambiosCli.notaCadete = s(a.nota_cadete);
+    // 24/11 (caso Carolina #85): la nota del cadete es solo lo fijo (timbre, portón, apto). Si Mabel reenvía lo que ya está en la ficha
+    // (o el horario guardado), no se toca: el horario va aparte y nunca sale solo.
+    const fichaC = ctx.clienta?.datos || {}, nc = s(a.nota_cadete);
+    if (nc && normD(nc) !== normD(fichaC.notaCadete) && normD(nc) !== normD(fichaC.horarioPref)) cambiosCli.notaCadete = nc;
+    if (a.sin_horario === true) { cambiosCli.horarioPref = ''; horarioSet = ''; }
+    else if (s(a.horario_envio)) { cambiosCli.horarioPref = s(a.horario_envio).slice(0, 120); horarioSet = cambiosCli.horarioPref; }
+    preguntarHorario = !!s(fichaC.horarioPref) && horarioSet === null && !objetivo.some((r) => s(r.datos.horarioEnvio) || r.datos.horarioPreguntado); // se pregunta una sola vez por envío
   } else if (tipo === 'agencia') {
     if (!s(a.agencia) || !s(a.ciudad)) return { error: 'Faltan la agencia y la ciudad.' };
     // 24/11 (Yoan, casos Rita y Mel): el departamento es obligatorio en agencia. Vale el de la ficha solo si es la misma ciudad.
@@ -692,6 +699,8 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
         if (tipo === 'agencia' && faltaNombre) partes.unshift(AVISO_NOMBRE);
         const av = partes.join(' · ').slice(0, 200); if (av) p.avisoDespacho = av; else delete p.avisoDespacho;
       }
+      if (tipo !== 'cadeteria' || horarioSet === '') delete p.horarioEnvio; else if (horarioSet) p.horarioEnvio = horarioSet;
+      if (preguntarHorario && !faltaBarrio) p.horarioPreguntado = true; else if (tipo !== 'cadeteria') delete p.horarioPreguntado;
       if (tipo === 'cadeteria') {
         p.tipoEnvio = p.tipoEnvio || 'comun';
         if (x >= tarE) { p.cobroEnvio = 'pago'; p.cobroMonto = 0; } else if (x > 0 || cambio) { p.cobroEnvio = 'monto'; p.cobroMonto = tarE - x; } else { p.cobroEnvio = 'cobrar'; p.cobroMonto = 0; }
@@ -723,9 +732,10 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     ...(envioNoFigura ? { envio_no_figura_en_el_pago: true, que_hacer_envio: x > 0 ? `En el pago registrado sobran solo $${x} para el envío: el cadete cobra $${cadete}. Decile cuánto le cobra el cadete, sin discutir.` : `El envío no figura en ningún pago registrado (el pago vino justo o todavía no pagó): el cadete cobra $${cadete}. Decíselo una vez ("El cadete te cobra los $${cadete} del envío al recibir"). Si dice que lo transfirió aparte, pedile la captura de esa transferencia y pasá a Yanaina (pago) con "Dice que transfirió el envío aparte".` } : {}),
     ...(tipo === 'retiro' ? { paga_al_retirar: objetivo.some((r) => !pagado(r.datos)) } : {}),
     ...(tipo === 'cadeteria' && faltaBarrio ? { falta_barrio: true, ...(opBarrio.length ? { opciones: opBarrio } : {}), que_hacer: 'La cadetería YA quedó cargada con la dirección y sale igual. ' + (opBarrio.length ? 'El barrio no es exacto: preguntale cuál de estas opciones es (sin decir que es una lista).' : s(a.barrio) ? 'Ese barrio no está en la lista de GrisalExpress: preguntáselo una vez más (puede estar mal escrito).' : 'Preguntale el barrio.') + ' Una sola vez y en el mismo mensaje del cierre. Si lo contesta, volvé a llamar guardar_entrega con la misma dirección y el barrio. Si no contesta, no insistas ni lo repitas en otro mensaje: el equipo lo completa.' } : {}),
+    ...(tipo === 'cadeteria' && !faltaBarrio && preguntarHorario ? { horario_guardado: s(ctx.clienta?.datos?.horarioPref), que_hacer_horario: 'Tiene un horario guardado de otra vez, pero NO va en este envío hasta que lo confirme. Preguntáselo una vez con mensaje_de_cierre. Si lo confirma o da otro, volvé a llamar guardar_entrega con horario_envio; si dice que no hay restricción, con sin_horario=true. Si no contesta eso, no insistas: sale sin horario.' } : {}),
     ...(tipo === 'agencia' && faltaNombre ? { falta_nombre: true, que_hacer: 'La agencia YA quedó cargada. Falta el nombre y apellido de quien retira en la agencia (va en la etiqueta): preguntáselo una vez, en este mismo mensaje. Cuando lo diga, volvé a llamar guardar_entrega con nombre_retira.' } : {}),
     ...(tipo === 'agencia' && !faltaNombre && !s(a.nombre_retira) ? { nombre_guardado: s(ctx.clienta?.datos?.nombreEnvio), que_hacer: 'Se usó el nombre guardado: preguntale solo si lo mandamos a ese nombre (mensaje_de_cierre), sin cerrar todavía. Cuando lo confirme o dé otro, volvé a llamar guardar_entrega con nombre_retira y usá el mensaje_de_cierre que devuelva.' } : {}),
-    mensaje_de_cierre: tipo === 'agencia' && !faltaNombre && !s(a.nombre_retira) ? `Listo, anotado. ¿Lo mandamos a nombre de ${s(ctx.clienta?.datos?.nombreEnvio)} como la otra vez?` : tipo === 'agencia' && faltaNombre ? 'Listo, anotado. ¿A nombre de quién lo mandamos? Pasame nombre y apellido de quien lo retira en la agencia.' : tipo === 'cadeteria' && faltaBarrio ? 'Listo, ya lo tenemos anotado. ¿Me pasás el barrio así queda completo? La cadetería te manda un WhatsApp para confirmar la entrega 🚚' : tipo === 'cadeteria' ? 'Listo, ya lo tenemos anotado. La cadetería te manda un WhatsApp para confirmar la entrega 🚚' : tipo === 'agencia' ? 'Listo, anotado. Cuando salga te mandamos la foto del comprobante de envío.' : 'Listo, anotado. ¡Te esperamos!',
+    mensaje_de_cierre: tipo === 'agencia' && !faltaNombre && !s(a.nombre_retira) ? `Listo, anotado. ¿Lo mandamos a nombre de ${s(ctx.clienta?.datos?.nombreEnvio)} como la otra vez?` : tipo === 'agencia' && faltaNombre ? 'Listo, anotado. ¿A nombre de quién lo mandamos? Pasame nombre y apellido de quien lo retira en la agencia.' : tipo === 'cadeteria' && faltaBarrio ? 'Listo, ya lo tenemos anotado. ¿Me pasás el barrio así queda completo? La cadetería te manda un WhatsApp para confirmar la entrega 🚚' : tipo === 'cadeteria' && preguntarHorario ? `Listo, ya lo tenemos anotado. La otra vez nos dijiste "${s(ctx.clienta?.datos?.horarioPref)}", ¿sigue igual para este envío?` : tipo === 'cadeteria' && horarioSet ? 'Listo, le dejamos el horario al cadete. La cadetería te manda un WhatsApp para confirmar la entrega 🚚' : tipo === 'cadeteria' ? 'Listo, ya lo tenemos anotado. La cadetería te manda un WhatsApp para confirmar la entrega 🚚' : tipo === 'agencia' ? 'Listo, anotado. Cuando salga te mandamos la foto del comprobante de envío.' : 'Listo, anotado. ¡Te esperamos!',
   };
 }
 
@@ -948,7 +958,7 @@ export const HERRAMIENTAS = [
   { name: 'guardar_entrega', description: 'Carga cómo recibe el pedido (retiro, cadeteria en Montevideo o agencia) en todos sus pedidos abiertos. Se puede llamar sin barrio o sin nombre: queda cargada y dice qué preguntar.', input_schema: { type: 'object', properties: {
     tipo: { type: 'string', enum: ['retiro', 'cadeteria', 'agencia'] },
     direccion: { type: 'string', description: 'Calle y número o esquina, siempre que la diga (cadetería: obligatoria; agencia: si la dio). No la pongas solo en nota_interna' }, barrio: { type: 'string', description: 'Barrio tal como lo dijo' },
-    nota_cadete: { type: 'string', description: 'Cadetería: solo referencias para llegar o el horario de entrega' }, nota_interna: { type: 'string', description: 'Nota para el equipo sobre este pedido (no la ve el cadete)' }, etiqueta: { type: 'string', description: 'Cadetería: casa, trabajo, mamá… si lo dijo' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio' },
+    nota_cadete: { type: 'string', description: 'Cadetería: solo datos fijos para llegar (timbre, portón, apto) que dijo en esta charla. Nunca el horario ni lo que ya figura en datos_guardados' }, horario_envio: { type: 'string', description: 'Cadetería: horario para ESTE envío, solo si lo dijo o confirmó en esta charla (ej. "No hay quien reciba de 17 a 20"). Queda guardado como horario de preferencia' }, sin_horario: { type: 'boolean', description: 'Cadetería: true si dijo que ya no tiene restricción de horario (se borra el guardado)' }, nota_interna: { type: 'string', description: 'Nota para el equipo sobre este pedido (no la ve el cadete)' }, etiqueta: { type: 'string', description: 'Cadetería: casa, trabajo, mamá… si lo dijo' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto del envío ya transfirió (0 si lo paga al cadete). Solo cuenta si sobra en un pago ya registrado' },
     agencia: { type: 'string' }, ciudad: { type: 'string', description: 'Agencia: ciudad o localidad tal como la dijo' }, departamento: { type: 'string', description: 'Agencia: obligatorio. El que dijo la clienta; nunca deducido del nombre de la ciudad (Villa San José es de Canelones, no de San José). Si la cambia, se reemplaza toda la dirección anterior' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre y apellido de quien recibe o retira (agencia: obligatorio, salvo que ya esté en datos_guardados.nombre_envio)' }, horario_retiro: { type: 'string', description: 'Retiro: cuándo dice que pasa, con día y fecha (ej. "sábado 21/11 a las 18")' }, retiro_fecha: { type: 'string', description: 'Retiro: fecha del día que pasa, AAAA-MM-DD, sacada de HOY. Pasala siempre que diga un día' }, retiro_hora: { type: 'string', description: 'Retiro: hora aproximada, HH:MM en 24 hs' } }, required: ['tipo'] } },
