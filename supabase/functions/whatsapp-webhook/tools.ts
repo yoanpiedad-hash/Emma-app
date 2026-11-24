@@ -627,10 +627,18 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     if (s(a.nota_cadete)) cambiosCli.notaCadete = s(a.nota_cadete);
   } else if (tipo === 'agencia') {
     if (!s(a.agencia) || !s(a.ciudad)) return { error: 'Faltan la agencia y la ciudad.' };
+    // 24/11 (Yoan, casos Rita y Mel): el departamento es obligatorio en agencia. Vale el de la ficha solo si es la misma ciudad.
+    const fichaV = ctx.clienta?.datos || {}, mismaCiudad = normD(fichaV.ciudad) === normD(a.ciudad);
+    if (!s(a.departamento) && !(mismaCiudad && s(fichaV.depto))) return { error: 'Falta el departamento. No es una falla: no se cargó nada. Preguntale a la clienta "¿De qué departamento, bella?" (no lo deduzcas por el nombre de la ciudad) y volvé a llamar guardar_entrega con departamento.', falta_departamento: true };
     cambiosCli.agencia = s(a.agencia); cambiosCli.ciudad = s(a.ciudad);
     if (s(a.nombre_retira)) cambiosCli.nombreEnvio = s(a.nombre_retira);
     if (s(a.ci)) cambiosCli.ci = s(a.ci);
+    // 24/11 (caso Rita): si cambia la ciudad, la dirección se reemplaza entera; lo que no venga queda vacío (no se arrastra la de la ficha).
+    if (!mismaCiudad) { cambiosCli.depto = ''; cambiosCli.direccion = ''; cambiosCli.barrio = ''; cambiosCli.notaCadete = ''; }
     if (s(a.departamento)) cambiosCli.depto = s(a.departamento);
+    // 24/11 (caso esquina 33 y Río Negro): la calle o esquina va en direccion, no solo en la nota.
+    if (s(a.direccion)) cambiosCli.direccion = s(a.direccion);
+    if (s(a.barrio)) cambiosCli.barrio = s(a.barrio);
     hint.agencia_habitual = esHabitual(cambiosCli.agencia);
     faltaNombre = !s(a.nombre_retira) && !s(ctx.clienta?.datos?.nombreEnvio);
   }
@@ -939,10 +947,10 @@ export const HERRAMIENTAS = [
     nota: { type: 'string', description: 'Nota corta opcional' } }, required: ['cuenta', 'monto', 'destino_coincide'] } },
   { name: 'guardar_entrega', description: 'Carga cómo recibe el pedido (retiro, cadeteria en Montevideo o agencia) en todos sus pedidos abiertos. Se puede llamar sin barrio o sin nombre: queda cargada y dice qué preguntar.', input_schema: { type: 'object', properties: {
     tipo: { type: 'string', enum: ['retiro', 'cadeteria', 'agencia'] },
-    direccion: { type: 'string', description: 'Cadetería: dirección' }, barrio: { type: 'string', description: 'Cadetería: barrio tal como lo dijo' },
+    direccion: { type: 'string', description: 'Calle y número o esquina, siempre que la diga (cadetería: obligatoria; agencia: si la dio). No la pongas solo en nota_interna' }, barrio: { type: 'string', description: 'Barrio tal como lo dijo' },
     nota_cadete: { type: 'string', description: 'Cadetería: solo referencias para llegar o el horario de entrega' }, nota_interna: { type: 'string', description: 'Nota para el equipo sobre este pedido (no la ve el cadete)' }, etiqueta: { type: 'string', description: 'Cadetería: casa, trabajo, mamá… si lo dijo' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto del envío ya transfirió (0 si lo paga al cadete). Solo cuenta si sobra en un pago ya registrado' },
-    agencia: { type: 'string' }, ciudad: { type: 'string' }, departamento: { type: 'string' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
+    agencia: { type: 'string' }, ciudad: { type: 'string', description: 'Agencia: ciudad o localidad tal como la dijo' }, departamento: { type: 'string', description: 'Agencia: obligatorio. El que dijo la clienta; nunca deducido del nombre de la ciudad (Villa San José es de Canelones, no de San José). Si la cambia, se reemplaza toda la dirección anterior' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
     nombre_retira: { type: 'string', description: 'Nombre y apellido de quien recibe o retira (agencia: obligatorio, salvo que ya esté en datos_guardados.nombre_envio)' }, horario_retiro: { type: 'string', description: 'Retiro: cuándo dice que pasa, con día y fecha (ej. "sábado 21/11 a las 18")' }, retiro_fecha: { type: 'string', description: 'Retiro: fecha del día que pasa, AAAA-MM-DD, sacada de HOY. Pasala siempre que diga un día' }, retiro_hora: { type: 'string', description: 'Retiro: hora aproximada, HH:MM en 24 hs' } }, required: ['tipo'] } },
   { name: 'dejar_aviso_despacho', description: 'Aviso de una línea para quien arma el paquete en Despacho (paquete de Yharol para mandar junto, lo retira otra persona…). Va en sus pedidos abiertos.', input_schema: { type: 'object', properties: { texto: { type: 'string', description: 'Ej: "Tiene paquete de Yharol: enviar junto"' } }, required: ['texto'] } },
   { name: 'vincular_pedido', description: 'Busca en los vivos de hoy y ayer el pedido de una clienta que escribe desde un número sin pedido y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si estaba confirmando el pedido' }, prenda: { type: 'string', description: 'Lo que dice que compró, si lo dijo' } } } },
