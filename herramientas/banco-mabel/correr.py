@@ -34,7 +34,19 @@ def dias_viaje():
     return [{'fecha': (hoy + dt.timedelta(days=i)).isoformat(), 'motivo': 'viaje'} for i in range(4)]
 
 
+def proximo_sabado():
+    hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date()
+    return hoy + dt.timedelta(days=(5 - hoy.weekday()) % 7 or 7)
+
+
+def fechas(c):
+    # 24/11: casos con fecha que se vence sola (D03): __SAB_DIA__ / __SAB_ISO__ = el próximo sábado
+    sab = proximo_sabado(); t = json.dumps(c, ensure_ascii=False)
+    return json.loads(t.replace('__SAB_DIA__', str(sab.day)).replace('__SAB_ISO__', sab.isoformat()))
+
+
 def correr_caso(c, tel, url, key, ausente):
+    c = fechas(c)
     post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
     pasos, ultimo = [], None
     try:

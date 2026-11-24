@@ -1322,11 +1322,12 @@
        ]
       ]
      }
-    ]
+    ],
+    "fecha_pago": "__SAB_ISO__"
    },
    "pasos": [
     {
-     "texto": "lo paso a retirar el sábado 21 y pago ahí"
+     "texto": "lo paso a retirar el sábado __SAB_DIA__ y pago ahí"
     }
    ],
    "espera": {
@@ -1979,6 +1980,88 @@
     "derivado": true
    },
    "tanda": "4"
+  },
+  {
+   "id": "A10",
+   "nombre": "Agencia con depto dicho y nombre guardado: pregunta el nombre sin cerrar (24/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "clienta": {
+     "nombreEnvio": "Ana Prueba"
+    },
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "pagado": {
+       "monto": 500
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "por dac a Toledo, Canelones"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "guardar_entrega"
+    ],
+    "contiene": [
+     "Ana Prueba"
+    ],
+    "no_contiene": [
+     "comprobante",
+     "departamento"
+    ]
+   }
+  },
+  {
+   "id": "A11",
+   "nombre": "Agencia en ciudad sin depto (Villa San José): pregunta el departamento (24/11, caso Mel)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "clienta": {
+     "nombreEnvio": "Mel Prueba"
+    },
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "pagado": {
+       "monto": 500
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "por dac a villa san jose"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "departamento"
+    ],
+    "derivado": false
+   }
   }
  ]
 }
