@@ -2062,6 +2062,74 @@
     ],
     "derivado": false
    }
+  },
+  {
+   "id": "V02",
+   "nombre": "Con el botón 🔴 prendido, sin pedido, pregunta por una prenda: estamos en vivo (25/11)",
+   "tanda": "ya",
+   "pasos": [
+    {
+     "texto": "hola! tienen el vestido negro en M?",
+     "cfg": {
+      "vivoEnCurso": "__vivo__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "vivo"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "V03",
+   "nombre": "Sin vivo, con próximos vivos cargados: dice el primero con día, fecha y hora (25/11)",
+   "tanda": "ya",
+   "pasos": [
+    {
+     "texto": "cuándo es el próximo vivo?",
+     "cfg": {
+      "proximosVivos": [
+       {
+        "fecha": "__SAB_ISO__",
+        "desde": "18:00",
+        "hasta": "22:00"
+       }
+      ]
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "s[aá]bado",
+     "__SAB_DIA__",
+     "18"
+    ],
+    "derivado": false
+   }
+  },
+  {
+   "id": "V04",
+   "nombre": "Con el botón prendido, número sin pedido que se identifica: espera callada (25/11)",
+   "tanda": "ya",
+   "pasos": [
+    {
+     "texto": "hola soy @lauri_prueba_banco, confirmo mi pedido",
+     "cfg": {
+      "vivoEnCurso": "__vivo__"
+     }
+    }
+   ],
+   "espera": {
+    "envia": false,
+    "herramienta": [
+     "vincular_pedido"
+    ],
+    "derivado": false
+   }
   }
  ]
 }

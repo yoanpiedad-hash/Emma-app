@@ -622,7 +622,7 @@ async function repasarPendientes(soloTel = '') {
   const equipo = [...ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean), ...ignorar];
   const { data: convs } = await sb.from('conversaciones').select('id,datos').eq('borrado', false).limit(500);
   // Clientas en espera de que aparezca su pedido (vincular_pedido sin resultado durante el vivo)
-  for (const c of (convs || []).filter((c: any) => c.datos?.buscar && c.datos.buscar.hasta > ahora && !equipo.includes(c.id)).slice(0, 10)) {
+  for (const c of (convs || []).filter((c: any) => c.datos?.buscar && c.datos.buscar.hasta > ahora && !equipo.includes(c.id) && !/^99000\d{3}$/.test(c.id)).slice(0, 10)) {
     const b = c.datos.buscar, ctx: Ctx = { telKey: c.id, wa: '598' + c.id, clienta: null, clientas: [], media: null, llamadas: [] };
     try {
       await cargarClienta(ctx);

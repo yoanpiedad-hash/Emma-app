@@ -34,6 +34,12 @@ def dias_viaje():
     return [{'fecha': (hoy + dt.timedelta(days=i)).isoformat(), 'motivo': 'viaje'} for i in range(4)]
 
 
+def vivo_ahora():
+    # '__vivo__' en cfg: botón 🔴 prendido desde hace 30 min (se apaga solo a las 6 h)
+    d = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=30)
+    return {'desde': d.isoformat().replace('+00:00', 'Z'), 'hasta': (d + dt.timedelta(hours=6)).isoformat().replace('+00:00', 'Z')}
+
+
 def proximo_sabado():
     hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date()
     return hoy + dt.timedelta(days=(5 - hoy.weekday()) % 7 or 7)
@@ -42,7 +48,8 @@ def proximo_sabado():
 def fechas(c):
     # 24/11: casos con fecha que se vence sola (D03): __SAB_DIA__ / __SAB_ISO__ = el próximo sábado
     sab = proximo_sabado(); t = json.dumps(c, ensure_ascii=False)
-    return json.loads(t.replace('__SAB_DIA__', str(sab.day)).replace('__SAB_ISO__', sab.isoformat()))
+    hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date().isoformat()
+    return json.loads(t.replace('__SAB_DIA__', str(sab.day)).replace('__SAB_ISO__', sab.isoformat()).replace('__HOY_ISO__', hoy))
 
 
 def correr_caso(c, tel, url, key, ausente):
@@ -51,8 +58,9 @@ def correr_caso(c, tel, url, key, ausente):
     pasos, ultimo = [], None
     try:
         for p in c['pasos']:
-            cfg = {'mabelAusente': None, 'diasSinSalida': []}
-            cfg.update({k: (dias_viaje() if v == '__viaje__' else v) for k, v in (p.get('cfg') or {}).items()})
+            # 25/11: el vivo sale del botón (vivoEnCurso) y los próximos vivos de Config: por defecto apagados, así la prueba no depende de la real
+            cfg = {'mabelAusente': None, 'diasSinSalida': [], 'vivoEnCurso': None, 'proximosVivos': None}
+            cfg.update({k: (dias_viaje() if v == '__viaje__' else vivo_ahora() if v == '__vivo__' else v) for k, v in (p.get('cfg') or {}).items()})
             body = {'tel': tel, 'texto': p.get('texto', ''), 'detalle': True, 'cfg': cfg}
             if p.get('ausente'): body['ausente'] = ausente; cfg.pop('mabelAusente', None)
             for k in ('previo', 'conv', 'imagen_base64', 'mime'):
