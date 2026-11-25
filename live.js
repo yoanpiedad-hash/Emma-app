@@ -331,13 +331,8 @@ const _renderLiveFP = renderLive;
 renderLive = function () { _renderLiveFP.apply(this, arguments); try { pintarFechaPago(); } catch (e) { console.warn(e); } };
 
 // ─── Totales por la API de WhatsApp (4/11) ─────────────────────
-// Botón en el live: manda a cada pedido sin pagar la plantilla emma_total_2 (aprobada por Meta) desde el número de Emma.
-// Prex va como variable (sale del bloque PREX de Config → mensaje de pago), así cuando cambia la cuenta no hay que tocar Meta.
-function prexLinea() {
-  const m = String(cfg('msgPago') || '').match(/PREX[^\n]*\n([\s\S]*?)(\n\s*\n|$)/i);
-  const l = m ? m[1].split('\n').map(x => x.trim()).filter(Boolean).join(' — ') : '';
-  return l || 'Lilian Altezor — CI 46344767 — Cuenta 1837669';
-}
+// Botón en el live: manda a cada pedido sin pagar la plantilla emma_total_3 (aprobada por Meta) desde el número de Emma.
+// 24/11: la Prex de Lilian ya no recibe transferencias → plantilla emma_total_3 (sin Prex, 5 variables).
 function varsTotal(p) {
   const c = cliById(p.clienteId) || { nombre: '' }, live = liveById(p.liveId), t = calc(p);
   const porPrenda = new Map(); t.unidades.forEach(u => porPrenda.set(u.i, (porPrenda.get(u.i) || 0) + u.precio));
@@ -347,7 +342,7 @@ function varsTotal(p) {
   if (t.descVip) partes.push(`Descuento VIP ${t.vipPct}%: -${fmt(t.descVip)}`);
   if (t.saldo) partes.push(`Saldo a favor: -${fmt(t.saldo)}`);
   const fecha = String((live && live.fechaPago) || '').replace(/^el\s+/i, '').trim();
-  return [String(c.nombre || '').trim() || 'bella', String(p.num), partes.join(' · '), fmt(t.total).replace(/^\$\s*/, ''), fecha, prexLinea()];
+  return [String(c.nombre || '').trim() || 'bella', String(p.num), partes.join(' · '), fmt(t.total).replace(/^\$\s*/, ''), fecha];
 }
 function pendientesTotal(l) {
   return (l ? l.pedidos || [] : []).filter(p => !p.borrado && !p.cambio && p.prendas && p.prendas.length && p.estado === 'pendiente' && !p.totalAPI);
@@ -365,13 +360,15 @@ async function enviarTotalesAPI() {
     const tanda = ok.slice(i, i + 15);
     if (btn) btn.textContent = `📤 Enviando… ${i}/${ok.length}`;
     try {
-      const { data, error } = await NUBE.sb.functions.invoke('whatsapp-enviar', { body: { plantilla: 'emma_total_2', items: tanda.map(p => ({ ref: p.id, tel: cliById(p.clienteId).tel, vars: varsTotal(p) })) } });
+      const { data, error } = await NUBE.sb.functions.invoke('whatsapp-enviar', { body: { plantilla: 'emma_total_3', items: tanda.map(p => ({ ref: p.id, tel: cliById(p.clienteId).tel, vars: varsTotal(p) })) } });
       if (error) throw error;
       (data.res || []).forEach(r => { const p = pedById(r.ref); if (r.ok && p) { p.totalAPI = ahoraISO(); bien++; } else if (p) mal.push(`#${p.num} ${(cliById(p.clienteId) || {}).nombre || ''}: ${r.error}`); });
     } catch (e) { tanda.forEach(p => mal.push(`#${p.num}: ${e.message || e}`)); }
     guardar();
   }
   if (btn) btn.disabled = false;
+  // 25/11: mandar los totales es la señal de que el vivo terminó: si el botón seguía prendido, se apaga.
+  if (bien && vivoOn()) { saveConfig({ vivoEnCurso: null }); toast('⚪ Vivo terminado (se mandaron los totales)'); }
   render();
   alert(`✅ ${bien} totales enviados.` + (mal.length ? `\n\n⚠️ No salieron ${mal.length} (mandalos con 💬 WhatsApp):\n` + mal.slice(0, 25).join('\n') : '') + (sinTel.length ? `\n\nSin teléfono: ${sinTel.map(p => '#' + p.num).join(', ')}` : ''));
 }
@@ -571,3 +568,52 @@ function pintarRecordatorios() {
 }
 const _pintarFP_rec = pintarFechaPago;
 pintarFechaPago = function () { _pintarFP_rec.apply(this, arguments); try { pintarRecordatorios(); } catch (e) { console.warn(e); } };
+
+// ─── Vivo en curso (25/11) ─────────────────────────────────────
+// Botón en la pestaña Live. Se prende solo al crear el live y se apaga solo al mandar los totales por la API (o a las 6 h);
+// el botón queda para prenderlo o apagarlo a mano. Mabel y el catálogo web deciden "¿hay vivo?" solo por esto
+// (Config vivoEnCurso = {desde, hasta}), no por la fecha del live.
+function vivoOn() {
+  const v = cfg('vivoEnCurso'); if (!v || !v.desde) return null;
+  const h = Date.parse(v.hasta || '') || (Date.parse(v.desde) + 6 * 3600e3);
+  return Date.now() < h ? v : null;
+}
+function horaCorta(iso) { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function pintarVivo() {
+  const sel = document.getElementById('live-sel'); if (!sel) return;
+  let b = document.getElementById('live-vivo');
+  if (!b) {
+    b = document.createElement('button'); b.id = 'live-vivo'; b.type = 'button'; b.className = 'b mt';
+    b.style.cssText = 'width:100%;font-weight:700;padding:12px';
+    const fila = sel.closest('.row'); (fila || sel).insertAdjacentElement('afterend', b);
+    b.addEventListener('click', toggleVivo);
+  }
+  const v = vivoOn();
+  b.textContent = v ? `🔴 EN VIVO desde las ${horaCorta(v.desde)} · tocá al terminar` : '⚪ Vivo apagado · se prende solo al crear el live (o tocá acá)';
+  b.style.background = v ? '#e0245e' : ''; b.style.color = v ? '#fff' : ''; b.style.borderColor = v ? '#e0245e' : '';
+  b.title = v ? `Mabel y el catálogo saben que están en vivo. Se apaga solo a las ${horaCorta(v.hasta || new Date(Date.parse(v.desde) + 6 * 3600e3).toISOString())} o al mandar los totales.` : 'Prendelo al arrancar el vivo: Mabel lo usa para saber si están en vivo y el catálogo web se pausa.';
+}
+function toggleVivo() {
+  if (vivoOn()) {
+    if (!confirm('¿Terminó el vivo?\n\nMabel deja de decir que están en vivo y el catálogo web vuelve a tomar pedidos.')) return;
+    saveConfig({ vivoEnCurso: null }); toast('⚪ Vivo terminado');
+  } else {
+    const l = liveActual();
+    if (l && l.fecha && l.fecha !== hoyISO() && !confirm(`El live elegido es del ${fechaUY(l.fecha)}, no de hoy. Los pedidos del vivo se anotan en ese live.\n\n¿Prendo el vivo igual?`)) return;
+    prenderVivo();
+    toast('🔴 En vivo: Mabel ya sabe y el catálogo se pausa');
+  }
+  pintarVivo();
+}
+function prenderVivo() { const d = new Date(); saveConfig({ vivoEnCurso: { desde: d.toISOString(), hasta: new Date(d.getTime() + 6 * 3600e3).toISOString() } }); }
+// Pedido de Yoan (24/11): para que nunca se olvide, crear el live lo prende solo. Se apaga solo al mandar los totales (o a las 6 h).
+const _nuevoLive_vivo = nuevoLive;
+nuevoLive = function () {
+  const antes = DB.lives.length;
+  const r = _nuevoLive_vivo.apply(this, arguments);
+  if (DB.lives.length > antes && !vivoOn()) { prenderVivo(); try { pintarVivo(); } catch (_) {} }
+  return r;
+};
+const _renderLive_vivo = renderLive;
+renderLive = function () { _renderLive_vivo.apply(this, arguments); try { pintarVivo(); } catch (e) { console.warn(e); } };
+setInterval(() => { try { if (document.getElementById('live-vivo')) pintarVivo(); } catch (_) {} }, 60e3); // se apaga solo a las 6 h

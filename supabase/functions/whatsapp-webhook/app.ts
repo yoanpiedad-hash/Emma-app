@@ -8,6 +8,7 @@
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
 import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, conCfgPrueba, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
+import { fechaVivo, proximosVivosTexto } from './vivo.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -304,12 +305,10 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
       + 'Si la pasás a Yanaina, la frase es "' + FRASE_PASE_AUSENTE + '": no prometas que le contesta antes de la vuelta.';
   }
   const nov = novedadesVigentes(cfg);
-  // 8/11: ¿hay un vivo en curso? Solo si hay un live creado en la app con la fecha de hoy (o de ayer, si son menos de las 6 de la mañana).
+  // 8/11: ¿hay un vivo en curso? 25/11: solo si el botón 🔴 Vivo en curso de la app está prendido (vivo.ts), no por la fecha del live.
   // Sin vivo en curso el total ya se mandó o no corresponde: Mabel atiende normal (registra comprobantes, toma entrega).
   const hoyF = hoyUY(), horaUYn = +new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Montevideo', hour: '2-digit', hourCycle: 'h23' }).format(new Date());
-  const fechasVivo = [hoyF, ...(horaUYn < 6 ? [new Date(Date.now() - 864e5).toISOString().slice(0, 10)] : [])];
-  const { data: lvs } = await sb.from('lives').select('datos').eq('borrado', false).in('datos->>fecha', fechasVivo);
-  const liveActivo = (lvs || []).map((l: any) => l.datos?.fecha).sort().pop() || null;
+  const liveActivo = await fechaVivo(sb, cfg);
   ctx.vivo = !!liveActivo; // 20/11 (D-9): el pase durante el vivo usa otra frase
   // ¿Ya se le mandó el total de ese live? (mensaje del total por WhatsApp o plantilla desde que empezó ese día)
   const { data: totMsg } = await sb.from('mabel_mensajes').select('id').eq('tel_key', telKey).in('direccion', ['out', 'echo']).gte('creado', liveActivo ? new Date(liveActivo + 'T00:00:00-03:00').toISOString() : new Date(Date.now() - 36 * 3600e3).toISOString()).or('texto.ilike.%detalle de tu pedido%,texto.ilike.%Formas de pago%,texto.ilike.%total de tus pedidos%').limit(1);
@@ -325,6 +324,7 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
     horariosRetiroTexto(cfg),
     retiroAhoraTexto(cfg),
     horaUYn < 6 ? `MADRUGADA: son entre las 00:00 y las 06:00. Si la clienta dice "mañana", se refiere al día que ya empezó: HOY ${diaConNombre(hoyF)} (no al día siguiente). Ejemplo: a las 00:22 del sábado 14/11, "pago mañana" es el sábado 14/11. Decí siempre el día con nombre y fecha.` : '',
+    proximosVivosTexto(cfg, hoyF), // 25/11: calendario de próximos vivos (Mabel → Ajustes)
     nov ? `NOVEDADES DE HOY (vigentes hasta ${nov.vence || 'sin fecha'}): ${nov.texto}` : 'NOVEDADES DE HOY: no hay novedades vigentes.',
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
     salidaCadeteria(cfg),
@@ -638,6 +638,16 @@ async function repasarPendientes(soloTel = '') {
         const txt = conf ? '¡Gracias por confirmar tu pedido bella! 🫶' : `¡Listo bella, ya tenemos tu pedido #${r.pedido}! 🫶`;
         const id = await enviar('598' + c.id, txt);
         await sb.from('mabel_mensajes').insert({ id, tel_key: c.id, wa_id: '598' + c.id, direccion: 'out', tipo: 'text', texto: txt, procesado: true });
+      }
+      // 25/11 (idea de Yoan del 20/11): con vivo en curso Mabel no contesta enseguida si el pedido no aparece. Si a los 2 minutos
+      // sigue sin aparecer, recién ahí le dice "apenas aparezca te aviso" (una sola vez) y sigue buscando como antes.
+      if (!r.ok && !r.derivado && b.avisarEn && !b.avisado && b.avisarEn <= new Date().toISOString()) {
+        const txt = 'Dale bella, apenas aparezca tu pedido te aviso 🫶';
+        const id = await enviar('598' + c.id, txt);
+        await sb.from('mabel_mensajes').insert({ id, tel_key: c.id, wa_id: '598' + c.id, direccion: 'out', tipo: 'text', texto: txt, procesado: true });
+        const { data: cvA } = await sb.from('conversaciones').select('datos').eq('id', c.id).maybeSingle();
+        const da = { ...(cvA?.datos || c.datos) }; if (da.buscar) da.buscar = { ...da.buscar, avisado: true };
+        await sb.from('conversaciones').update({ datos: da }).eq('id', c.id);
       }
       hechos.push({ tel: c.id, buscar: r.ok ? 'vinculado #' + r.pedido : (r.derivado ? 'a Yanaina' : 'sigue sin aparecer') });
     } catch (e) { hechos.push({ tel: c.id, buscar: 'error ' + String((e as Error).message || e).slice(0, 120) }); }

@@ -19,7 +19,7 @@ const NEGOCIO_DEF = {
   mpRecargo: 10,                      // recargo de Mercado Pago (%) · Mabel también
   extraCobroCadete: 70,               // lo que suma el cadete cuando cobra en la puerta ($)
   costoMensaje: '$0,45',              // costo aproximado de cada plantilla de WhatsApp (solo el aviso)
-  cuentasPago: ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo', 'POS Mercado Pago', 'POS Scantech']
+  cuentasPago: ['BROU', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo', 'POS Mercado Pago', 'POS Scantech']
 };
 // Horarios de corte. NO se editan en Config porque Mabel tiene las mismas horas en su código (tools.ts):
 // si se cambian, se cambian en los dos lados a la vez.

@@ -178,6 +178,10 @@ function montarCfgMabel() {
     <div class="small muted">Mabel usa estos horarios con la fecha real (hoy, mañana, el viernes 6/11). Un día sin horario cargado: no da horario y le pide escribir el día antes. Las fechas pasadas se borran solas.</div>
     <div class="row mt" style="flex-wrap:wrap;gap:6px"><input id="mb-hr-f" type="date" style="width:auto"><input id="mb-hr-d" type="time" value="11:00" style="width:auto"><span class="small">a</span><input id="mb-hr-h" type="time" value="17:00" style="width:auto"><label class="small"><input id="mb-hr-c" type="checkbox"> Sin retiro ese día</label><button class="b sm" data-act="mbHrAdd">+ Agregar</button></div>
     <div id="mb-hr-lista" class="mt"></div>
+    <div class="card-t mt">📅 Próximos vivos</div>
+    <div class="small muted">Si una clienta pregunta cuándo es el próximo vivo, Mabel le dice el primero de esta lista. Las fechas pasadas se borran solas. El vivo de ahora se prende con el botón 🔴 de la pestaña Live.</div>
+    <div class="row mt" style="flex-wrap:wrap;gap:6px"><input id="mb-pv-f" type="date" style="width:auto"><input id="mb-pv-d" type="time" value="18:00" style="width:auto"><span class="small">a</span><input id="mb-pv-h" type="time" value="22:00" style="width:auto"><button class="b sm" data-act="mbPvAdd">+ Agregar</button></div>
+    <div id="mb-pv-lista" class="mt"></div>
     <div class="card-t mt">🔕 Números que Mabel no contesta</div>
     <div class="small muted">Proveedores, mayoristas, contactos personales. Mabel no les contesta ni los repasa (los mensajes igual te llegan al celular). Pegá uno por línea, con una etiqueta si querés: <b>099 123 456 proveedor Once</b></div>
     <textarea id="mb-ig-t" rows="3" class="mt" placeholder="099 123 456 proveedor Once&#10;098 765 432 personal"></textarea>
@@ -201,6 +205,14 @@ function pintarHorariosRetiro() {
   const hs = horariosRetiro();
   l.innerHTML = hs.length ? hs.map(x => `<div class="row" style="justify-content:space-between;padding:4px 0"><span>${x.fecha === hoyISO() ? '<b>HOY</b> · ' : ''}${esc(f(x))}: ${x.cerrado ? '<b>sin retiro</b>' : esc(x.desde) + ' a ' + esc(x.hasta) + ' hs'}</span><button class="b sm" data-act="mbHrDel" data-f="${x.fecha}">✕</button></div>`).join('') : '<div class="small muted">Sin horarios cargados.</div>';
 }
+// Próximos vivos (25/11): lista [{fecha:'YYYY-MM-DD', desde:'18:00', hasta:'22:00'}]. Mabel la lee en la nube (config.proximosVivos).
+function proximosVivos() { return (cfgN('proximosVivos', []) || []).filter(x => x && x.fecha >= hoyISO()).sort((a, b) => (a.fecha + a.desde).localeCompare(b.fecha + b.desde)); }
+function pintarProximosVivos() {
+  const l = $('#mb-pv-lista'); if (!l) return;
+  const f = x => { const d = new Date(x.fecha + 'T12:00:00'); return DIAS_SEM[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1); };
+  const vs = proximosVivos();
+  l.innerHTML = vs.length ? vs.map(x => `<div class="row" style="justify-content:space-between;padding:4px 0"><span>${x.fecha === hoyISO() ? '<b>HOY</b> · ' : ''}${esc(f(x))}: ${esc(x.desde)} a ${esc(x.hasta)} hs</span><button class="b sm" data-act="mbPvDel" data-f="${x.fecha}" data-d="${esc(x.desde)}">✕</button></div>`).join('') : '<div class="small muted">No hay vivos cargados: Mabel dice "seguinos en TikTok, ahí avisamos el próximo vivo".</div>';
+}
 // Números ignorados (7/11): lista [{tel:'099123456', nota}]. Mabel la lee en la nube (config.mabelIgnorar).
 function ignorados() { return (cfgN('mabelIgnorar', []) || []).map(x => typeof x === 'object' ? x : { tel: String(x), nota: '' }).filter(x => x && x.tel); }
 function pintarIgnorados() {
@@ -215,6 +227,7 @@ function pintarCfgMabel() {
   if (a !== $('#mb-vence')) $('#mb-vence').value = n.vence || hoyISO();
   $('#mb-nov-est').innerHTML = n.texto ? (novedadesVigentes() ? '<span class="c-ok">✓ vigente</span>' : '<span class="c-li">vencida: Mabel no la usa</span>') : '';
   pintarHorariosRetiro();
+  pintarProximosVivos();
   pintarIgnorados();
   $('#mb-dia').value = cfgN('diaOtrasAgencias', 'viernes');
   if (a !== $('#mb-mp')) $('#mb-mp').value = cfgN('mpRecargo', NEGOCIO_DEF.mpRecargo);
@@ -272,6 +285,15 @@ Object.assign(ACT, {
     saveConfig({ mabelIgnorar: lista }); $('#mb-ig-t').value = ''; toast('✓ ' + n + ' número(s) agregado(s)' + (mal ? ' · ' + mal + ' línea(s) sin entender' : '')); pintarCfgMabel();
   },
   mbIgDel: d => { saveConfig({ mabelIgnorar: ignorados().filter(x => x.tel !== d.t) }); toast('✓ Quitado: Mabel vuelve a contestarle'); pintarCfgMabel(); },
+  mbPvAdd: () => {
+    const f = $('#mb-pv-f').value, d = $('#mb-pv-d').value, h = $('#mb-pv-h').value;
+    if (!f) return toast('Elegí la fecha');
+    if (f < hoyISO()) return toast('Esa fecha ya pasó');
+    if (!d || !h || h <= d) return toast('Revisá el horario (desde / hasta)');
+    const lista = proximosVivos().filter(x => !(x.fecha === f && x.desde === d)); lista.push({ fecha: f, desde: d, hasta: h });
+    saveConfig({ proximosVivos: lista }); toast('✓ Vivo agendado'); pintarCfgMabel();
+  },
+  mbPvDel: d => { saveConfig({ proximosVivos: proximosVivos().filter(x => !(x.fecha === d.f && x.desde === d.d)) }); toast('✓ Quitado'); pintarCfgMabel(); },
   mbHrDel: d => { saveConfig({ horariosRetiro: horariosRetiro().filter(x => x.fecha !== d.f) }); toast('✓ Quitado'); pintarCfgMabel(); }
 });
 Object.assign(CHG, {

@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 // Regla de seguridad: ninguna herramienta recibe teléfono ni id de clienta del modelo. Siempre usan ctx (el número que escribió).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { BARRIOS_GRISAL } from './barrios.ts';
+import { fechaVivo } from './vivo.ts';
 
 export const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 
@@ -28,7 +29,7 @@ const barrioOpciones = (v: string) => {
   }
   return out.slice(0, 6);
 };
-const CUENTAS_DEF = ['BROU', 'Prex', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo'];
+const CUENTAS_DEF = ['BROU', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo'];
 // 20/11 (Tanda E, decisión del 13/11): cuentas que se aceptan para marcar pagos pero nunca se ofrecen (no están en el mensaje de totales).
 const CUENTAS_SOLO_MARCAR = ['PREX YOAN'];
 const medioDe = (c: string) => /mercado\s*pago/i.test(c || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(c || '') ? 'efectivo' : 'transferencia';
@@ -798,14 +799,14 @@ function parecido(a: string, b: string) {
 // 20/11 (D-7): una sola secuencia para el pedido que no aparece.
 const NO_ENC = 'No aparece. Si todavía no le preguntaste el usuario de TikTok o el número de pedido, preguntáselo una vez. Si ya lo dijo, pasá a Yanaina (pedido) con lo que dijo.';
 async function dejarEnEspera(ctx: Ctx, a: any) {
-  const hoy = hoyUY();
-  const { data: lv } = await sb.from('lives').select('id').eq('datos->>fecha', hoy).limit(1);
-  if (!lv?.length || a?.reintento) return null;
+  // 25/11: vivo en curso = botón de la app (vivo.ts). La primera respuesta se calla: el repaso (cada minuto) lo vuelve a buscar
+  // y, si a los 2 minutos sigue sin aparecer, le manda "apenas aparezca te aviso" (avisarEn / avisado).
+  if (a?.reintento || !(await fechaVivo(sb, await leerConfig()))) return null;
   const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
-  const buscar = { nombre: String(a?.nombre || ''), num: a?.num || null, confirmar: !!a?.confirmar, hasta: new Date(Date.now() + 3 * 3600e3).toISOString() };
+  const buscar = { nombre: String(a?.nombre || ''), num: a?.num || null, confirmar: !!a?.confirmar, hasta: new Date(Date.now() + 3 * 3600e3).toISOString(), avisarEn: new Date(Date.now() + 2 * 60e3).toISOString(), avisado: false };
   const datos = { ...(cv?.datos || { id: ctx.telKey, tel: '0' + ctx.telKey, estado: 'agente' }), buscar };
   if (cv) await sb.from('conversaciones').update({ datos }).eq('id', ctx.telKey); else await sb.from('conversaciones').insert({ id: ctx.telKey, datos });
-  return { ok: false, no_encontrado: true, en_espera: true, que_hacer: 'Todavía no aparece (puede que lo estén cargando en el vivo). Decile: "Dale bella, apenas aparezca tu pedido te aviso 🫶". No pases a Yanaina ni le vuelvas a pedir el usuario.' };
+  return { ok: false, no_encontrado: true, en_espera: true, que_hacer: 'Todavía no aparece (lo están cargando en el vivo). El sistema lo vuelve a buscar cada minuto y le escribe solo cuando aparece (o, si en 2 minutos no aparece, le avisa que la vas a avisar). Si su mensaje era solo para identificarse o confirmar el pedido, tu respuesta final tiene que ser exactamente: silencio. Si además preguntó otra cosa, contestá solo eso, sin hablar del pedido. No pases a Yanaina ni le vuelvas a pedir el usuario.' };
 }
 async function limpiarEspera(ctx: Ctx) {
   const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
