@@ -72,6 +72,8 @@ const mbPedidosHTML = f => f && f.abiertos.length ? f.abiertos.map(p => `<button
 const mbFichaBtn = (tel, f) => f ? `<button class="b sm" data-act="verFicha" data-cid="${f.c.id}">👤 Ficha</button>` : `<button class="b sm" data-act="mbVinc" data-tel="${esc(tel)}">🔗 Vincular a una ficha</button>`;
 
 // ─── Derivados ────────────────────────────────────────────────
+/** Desde cuándo espera respuesta: el último reabierto o, si no, cuando se creó. */
+const dvDesde = d => String(d.reabierto || d.creado || d.ultimo || '');
 const dvPendientes = () => (DB.derivados || []).filter(d => d && !d.resuelto);
 const dvPorId = id => (DB.derivados || []).find(d => d.id === id);
 /** Los resueltos hace más de 30 días se sacan (quedan marcados como borrados en la base). Una vez por sesión. */
@@ -90,7 +92,7 @@ function dvItemHTML(d, ix) {
     <div class="dv-mot">${esc(d.motivo || 'Sin motivo')}</div>
     <div class="row mt">${d.resuelto ? `<button class="b sm" data-act="dvDeshacer" data-id="${esc(d.id)}">↩︎ Volver a pendiente</button>`
       : `<button class="b sm ok" data-act="dvResolver" data-id="${esc(d.id)}">✓ Resuelto</button>`}
-      <button class="b sm" data-act="mbVerChat" data-tel="${esc(d.telKey)}">👁 Ver mensajes</button><button class="b sm" data-act="mbWA" data-tel="${esc(d.tel || d.telKey)}">💬 WhatsApp</button>${mbFichaBtn(d.tel || d.telKey, f)}
+      <button class="b sm" data-act="mbVerChat" data-tel="${esc(d.telKey)}">💬 Chat</button><button class="b sm" data-act="mbWA" data-tel="${esc(d.tel || d.telKey)}">📱 WhatsApp</button>${mbFichaBtn(d.tel || d.telKey, f)}
       ${d.resuelto ? '' : `<select data-chg="dvCat" data-id="${esc(d.id)}" title="Cambiar la categoría">${MB_CATS.map(c => `<option value="${c[0]}"${c[0] === k ? ' selected' : ''}>${c[1]} ${esc(c[2])}</option>`).join('')}</select>`}
       ${conYana && !d.resuelto ? `<button class="b sm gh" data-act="convDevolver" data-id="${esc(cv.id)}" title="Mabel vuelve a atender esta conversación ya">↩️ Devolver a Mabel</button>` : ''}</div>
   </div>`;
@@ -110,7 +112,7 @@ function renderDerivados() {
   if (UI.mb.cat !== 'todas' && !MB_CATS.some(c => c[0] === UI.mb.cat)) UI.mb.cat = 'todas';
   // Con algo escrito en el buscador se busca en todos los pendientes (sin filtro de categoría) y también en los resueltos.
   let lista = pend.filter(d => q ? dvCoincide(d, ix, q, qd) : (UI.mb.cat === 'todas' || mbCat(d.categoria)[0] === UI.mb.cat) && (!UI.mb.sinPed || sinPed(d)))
-    .sort((a, b) => mbCatIdx(a.categoria) - mbCatIdx(b.categoria) || String(a.creado).localeCompare(String(b.creado)));
+    .sort((a, b) => dvDesde(a).localeCompare(dvDesde(b))); // 25/11: del que espera hace más al más reciente, todo junto (las categorías son solo filtro)
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const res = (DB.derivados || []).filter(d => d.resuelto && (q ? dvCoincide(d, ix, q, qd) && !d.unidoA : new Date(d.resuelto) >= hoy)).sort((a, b) => String(b.resuelto).localeCompare(String(a.resuelto))).slice(0, q ? 20 : 999);
   let h = `<div class="ptabs"><button class="ptab${UI.mb.cat === 'todas' ? ' on' : ''}" data-act="dvFiltro" data-k="todas">Todos<span class="n">${pend.length}</span></button>`
@@ -135,38 +137,281 @@ function renderConversaciones() {
     .map(([k, t]) => `<button class="ptab${UI.mb.convF === k ? ' on' : ''}" data-act="cvFiltro" data-k="${k}">${t}<span class="n">${n(k)}</span></button>`).join('');
   let ls = todas.filter(es[UI.mb.convF] || es.todas);
   if (q) ls = ls.filter(({ v, f }) => (qd.length >= 3 && String(v.tel || v.id).replace(/\D/g, '').includes(qd)) || (f && [f.c.nombre, f.c.ref, ...(f.c.alias || [])].some(s => norm(s).includes(q))));
-  ls.sort((a, b) => cvUltimo(b.v).localeCompare(cvUltimo(a.v)));
+  // 25/11: primero las que tienen un pendiente sin resolver, del que espera hace más al más reciente; después el resto, la última actividad primero
+  const espera = new Map(); dvPendientes().forEach(d => { const t = dvDesde(d); if (!espera.has(d.telKey) || t < espera.get(d.telKey)) espera.set(d.telKey, t); });
+  ls.sort((a, b) => { const ea = espera.get(a.v.id), eb = espera.get(b.v.id); if (ea && eb) return ea.localeCompare(eb); if (ea || eb) return ea ? -1 : 1; return cvUltimo(b.v).localeCompare(cvUltimo(a.v)); });
   const tope = 50, total = ls.length; ls = ls.slice(0, tope);
   $('#mbt-conv-l').innerHTML = (ls.length ? ls.map(({ v, f }) => `<div class="dv">
       <div class="row" style="align-items:flex-start"><div class="grow">${mbQuienHTML(v.tel || v.id, f)}</div><span class="small muted">${fechaHoraCorta(cvUltimo(v))}</span></div>
       <div class="dv-chips">${cvConYana(v) ? '<span class="chip pe">🙋‍♀️ La tiene Yanaina</span>' : '<span class="chip ac">🤖 La tiene Mabel</span>'}${mbPedidosHTML(f)}</div>
       ${cvConYana(v) && v.motivo ? `<div class="dv-mot">${esc(v.motivo)}</div>` : ''}
-      <div class="row mt"><button class="b sm" data-act="mbVerChat" data-tel="${esc(v.id)}">👁 Ver mensajes</button><button class="b sm" data-act="mbWA" data-tel="${esc(v.tel || v.id)}">💬 WhatsApp</button>${mbFichaBtn(v.tel || v.id, f)}${cvConYana(v) ? `<button class="b sm gh" data-act="convDevolver" data-id="${esc(v.id)}">↩️ Devolver a Mabel</button>` : ''}</div>
+      <div class="row mt"><button class="b sm" data-act="mbVerChat" data-tel="${esc(v.id)}">💬 Chat</button><button class="b sm" data-act="mbWA" data-tel="${esc(v.tel || v.id)}">📱 WhatsApp</button>${mbFichaBtn(v.tel || v.id, f)}${cvConYana(v) ? `<button class="b sm gh" data-act="convDevolver" data-id="${esc(v.id)}">↩️ Devolver a Mabel</button>` : ''}</div>
     </div>`).join('') : `<div class="empty">${q ? 'Sin resultados' : 'No hay conversaciones'}</div>`)
     + (total > tope ? `<div class="small muted mt">Se muestran las ${tope} más recientes de ${total}. Usá el buscador para encontrar otra.</div>` : '');
 }
-/** Mensajes de una conversación, traídos de la base en el momento (no se guardan en el equipo). */
-async function mbVerChat(k) {
-  const ix = mbIndice(), f = mbFicha(k, ix), tit = f ? esc(f.c.nombre) : esc(mbTelLindo(k));
-  showModal(`<h3>💬 ${tit}</h3><div class="empty">Cargando mensajes…</div>`);
-  let ms = null, err = '';
+// ─── Chat estilo WhatsApp (25/11, Parte 1) ────────────────────
+// Pantalla completa con la conversación de una clienta, traída de la base en el momento (no se guarda en el equipo).
+// Se actualiza cada 10 s mientras está abierta. Fotos y PDF salen del bucket `comprobantes` con links firmados de 1 h.
+// Responder: solo texto, por whatsapp-enviar (accion 'texto'); mandar = tomar la conversación (como contestar desde el celu).
+const CH_OCULTOS = ['edit', 'revoke', 'system', 'ephemeral'];
+const CH_DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+UI.chat = null;
+(() => {
+  const st = document.createElement('style');
+  st.textContent = `
+#chat{position:fixed;inset:0;z-index:180;background:var(--bg);display:flex;flex-direction:column}
+#chat .ch-col{width:100%;max-width:860px;margin:0 auto;display:flex;flex-direction:column;flex:1;min-height:0}
+.ch-top{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--bd);background:var(--s1)}
+.ch-top .ch-nom{font-weight:700;font-size:16px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-top .ch-sub{font-size:12px;color:var(--mu)}
+.ch-acc{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;border-bottom:1px solid var(--bd);background:var(--s1)}
+.ch-ped{border-bottom:1px solid var(--bd);background:var(--s1);padding:0 12px}
+.ch-ped summary{cursor:pointer;padding:8px 0;font-size:13.5px;list-style:none}
+.ch-ped summary::-webkit-details-marker{display:none}
+.ch-ped .ch-pl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:0 0 10px;font-size:13.5px}
+.ch-msgs{flex:1;min-height:0;overflow-y:auto;padding:10px 12px 14px;display:flex;flex-direction:column;gap:4px}
+.ch-dia{align-self:center;font-size:11.5px;color:var(--mu);background:var(--s2);border-radius:8px;padding:3px 10px;margin:10px 0 4px}
+.ch-m{max-width:78%;border-radius:12px;padding:6px 9px 4px;font-size:14px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere;align-self:flex-start;background:var(--s2);border-top-left-radius:4px}
+.ch-m.mabel{align-self:flex-end;background:#2f2550;border-top-left-radius:12px;border-top-right-radius:4px}
+.ch-m.equipo{align-self:flex-end;background:#1f4a35;border-top-left-radius:12px;border-top-right-radius:4px}
+.ch-m.auto{align-self:flex-end;background:var(--s3);border-top-left-radius:12px;border-top-right-radius:4px}
+.ch-m .ch-q{display:block;text-align:right;font-size:10.5px;color:var(--mu);margin-top:2px}
+.ch-m .ch-who{display:block;font-size:11px;font-weight:700;margin-bottom:2px;opacity:.85}
+.ch-m img{display:block;max-width:240px;max-height:300px;border-radius:8px;cursor:zoom-in;margin-bottom:3px;background:var(--s3);min-height:60px;min-width:80px}
+.ch-m a.ch-pdf{display:inline-block;padding:8px 10px;border-radius:8px;background:var(--s3);color:var(--tx);text-decoration:none;margin-bottom:3px}
+.ch-m .ch-nota{font-style:italic;color:var(--mu)}
+.ch-sis{align-self:flex-end;font-size:11.5px;color:var(--mu);padding:0 4px}
+.ch-mas{align-self:center;margin:4px 0 8px}
+.ch-pie{border-top:1px solid var(--bd);background:var(--s1);padding:8px 10px calc(8px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:flex-end}
+.ch-pie textarea{flex:1;resize:none;min-height:42px;max-height:140px;border-radius:20px;padding:10px 14px;font:inherit;font-size:15px}
+.ch-pie .b{border-radius:50%;width:46px;height:46px;padding:0;font-size:19px;flex:none}
+.ch-aviso{border-top:1px solid var(--bd);background:var(--s1);padding:10px 12px calc(10px + env(safe-area-inset-bottom));font-size:13.5px}
+#chat-foto{position:fixed;inset:0;z-index:190;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out}
+#chat-foto img{max-width:96vw;max-height:94vh;object-fit:contain}
+@media (max-width:700px){.ch-m{max-width:88%}.ch-acc .b{flex:1 1 auto}}
+`;
+  document.head.appendChild(st);
+})();
+const chHora = iso => { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+function chDia(iso) {
+  const d = new Date(iso), f = localISO(d), hoy = hoyISO(), ay = localISO(new Date(Date.now() - 864e5));
+  return f === hoy ? 'Hoy' : f === ay ? 'Ayer' : CH_DIAS[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1) + (d.getFullYear() !== new Date().getFullYear() ? '/' + d.getFullYear() : '');
+}
+const chConv = k => (DB.conversaciones || []).find(v => v.id === k) || null;
+/** Último mensaje real de la clienta (para la ventana de 24 h de Meta). */
+const chUltimoDeElla = ms => { for (let i = ms.length - 1; i >= 0; i--) { const m = ms[i]; if (m.direccion === 'in' && !CH_OCULTOS.includes(m.tipo) && m.tipo !== 'reaction') return m.creado; } return null; };
+const chVentanaAbierta = ms => { const u = chUltimoDeElla(ms); return !!u && Date.now() - new Date(u).getTime() < 24 * 3600e3; };
+const ENT_TXT = { retiro: '🏠 Retiro', cadeteria: '🚴 Cadetería', agencia: '📦 Agencia', sin_definir: '❔ Entrega sin definir' };
+
+async function chatAbrir(k) {
+  if (!k) return;
+  chatCerrar(true);
+  UI.chat = { k, ms: [], hayMas: false, cargando: true, error: '', urls: {}, enviando: false, borrador: '' };
+  const el = document.createElement('div'); el.id = 'chat'; document.body.appendChild(el);
+  document.body.style.overflow = 'hidden';
+  try { history.pushState({ chat: k }, ''); } catch (_) {}
+  chatPintar('abajo');
+  await chatTraer();
+  UI.chat && (UI.chat.timer = setInterval(() => { if (UI.chat && !document.hidden) chatTraer(true); }, 10000));
+}
+function chatCerrar(sinHistoria) {
+  const c = UI.chat; if (c && c.timer) clearInterval(c.timer);
+  UI.chat = null;
+  const el = $('#chat'); if (el) el.remove();
+  const fo = $('#chat-foto'); if (fo) fo.remove();
+  document.body.style.overflow = '';
+  if (!sinHistoria && history.state && history.state.chat) { try { history.back(); } catch (_) {} }
+}
+window.addEventListener('popstate', () => { if (UI.chat) chatCerrar(true); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { if ($('#chat-foto')) $('#chat-foto').remove(); else if (UI.chat) chatCerrar(); }
+  if (e.key === 'Enter' && !e.shiftKey && e.target && e.target.id === 'ch-txt' && matchMedia('(min-width: 701px)').matches) { e.preventDefault(); ACT.chatEnviar(); }
+});
+document.addEventListener('input', e => { if (e.target && e.target.id === 'ch-txt' && UI.chat) { UI.chat.borrador = e.target.value; e.target.style.height = 'auto'; e.target.style.height = Math.min(140, e.target.scrollHeight) + 'px'; } });
+
+/** Trae los últimos 80 (o, con nuevos=true, solo lo que llegó después del último que se ve). */
+async function chatTraer(nuevos) {
+  const c = UI.chat; if (!c) return;
   try {
     if (!navigator.onLine) throw new Error('sin conexión');
-    const r = await NUBE.sb.from('mabel_mensajes').select('id,direccion,tipo,texto,media,creado').eq('tel_key', k).order('creado', { ascending: false }).limit(80);
-    if (r.error) throw new Error(r.error.message); ms = r.data || [];
-  } catch (e) { err = String(e.message || e); }
-  if (!$('#modal').classList.contains('on')) return; // la cerró mientras cargaba
-  const quien = { in: '', out: '🤖 Mabel', echo: '🙋‍♀️ Equipo', plantilla: '📨 Mensaje de la app' };
-  const cuerpo = err ? `<div class="alert li">No se pudieron traer los mensajes (${esc(err)}). Hace falta internet.</div>`
-    : !ms.length ? '<div class="empty">No hay mensajes guardados de este número</div>'
-    : `<div class="mbt-chat" id="mbt-chat">${ms.filter(m => !['edit', 'revoke', 'system', 'ephemeral'].includes(m.tipo)).reverse().map(m => {
-        const d = m.direccion === 'in' ? '' : m.direccion === 'echo' ? ' echo' : ' out';
-        const txt = (m.media ? '📎 ' : '') + (m.texto || (m.media ? 'Archivo' : '[' + m.tipo + ']'));
-        return `<div class="mbt-m${d}">${esc(txt)}<span class="q">${quien[m.direccion] ? quien[m.direccion] + ' · ' : ''}${fechaHoraCorta(m.creado)}</span></div>`; }).join('')}</div>`;
-  showModal(`<h3>💬 ${tit}</h3><div class="small muted mb">${esc(mbTelLindo(k))} · solo lectura, últimos ${ms ? Math.min(ms.length, 80) : 0} mensajes</div>${cuerpo}
-    <div class="row mt"><button class="b sm" data-act="mbWA" data-tel="${esc(k)}">💬 Abrir en WhatsApp</button><span class="grow"></span><button class="b pri" data-act="closeModal">Cerrar</button></div>`);
-  const c = $('#mbt-chat'); if (c) c.scrollTop = c.scrollHeight;
+    let q = NUBE.sb.from('mabel_mensajes').select('id,direccion,tipo,texto,media,creado').eq('tel_key', c.k);
+    const ult = c.ms.length ? c.ms[c.ms.length - 1].creado : null;
+    if (nuevos && ult) q = q.gt('creado', ult).order('creado', { ascending: true }).limit(200);
+    else q = q.order('creado', { ascending: false }).limit(80);
+    const r = await q; if (r.error) throw new Error(r.error.message);
+    if (UI.chat !== c) return;
+    const filas = r.data || [];
+    if (nuevos && ult) {
+      const ids = new Set(c.ms.map(m => m.id)), add = filas.filter(m => !ids.has(m.id));
+      c.error = '';
+      if (add.length) { const abajo = chatEstaAbajo(); c.ms.push(...add); chatPintar(abajo ? 'abajo' : 'quedar'); } else chatPintarCabeza();
+      return;
+    }
+    c.ms = filas.reverse(); c.hayMas = filas.length === 80; c.cargando = false; c.error = '';
+    chatPintar('abajo');
+  } catch (e) { if (UI.chat !== c) return; c.cargando = false; c.error = String(e.message || e); chatPintar('quedar'); }
 }
+async function chatAnteriores() {
+  const c = UI.chat; if (!c || !c.ms.length) return;
+  const caja = $('#ch-msgs'), alto = caja ? caja.scrollHeight - caja.scrollTop : 0;
+  const r = await NUBE.sb.from('mabel_mensajes').select('id,direccion,tipo,texto,media,creado').eq('tel_key', c.k).lt('creado', c.ms[0].creado).order('creado', { ascending: false }).limit(80);
+  if (r.error || UI.chat !== c) return toast('No se pudieron traer los anteriores');
+  const viejos = (r.data || []).reverse(); c.ms = [...viejos, ...c.ms]; c.hayMas = viejos.length === 80;
+  chatPintar('quedar');
+  const cj = $('#ch-msgs'); if (cj) cj.scrollTop = cj.scrollHeight - alto;
+}
+const chatEstaAbajo = () => { const cj = $('#ch-msgs'); return !cj || cj.scrollHeight - cj.scrollTop - cj.clientHeight < 80; };
+
+function chatCabezaHTML() {
+  const c = UI.chat, ix = mbIndice(), f = mbFicha(c.k, ix), v = chConv(c.k), yana = v && cvConYana(v);
+  const nom = f ? esc(f.c.nombre) : 'Sin registrar', pend = dvPendientes().filter(d => d.telKey === c.k).length;
+  const quien = yana ? `🙋‍♀️ La tiene el equipo${v.hasta ? ' hasta las ' + chHora(v.hasta) : ''}` : '🤖 La tiene Mabel';
+  const peds = f ? f.abiertos : [];
+  const resumen = p => { const t = calc(p); return `<b>#${p.num}</b> · ${fmt(t.total)} · ${pagado(p) ? '<span class="chip ok">✓ Pagó</span>' : '<span class="chip pe">Sin pagar</span>'} · ${ENT_TXT[entregaEf(p)] || esc(entregaEf(p))}`; };
+  const abierto = UI.chat.pedAbierto != null ? UI.chat.pedAbierto : matchMedia('(min-width: 701px)').matches;
+  return `<div class="ch-top"><button class="b sm gh" data-act="chatCerrar" title="Volver" style="font-size:18px">←</button>
+      <div class="grow" style="min-width:0"><div class="ch-nom">${nom}${f && f.otras ? ` <span class="chip pe">⚠️ ${f.otras + 1} fichas</span>` : ''}</div><div class="ch-sub">${esc(mbTelLindo(c.k))} · ${quien}${pend ? ` · <b>${pend} pendiente${pend > 1 ? 's' : ''}</b>` : ''}</div></div>
+      ${f ? `<button class="b sm" data-act="chatFicha" data-cid="${f.c.id}" title="Ficha">👤</button>` : ''}<button class="b sm" data-act="mbWA" data-tel="${esc(c.k)}" title="Abrir en WhatsApp">📱</button></div>
+    <div class="ch-acc">${yana ? `<button class="b sm" data-act="chatDevolver">↩️ Devolver a Mabel</button>` : `<button class="b sm" data-act="chatTomar">🙋‍♀️ Tomar</button>`}
+      <button class="b sm ok" data-act="chatResuelta"${pend ? '' : ' disabled title="No tiene pendientes"'}>✓ Resuelta</button></div>
+    ${peds.length <= 1 ? `<div class="ch-ped"><div class="ch-pl" style="padding:8px 0">🛍️ ${peds.length ? resumen(peds[0]) + ` <button class="b sm" data-act="chatPedido" data-id="${peds[0].id}">Abrir pedido</button>` : '<span class="muted">Sin pedido abierto</span>'}</div></div>`
+      : `<details class="ch-ped" id="ch-ped"${abierto ? ' open' : ''}><summary>🛍️ ${peds.length} pedidos abiertos · ${resumen(peds[peds.length - 1])} <span class="muted">▾</span></summary>
+      <div class="ch-pl">${peds.map(p => `<button class="b sm" data-act="chatPedido" data-id="${p.id}" title="Abrir el pedido">${resumen(p)}</button>`).join('')}</div></details>`}`;
+}
+function chatMsgHTML(m) {
+  const md = m.media || {}, tipo = m.tipo || 'text', txt = String(m.texto || '');
+  if (tipo === 'reaction') return m.direccion === 'echo' ? `<div class="ch-sis">🙋‍♀️ reaccionó · ${chHora(m.creado)}</div>` : '';
+  const cls = m.direccion === 'in' ? '' : m.direccion === 'echo' ? 'equipo' : tipo === 'plantilla' ? 'auto' : 'mabel';
+  const who = m.direccion === 'in' ? '' : m.direccion === 'echo' ? '🙋‍♀️ Equipo' + (md.desde === 'app' ? ' (app)' : '') : tipo === 'plantilla' ? '📨 Mensaje automático' : '🤖 Mabel';
+  const sinCorchete = t => /^\[[^\]]*\]$/.test(t.trim()) ? '' : t;
+  let cuerpo = '';
+  if (md.path && /pdf/i.test(md.mime || '') ) cuerpo = `<a class="ch-pdf" href="#" data-act="chatPdf" data-path="${esc(md.path)}">📄 PDF · tocá para abrirlo</a>` + (sinCorchete(txt) ? '\n' + esc(txt) : '');
+  else if (md.path) cuerpo = `<img data-path="${esc(md.path)}" data-act="chatFoto" alt="Foto">` + (sinCorchete(txt) ? esc(txt) : '');
+  else if (tipo === 'audio' || tipo === 'voice') cuerpo = '<span class="ch-nota">🎤 Audio (escuchalo en el celu)</span>';
+  else if (tipo === 'video') cuerpo = '<span class="ch-nota">🎬 Video (miralo en el celu)</span>';
+  else if (tipo === 'sticker') cuerpo = '<span class="ch-nota">🩷 Sticker (miralo en el celu)</span>';
+  else if (tipo === 'image') cuerpo = '<span class="ch-nota">📷 Foto (mirala en el celu)</span>' + (sinCorchete(txt) && !/no se pudo descargar/.test(txt) ? '\n' + esc(txt) : '');
+  else if (tipo === 'document') cuerpo = '<span class="ch-nota">📄 Archivo (miralo en el celu)</span>';
+  else if (tipo === 'location') cuerpo = '<span class="ch-nota">📍 Ubicación (mirala en el celu)</span>';
+  else if (tipo === 'contacts') cuerpo = '<span class="ch-nota">👤 Contacto (miralo en el celu)</span>';
+  else if (tipo === 'unsupported') cuerpo = '<span class="ch-nota">⚠️ Mandó algo que no llegó (miralo en el celu)</span>';
+  else cuerpo = esc(txt || '[' + tipo + ']');
+  return `<div class="ch-m ${cls}">${who ? `<span class="ch-who">${who}</span>` : ''}${cuerpo}<span class="ch-q">${chHora(m.creado)}</span></div>`;
+}
+function chatMsgsHTML() {
+  const c = UI.chat;
+  if (c.cargando) return '<div class="empty">Cargando mensajes…</div>';
+  if (c.error && !c.ms.length) return `<div class="alert li">No se pudieron traer los mensajes (${esc(c.error)}). Hace falta internet.</div>`;
+  if (!c.ms.length) return '<div class="empty">No hay mensajes guardados de este número</div>';
+  let h = c.hayMas ? '<button class="b sm ch-mas" data-act="chatMas">⬆️ Ver anteriores</button>' : '', dia = '';
+  for (const m of c.ms) {
+    if (CH_OCULTOS.includes(m.tipo)) continue;
+    const d = chDia(m.creado); if (d !== dia) { dia = d; h += `<div class="ch-dia">${d}</div>`; }
+    h += chatMsgHTML(m);
+  }
+  return h;
+}
+function chatPieHTML() {
+  const c = UI.chat;
+  if (c.cargando) return '';
+  if (!chVentanaAbierta(c.ms)) return `<div class="ch-aviso">⏳ <b>Pasaron 24 h</b> desde el último mensaje de la clienta: solo se puede mandar una plantilla. Escribile desde el celu (📱 arriba).</div>`;
+  return `<div class="ch-pie"><textarea id="ch-txt" rows="1" placeholder="Escribí un mensaje…" maxlength="4000"></textarea><button class="b pri" data-act="chatEnviar" title="Mandar"${c.enviando ? ' disabled' : ''}>${c.enviando ? '…' : '➤'}</button></div>`;
+}
+function chatPintarCabeza() { const c = UI.chat, el = $('#ch-cab'); if (c && el) { const h = chatCabezaHTML(); if (el.innerHTML !== h) el.innerHTML = h; } }
+function chatPintar(scroll) {
+  const c = UI.chat, el = $('#chat'); if (!c || !el) return;
+  const foco = document.activeElement && document.activeElement.id === 'ch-txt';
+  if (!$('#ch-msgs')) el.innerHTML = `<div class="ch-col"><div id="ch-cab"></div><div class="ch-msgs" id="ch-msgs"></div><div id="ch-pie"></div></div>`;
+  chatPintarCabeza();
+  $('#ch-msgs').innerHTML = chatMsgsHTML();
+  const pie = chatPieHTML();
+  if ($('#ch-pie').dataset.h !== pie) {
+    $('#ch-pie').innerHTML = pie; $('#ch-pie').dataset.h = pie;
+    const t = $('#ch-txt'); if (t) { t.value = c.borrador || ''; if (foco) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
+  }
+  chatFotos();
+  if (scroll === 'abajo') { const cj = $('#ch-msgs'); cj.scrollTop = cj.scrollHeight; }
+}
+/** Pide los links firmados (1 h) de las fotos que se ven y los cachea. */
+async function chatUrl(path) {
+  const c = UI.chat; if (!c) return null;
+  const x = c.urls[path]; if (x && x.hasta > Date.now()) return x.url;
+  const { data, error } = await NUBE.sb.storage.from('comprobantes').createSignedUrl(path, 3600);
+  if (error || !data) return null;
+  c.urls[path] = { url: data.signedUrl, hasta: Date.now() + 55 * 60e3 };
+  return data.signedUrl;
+}
+function chatFotos() {
+  document.querySelectorAll('#chat img[data-path]').forEach(async img => {
+    if (img.dataset.ok) return; img.dataset.ok = '1';
+    const u = await chatUrl(img.dataset.path);
+    if (u) { img.onload = () => { if (chatEstaAbajoCasi()) { const cj = $('#ch-msgs'); if (cj) cj.scrollTop = cj.scrollHeight; } }; img.src = u; }
+    else img.replaceWith(Object.assign(document.createElement('span'), { className: 'ch-nota', textContent: '📷 Foto (no se pudo cargar)' }));
+  });
+}
+const chatEstaAbajoCasi = () => { const cj = $('#ch-msgs'); return cj && cj.scrollHeight - cj.scrollTop - cj.clientHeight < 400; };
+/** Tomar / devolver / resolver desde el chat (mismas reglas que el resto de la pestaña). */
+function chatTomarConv(k) {
+  const ix = mbIndice(), f = mbFicha(k, ix), ahora = new Date();
+  let v = chConv(k);
+  if (!v) { v = { id: k, tel: (f && f.c.tel) || '0' + k, clienteId: f ? f.c.id : null }; DB.conversaciones.push(v); }
+  Object.assign(v, { estado: 'yanaina', motivo: 'La tomó el equipo desde la app', desde: ahora.toISOString(), hasta: new Date(ahora.getTime() + 3600e3).toISOString() });
+  delete v.devuelta; delete v.notaDevuelta; delete v.espera;
+  saveConvs();
+}
+
+Object.assign(ACT, {
+  chatCerrar: () => chatCerrar(),
+  chatMas: () => chatAnteriores(),
+  chatFicha: d => { chatCerrar(); verFicha(d.cid); },
+  chatPedido: d => { chatCerrar(); irPedido(d.id); },
+  chatFoto: async (d, el) => {
+    const u = await chatUrl(d.path); if (!u) return toast('No se pudo abrir la foto');
+    const fo = document.createElement('div'); fo.id = 'chat-foto'; fo.innerHTML = `<img src="${esc(u)}" alt="Foto">`; fo.addEventListener('click', () => fo.remove()); document.body.appendChild(fo);
+  },
+  chatPdf: async (d, el, e) => {
+    if (e) e.preventDefault();
+    const w = window.open('', '_blank'); const u = await chatUrl(d.path);
+    if (!u) { if (w) w.close(); return toast('No se pudo abrir el PDF'); }
+    if (w) w.location.href = u; else location.href = u;
+  },
+  chatTomar: () => { const c = UI.chat; if (!c) return; chatTomarConv(c.k); toast('🙋‍♀️ La tomaste: Mabel no le contesta por 1 h (se renueva con cada mensaje tuyo)'); chatPintarCabeza(); render(); },
+  chatDevolver: () => {
+    const c = UI.chat; if (!c) return;
+    const nota = prompt('↩️ Devolver a Mabel\n\nNota para Mabel (opcional): qué quedó resuelto o qué tiene que tener en cuenta.', '');
+    if (nota === null) return;
+    devolverAMabel(c.k);
+    const v = chConv(c.k); if (v) { if (nota.trim()) v.notaDevuelta = nota.trim().slice(0, 400); else delete v.notaDevuelta; saveConvs(); }
+    toast('↩️ Mabel vuelve a atender esta conversación'); chatPintarCabeza(); render();
+  },
+  chatResuelta: () => {
+    const c = UI.chat; if (!c) return;
+    const ps = dvPendientes().filter(d => d.telKey === c.k); if (!ps.length) return toast('No tiene pendientes');
+    const por = (NUBE.user && NUBE.user.email) || '';
+    ps.forEach(d => { d.resuelto = ahoraISO(); d.resueltoPor = por; });
+    saveDerivados(); toast(`✓ ${ps.length} pendiente${ps.length > 1 ? 's' : ''} resuelto${ps.length > 1 ? 's' : ''}`); chatPintarCabeza(); render();
+  },
+  chatEnviar: async () => {
+    const c = UI.chat, t = $('#ch-txt'); if (!c || !t || c.enviando) return;
+    const texto = t.value.trim(); if (!texto) return;
+    if (!navigator.onLine) return toast('Sin internet: no se puede mandar');
+    if (!chVentanaAbierta(c.ms)) return toast('Pasaron 24 h: solo se puede mandar una plantilla');
+    c.enviando = true; c.borrador = texto; chatPintar('quedar');
+    try {
+      const { data, error } = await NUBE.sb.functions.invoke('whatsapp-enviar', { body: { accion: 'texto', tel: c.k, texto } });
+      if (error) throw error;
+      if (!data || !data.ok) { if (data && data.ventana === false) { toast('Pasaron 24 h: solo se puede mandar una plantilla', 5000); } else throw new Error((data && data.error) || 'no salió'); return; }
+      if (UI.chat !== c) return;
+      c.borrador = '';
+      // el estado de la conversación lo cambió la función en la base: llega solo por la nube (no se toca acá para no pisarlo)
+      setTimeout(() => { if (UI.chat === c) chatPintarCabeza(); }, 2500);
+      $('#ch-pie').dataset.h = ''; await chatTraer(true); chatPintar('abajo');
+    } catch (e) { toast('⚠️ No salió: ' + (e.message || e), 6000); }
+    finally { if (UI.chat === c) { c.enviando = false; $('#ch-pie') && ($('#ch-pie').dataset.h = ''); chatPintar('quedar'); } }
+  }
+});
+document.addEventListener('toggle', e => { if (e.target && e.target.id === 'ch-ped' && UI.chat) UI.chat.pedAbierto = e.target.open; }, true);
+async function mbVerChat(k) { return chatAbrir(k); }
 
 // ─── Vincular un número a una ficha ───────────────────────────
 function mbVincModal(tel) {

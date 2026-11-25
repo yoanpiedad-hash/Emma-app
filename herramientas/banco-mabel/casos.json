@@ -2130,6 +2130,314 @@
     ],
     "derivado": false
    }
+  },
+  {
+   "id": "R01",
+   "nombre": "Repaso: Yanaina contestó último y el pendiente ya estaba resuelto: no lo reabre (25/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "hola, tienen el short de jean en L?",
+       "hace_min": 80
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 79
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella",
+       "hace_min": 60
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -90,
+      "hasta": -5,
+      "motivo": "Contestó una persona del equipo desde el celular"
+     },
+     "derivado": {
+      "categoria": "otros",
+      "motivo": "Pregunta si hay short de jean en L",
+      "hace_min": 79,
+      "resuelto_hace_min": 60
+     }
+    }
+   ],
+   "espera": {
+    "envia": false,
+    "derivado": false
+   }
+  },
+  {
+   "id": "R02",
+   "nombre": "Repaso: Yanaina contestó último y el pendiente seguía abierto: queda resuelto (25/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "me lo pueden mandar el viernes en vez del jueves?",
+       "hace_min": 80
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 79
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella, lo mandamos el viernes",
+       "hace_min": 60
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -90,
+      "hasta": -5,
+      "motivo": "Contestó una persona del equipo desde el celular"
+     },
+     "derivado": {
+      "categoria": "entrega",
+      "motivo": "Quiere que salga el viernes en vez del jueves",
+      "hace_min": 79
+     }
+    }
+   ],
+   "espera": {
+    "envia": false,
+    "derivado": false
+   }
+  },
+  {
+   "id": "R03",
+   "nombre": "Repaso: después de Yanaina la clienta solo agradeció: no deriva y queda resuelto (25/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "me pasan el alias de mercado pago?",
+       "hace_min": 80
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 79
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella, es emmaindumentaria",
+       "hace_min": 60
+      },
+      {
+       "dir": "in",
+       "texto": "gracias bella 🥰",
+       "hace_min": 55
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -90,
+      "hasta": -5,
+      "motivo": "Contestó una persona del equipo desde el celular"
+     },
+     "derivado": {
+      "categoria": "pago",
+      "motivo": "Pide el alias de Mercado Pago",
+      "hace_min": 79
+     }
+    }
+   ],
+   "espera": {
+    "envia": false,
+    "derivado": false
+   }
+  },
+  {
+   "id": "R04",
+   "nombre": "Repaso: Yanaina dijo que sí al plazo pero no está cargado: queda abierto (25/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "me esperás hasta el viernes para pagar? cobro ese día",
+       "hace_min": 80
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 79
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella",
+       "hace_min": 60
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -90,
+      "hasta": -5,
+      "motivo": "Contestó una persona del equipo desde el celular"
+     },
+     "derivado": {
+      "categoria": "pago",
+      "motivo": "Pide más plazo para pagar: hasta el viernes",
+      "hace_min": 79
+     }
+    }
+   ],
+   "espera": {
+    "envia": false,
+    "derivado": true,
+    "derivado_contiene": [
+     "falta cargar el plazo"
+    ]
+   }
+  },
+  {
+   "id": "R05",
+   "nombre": "Repaso: después de Yanaina pregunta algo que Mabel sabe: le contesta y no deriva (25/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "hola, tienen el short de jean en L?",
+       "hace_min": 80
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 79
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella, hay L",
+       "hace_min": 60
+      },
+      {
+       "dir": "in",
+       "texto": "y cuánto sale el envío por cadetería?",
+       "hace_min": 50
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -90,
+      "hasta": -5,
+      "motivo": "Contestó una persona del equipo desde el celular"
+     },
+     "derivado": {
+      "categoria": "otros",
+      "motivo": "Pregunta si hay short de jean en L",
+      "hace_min": 79,
+      "resuelto_hace_min": 60
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "250"
+    ],
+    "derivado": false
+   }
   }
  ]
 }

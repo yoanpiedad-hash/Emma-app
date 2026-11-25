@@ -35,7 +35,7 @@ const CUENTAS_SOLO_MARCAR = ['PREX YOAN'];
 const medioDe = (c: string) => /mercado\s*pago/i.test(c || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(c || '') ? 'efectivo' : 'transferencia';
 const esHabitual = (a: string) => /^(dac|nu[nñ]ez|correo)/.test(normB(a));
 
-export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean; ausente?: boolean; vivo?: boolean };
+export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean; ausente?: boolean; vivo?: boolean; sinPase?: boolean };
 
 // ─── Config ───────────────────────────────────────────────────────
 // 19/11 (banco de casos): solo el modo prueba (x-mabel-test) pone cfgPrueba, para simular Config sin tocar la real.
@@ -398,15 +398,45 @@ export async function registrarDerivado(telKey: string, c: any, motivo: string, 
 // 14/11 tarde: el equipo le escribió a la clienta desde el celular: sus pendientes pasan a resueltos ("equipo respondió").
 // Si la clienta vuelve a escribir y nadie le contesta, el repaso de sin respuesta reabre la fila (registrarDerivado).
 export async function resolverPorEquipo(telKey: string) {
+  // 25/11: misma regla que el repaso (un pedido de más plazo sin el plazo cargado en la app queda abierto)
+  return (await resolverPendientes(telKey, 'equipo respondió')).cerrados;
+}
+
+// 25/11 (pendientes que se reabrían solos): cierra los pendientes de una clienta cuando el equipo ya le contestó.
+// Excepción: si el pendiente es de "más plazo para pagar" y ningún pedido abierto sin pagar tiene el plazo cargado en la app
+// (guardado sin pagar con fecha), queda abierto con el motivo "Yanaina dijo que sí: falta cargar el plazo en la app".
+export const RE_PLAZO = /plazo|m[aá]s (tiempo|d[ií]as)|pr[oó]rroga|esper(a|e|ar)(le|me|s)? (hasta|para pagar|el pago)|pagar(lo)? (en partes|despu[eé]s|m[aá]s adelante|la semana|el (lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo))|cuando cobre|cobro (el|del) sueldo/i;
+const FALTA_PLAZO = 'Yanaina dijo que sí: falta cargar el plazo en la app';
+export async function resolverPendientes(telKey: string, porque: string) {
+  const out = { cerrados: 0, abiertos: 0 };
   const { data, error } = await sb.from('derivados').select('id,datos').eq('datos->>telKey', telKey).eq('borrado', false).order('actualizado', { ascending: false }).limit(10);
-  if (error) { console.error('derivados (equipo):', error.message); return 0; }
-  const ahora = new Date().toISOString(); let n = 0;
-  for (const r of data || []) {
-    if (!r.datos || r.datos.resuelto) continue;
-    const { error: e } = await sb.from('derivados').update({ datos: { ...r.datos, resuelto: ahora, resueltoPor: 'equipo respondió', resueltoEquipo: true } }).eq('id', r.id);
-    if (e) console.error('derivados (equipo):', e.message); else n++;
+  if (error) { console.error('derivados (resolver):', error.message); return out; }
+  const pend = (data || []).filter((r: any) => r.datos && !r.datos.resuelto);
+  if (!pend.length) return out;
+  let plazoCargado: boolean | null = null;
+  const tienePlazo = async () => {
+    if (plazoCargado !== null) return plazoCargado;
+    const { data: cls } = await sb.from('clientas').select('id').eq('tel_key', telKey).eq('borrado', false);
+    const ids = (cls || []).map((x: any) => x.id);
+    const { data: ps } = ids.length ? await sb.from('pedidos').select('datos').in('clienta_id', ids).eq('borrado', false).in('estado', ['pendiente', 'listo', 'guardado']) : { data: [] as any[] };
+    const sinPagar = (ps || []).map((r: any) => r.datos).filter((p: any) => p && !pagado(p));
+    plazoCargado = !sinPagar.length || sinPagar.some((p: any) => p.guardadoSinPagar?.hasta);
+    return plazoCargado;
+  };
+  const ahora = new Date().toISOString();
+  for (const r of pend) {
+    const motivos = motivosDe(r.datos), txt = [r.datos.motivo, ...motivos.map((m: any) => m.motivo)].join(' ');
+    if (RE_PLAZO.test(txt) && !(await tienePlazo())) {
+      if (!String(r.datos.motivo || '').includes(FALTA_PLAZO)) {
+        const ms = [...motivos, { fecha: ahora, categoria: 'pago', motivo: FALTA_PLAZO, origen: 'repaso', silencio: true }].slice(-15);
+        await sb.from('derivados').update({ datos: { ...r.datos, categoria: r.datos.categoriaManual ? r.datos.categoria : 'pago', motivos: ms, motivo: textoMotivos(ms), ultimo: ahora } }).eq('id', r.id);
+      }
+      out.abiertos++; continue;
+    }
+    const { error: e } = await sb.from('derivados').update({ datos: { ...r.datos, resuelto: ahora, resueltoPor: porque, resueltoEquipo: true } }).eq('id', r.id);
+    if (e) console.error('derivados (resolver):', e.message); else out.cerrados++;
   }
-  return n;
+  return out;
 }
 
 export const FRASE_PASE = 'Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶';
@@ -419,6 +449,8 @@ export const frasePase = (ctx?: { ausente?: boolean; vivo?: boolean } | null, ca
 // Frases de pase (la vieja sigue en el historial): para no repetirla y para sacarla cuando el pase va en silencio.
 export const RE_PASE = /(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s|le avisamos a yharol)/i;
 export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, categoria?: string, frasePropia = false) {
+  // 25/11: en el repaso de una conversación que el equipo ya contestó (y la clienta no volvió a escribir) no se deriva nada.
+  if (ctx.sinPase) return { ok: true, derivado: false, no_hace_falta: true, instruccion: 'El equipo ya le contestó a la clienta y ella no volvió a escribir: no hace falta pasarlo. Terminá la nota del repaso.' };
   // 4/11: cuando deriva Mabel, la conversación vuelve sola a Mabel en 1 hora (si Yanaina contesta desde el celu, el eco la deja más tiempo)
   const ahora = new Date(), hasta = new Date(ahora.getTime() + 1 * 3600e3);
   const c = ctx.clienta;

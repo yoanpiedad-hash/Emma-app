@@ -63,7 +63,7 @@ def correr_caso(c, tel, url, key, ausente):
             cfg.update({k: (dias_viaje() if v == '__viaje__' else vivo_ahora() if v == '__vivo__' else v) for k, v in (p.get('cfg') or {}).items()})
             body = {'tel': tel, 'texto': p.get('texto', ''), 'detalle': True, 'cfg': cfg}
             if p.get('ausente'): body['ausente'] = ausente; cfg.pop('mabelAusente', None)
-            for k in ('previo', 'conv', 'imagen_base64', 'mime'):
+            for k in ('previo', 'conv', 'imagen_base64', 'mime', 'derivado', 'repaso'):
                 if k in p: body[k] = p[k]
             if p.get('imagen'):
                 body['imagen_base64'] = base64.b64encode(open(os.path.join(AQUI, 'comprobantes', p['imagen']), 'rb').read()).decode(); body['mime'] = 'image/jpeg'
@@ -90,6 +90,8 @@ def revisar(c, r, pasos):
         if h not in herr: fallas.append('no usó ' + h)
     for h in e.get('no_herramienta', []):
         if f'"{h}"' in herr or f"'{h}'" in herr or f'{h}(' in herr: fallas.append('usó ' + h)
+    for pat in e.get('derivado_contiene', []):  # 25/11: el motivo del pendiente que quedó abierto
+        if not any(re.search(pat, str(d.get('motivo', '')), re.I) for d in (r.get('derivados') or [])): fallas.append(f'el pendiente no dice /{pat}/')
     if 'derivado' in e:
         hay = bool(r.get('derivados'))
         if e['derivado'] and not hay: fallas.append('no dejó pendiente para Yanaina')
