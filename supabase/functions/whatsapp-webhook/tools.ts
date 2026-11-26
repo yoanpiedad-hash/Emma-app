@@ -465,13 +465,14 @@ export async function cerrarSolos(telKeys: string[] | null, opt: { dry?: boolean
       const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', tk).maybeSingle();
       if (cv?.datos?.estado === 'yanaina' && String(cv.datos.hasta || '') > ahora && !ecoDespues) continue; // la tiene Yanaina y no le escribió
       if ((RE_RECLAMO.test(txtMot) || ['cambio', 'especial'].includes(String(d.categoria))) && !ecoDespues) continue;
-      if (RE_PLAZO.test(txtMot)) continue; // el plazo lo cierra resolverPendientes (cuando está cargado) o el equipo
       // ¿qué regla aplica?
       let regla = '';
       const { data: cls } = await sb.from('clientas').select('id,datos').eq('tel_key', tk).eq('borrado', false);
       const cids = (cls || []).map((x: any) => x.id);
       const { data: ped } = cids.length ? await sb.from('pedidos').select('id,num,estado,datos,borrado').in('clienta_id', cids) : { data: [] as any[] };
       const abiertos = (ped || []).filter((r: any) => !r.borrado && ['pendiente', 'listo', 'guardado'].includes(r.estado) && !r.datos?.cambio);
+      // Más plazo: queda abierto mientras tenga un pedido sin pagar sin el plazo cargado en la app (misma regla que resolverPendientes)
+      if (RE_PLAZO.test(txtMot) && abiertos.some((r: any) => !pagado(r.datos) && !r.datos?.guardadoSinPagar?.hasta)) continue;
       const esPago = d.categoria === 'pago' || ms0.some((m: any) => m.categoria === 'pago');
       if (esPago && (ped || []).length) {
         const fPago = ms0.filter((m: any) => m.categoria === 'pago').map((m: any) => String(m.fecha)).sort()[0] || String(d.creado || '');
@@ -483,7 +484,11 @@ export async function cerrarSolos(telKeys: string[] | null, opt: { dry?: boolean
       if (!regla) {
         const nums = [...txtMot.matchAll(/#(\d{1,5})/g)].map((x) => +x[1]);
         const citados = nums.length ? (ped || []).filter((r: any) => nums.includes(+r.num)) : [];
-        if (!abiertos.length) regla = 'no tiene pedidos abiertos';
+        // Sin pedidos abiertos cuenta solo si alguno salió o se cerró DESPUÉS del pase (lo que la tenía pendiente se resolvió así);
+        // una pregunta general sin respuesta (ej. "¿venden por mayor?") no se cierra por no tener pedido.
+        const diaPase = diaUY(String(ms0[0]?.fecha || d.creado || ultimo));
+        const cerroDespues = (ped || []).some((r: any) => !['pendiente', 'listo', 'guardado'].includes(r.estado) && String(r.datos?.fechas?.[r.estado] || r.datos?.fechas?.enviado || '') >= diaPase);
+        if (!abiertos.length && cerroDespues) regla = 'no tiene pedidos abiertos (el pedido salió o se cerró después del pase)';
         else if (citados.length && citados.every((r: any) => r.borrado || !['pendiente', 'listo', 'guardado'].includes(r.estado))) regla = 'el pedido ' + citados.map((r: any) => '#' + r.num).join(', ') + ' ya salió o se cerró';
       }
       if (!regla) continue;
