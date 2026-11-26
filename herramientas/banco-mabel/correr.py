@@ -7,11 +7,17 @@ limpia antes y después.
 
 Uso:  MABEL_TEST_KEY=... python3 correr.py [--url URL] [--solo S01,A01] [--tanda ya|D|todas]
 Sale con código 1 si falla algún caso de la tanda pedida: si falla, no se publica.
+
+23/11: por defecto corre contra la función de prueba de la BASE DE PRUEBA (emma-prueba). La clave es la de
+mabel_ajustes de emma-prueba. Para correrlo contra la base real hay que pasar --real (y tener el ok de Yoan).
+Un paso puede traer "comprobante": {"monto": 1090} → se arma al vuelo un comprobante con la fecha y hora de hoy.
 """
 import argparse, base64, concurrent.futures as cf, datetime as dt, json, os, re, sys, time, urllib.request
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
-URL = 'https://ssipaovluukkypsbzboe.supabase.co/functions/v1/mabel-prueba'
+URL_PRUEBA = 'https://ctrjlovufdssqgolwnjc.supabase.co/functions/v1/mabel-prueba'  # emma-prueba (base de prueba)
+URL_REAL = 'https://ssipaovluukkypsbzboe.supabase.co/functions/v1/mabel-prueba'    # base real: solo con --real y ok de Yoan
+REAL = 'ssipaovluukkypsbzboe'
 
 
 def post(url, key, body, intentos=2):
@@ -54,6 +60,30 @@ def fechas(c):
     return json.loads(t.replace('__SAB_DIA__', str(sab.day)).replace('__SAB_ISO__', sab.isoformat()).replace('__HOY_ISO__', hoy).replace('__AYER_ISO__', ayer).replace('__AHORA__', ahora))
 
 
+def poner(v, tel):
+    """23/11 (pedido web): {M1} = modelo de prueba del caso (9 + últimas 3 cifras del número + k), {TEL} = número, __hoy_HHMM__ = hoy a esa hora."""
+    if isinstance(v, str):
+        hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date().isoformat()
+        v = re.sub(r'\{M(\d)\}', lambda m: '9' + tel[-3:] + m.group(1), v).replace('{TEL}', tel[-8:])
+        v = re.sub(r'\{([A-Za-z]{1,3}):(\d)\}', lambda m: m.group(1) + tel[-3:] + m.group(2), v)  # {RP:4} = modelo con código de letras (7º valor del stock)
+        v = re.sub(r'__fecha_\+(\d+)__', lambda m: (dt.date.fromisoformat(hoy) + dt.timedelta(days=int(m.group(1)))).isoformat(), v)  # hoy + N días (AAAA-MM-DD)
+        return re.sub(r'__hoy_(\d\d)(\d\d)__', lambda m: f'{hoy}T{m.group(1)}:{m.group(2)}:00-03:00', v)
+    if isinstance(v, list): return [poner(x, tel) for x in v]
+    if isinstance(v, dict): return {k: poner(x, tel) for k, x in v.items()}
+    return v
+
+
+def comprobante_hoy(c, tel):
+    """23/11: comprobante de prueba con la fecha y hora de ahora (los pedidos web se crean hoy: uno del 19/11 sería anterior al pedido)."""
+    import io, tempfile
+    sys.path.insert(0, AQUI)
+    from hacer_comprobantes import hacer
+    ahora = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))) - dt.timedelta(minutes=int(tel[-2:]) % 50)  # otra hora por caso: dos casos en paralelo no chocan en el control de repetidos
+    with tempfile.NamedTemporaryFile(suffix='.jpg') as f:
+        hacer('', int(c['monto']), fecha=ahora.strftime('%d/%m/%Y %H:%M'), oper=str(c.get('oper') or (tel[-3:] + ahora.strftime('%H%M%S') + str(c['monto']))), ruta=f.name)
+        return open(f.name, 'rb').read()
+
+
 def correr_caso(c, tel, url, key, ausente):
     c = fechas(c)
     tk = tel[-8:]  # 26/11: __PID2__ = id del pedido 2 del fixture de este número (pb<tel>-2)
@@ -64,15 +94,17 @@ def correr_caso(c, tel, url, key, ausente):
         for p in c['pasos']:
             # 25/11: el vivo sale del botón (vivoEnCurso) y los próximos vivos de Config: por defecto apagados, así la prueba no depende de la real
             cfg = {'mabelAusente': None, 'diasSinSalida': [], 'vivoEnCurso': None, 'proximosVivos': None}
-            cfg.update({k: (dias_viaje() if v == '__viaje__' else vivo_ahora() if v == '__vivo__' else v) for k, v in (p.get('cfg') or {}).items()})
-            body = {'tel': tel, 'texto': p.get('texto', ''), 'detalle': True, 'cfg': cfg}
+            cfg.update({k: (dias_viaje() if v == '__viaje__' else vivo_ahora() if v == '__vivo__' else poner(v, tel)) for k, v in (p.get('cfg') or {}).items()})
+            body = {'tel': tel, 'texto': poner(p.get('texto', ''), tel), 'detalle': True, 'cfg': cfg}
             if p.get('ausente'): body['ausente'] = ausente; cfg.pop('mabelAusente', None)
             for k in ('previo', 'conv', 'imagen_base64', 'mime', 'derivado', 'repaso', 'esperas', 'cerrar_solos'):
                 if k in p: body[k] = p[k]
             if p.get('imagen'):
                 body['imagen_base64'] = base64.b64encode(open(os.path.join(AQUI, 'comprobantes', p['imagen']), 'rb').read()).decode(); body['mime'] = 'image/jpeg'
-            if c.get('fixture') and p is c['pasos'][0]: body['fixture'] = c['fixture']
-            r = post(url, key, body); pasos.append(r); ultimo = r
+            if p.get('comprobante'):
+                body['imagen_base64'] = base64.b64encode(comprobante_hoy(p['comprobante'], tel)).decode(); body['mime'] = 'image/jpeg'
+            if c.get('fixture') and p is c['pasos'][0]: body['fixture'] = poner(c['fixture'], tel)
+            r = post(url, key, body, intentos=1); pasos.append(r); ultimo = r  # 23/11: un mensaje no se reintenta (el reintento ve el pedido del primero y falla de mentira)
     finally:
         post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
     return revisar(c, ultimo or {}, pasos)
@@ -119,8 +151,12 @@ def revisar(c, r, pasos):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--url', default=URL); ap.add_argument('--solo', default=''); ap.add_argument('--tanda', default='todas')
+    ap.add_argument('--url', default=''); ap.add_argument('--solo', default=''); ap.add_argument('--tanda', default='todas')
+    ap.add_argument('--real', action='store_true', help='correr contra la base REAL (solo con ok de Yoan)')
     a = ap.parse_args()
+    if not a.url: a.url = URL_REAL if a.real else URL_PRUEBA
+    if REAL in a.url and not a.real: sys.exit('Esa URL es de la base REAL: hace falta --real (y el ok de Yoan).')
+    print('Corriendo contra', 'la BASE REAL' if REAL in a.url else 'emma-prueba (base de prueba)', '·', a.url)
     key = os.environ.get('MABEL_TEST_KEY') or sys.exit('Falta MABEL_TEST_KEY')
     banco = json.load(open(os.path.join(AQUI, 'casos.json')))
     casos = [c for c in banco['casos'] if (not a.solo or c['id'] in a.solo.split(',')) and (a.tanda == 'todas' or c.get('tanda', 'ya') == a.tanda)]

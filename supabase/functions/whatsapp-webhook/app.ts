@@ -7,9 +7,9 @@
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
 import { resolverPendientes } from './tools.ts';
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, conCfgPrueba, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, revisarEsperas, marcarPregunta, cerrarSolos, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, conCfgPrueba, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, revisarEsperas, marcarPregunta, cerrarSolos, vivoEnCurso, pareceCatalogo, vencerPedidosWeb, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
-import { fechaVivo, proximosVivosTexto } from './vivo.ts';
+import { proximosVivosTexto } from './vivo.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
@@ -327,8 +327,14 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
   // 8/11: ¿hay un vivo en curso? 25/11: solo si el botón 🔴 Vivo en curso de la app está prendido (vivo.ts), no por la fecha del live.
   // Sin vivo en curso el total ya se mandó o no corresponde: Mabel atiende normal (registra comprobantes, toma entrega).
   const hoyF = hoyUY(), horaUYn = +new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Montevideo', hour: '2-digit', hourCycle: 'h23' }).format(new Date());
-  const liveActivo = await fechaVivo(sb, cfg);
+  // 26/11: una sola cuenta del vivo por turno (botón 🔴 de la app, vivo.ts); crear_pedido_web y la espera usan esta misma (ctx.vivoFecha).
+  // El registro "Ventas · mes" (live con tipo 'ventas', pedidos del catálogo web) nunca es un vivo.
+  const liveActivo = await vivoEnCurso(null, cfg);
+  ctx.vivoFecha = liveActivo;
   ctx.vivo = !!liveActivo; // 20/11 (D-9): el pase durante el vivo usa otra frase
+  // 23/11 (Paso 2): ¿el mensaje viene del catálogo web? Es la única excepción a "vendemos solo en los vivos".
+  ctx.textos = lote.map((m: any) => String(m.texto || '')); ctx.mensajeIds = lote.map((m: any) => String(m.id || ''));
+  const delCatalogo = !repaso && ctx.textos.some(pareceCatalogo);
   // ¿Ya se le mandó el total de ese live? (mensaje del total por WhatsApp o plantilla desde que empezó ese día)
   const { data: totMsg } = await sb.from('mabel_mensajes').select('id').eq('tel_key', telKey).in('direccion', ['out', 'echo']).gte('creado', liveActivo ? new Date(liveActivo + 'T00:00:00-03:00').toISOString() : new Date(Date.now() - 36 * 3600e3).toISOString()).or('texto.ilike.%detalle de tu pedido%,texto.ilike.%Formas de pago%,texto.ilike.%total de tus pedidos%').limit(1);
   const totalEnviado = !!totMsg?.length || !liveActivo;
@@ -364,10 +370,13 @@ async function atender(telKey: string, wa: string, lote: any[], repaso = false, 
     `CADETERÍA: $${tarifaDe(cfg)} · RECARGO MERCADO PAGO: ${mpDe(cfg)}%`,
     salidaCadeteria(cfg),
     // 20/11: link a la página de cambios (Config linkCambios). Sin la clave, Mabel no pasa link.
+    // 23/11: link del catálogo web (Config linkCatalogo). Con él, "sumar algo sin vivo" se resuelve por el catálogo.
+    cfg.linkCatalogo ? 'CATÁLOGO WEB (link para elegir prendas y pedirlas por acá cuando no hay vivo): ' + String(cfg.linkCatalogo) : '',
     cfg.linkCambios ? 'POLÍTICA DE CAMBIOS (link para pasarle si pregunta por cambios): ' + String(cfg.linkCambios) : '',
     // 20/11 (D-3): VIVO siempre dice si hay o no; con vivo, el link fijo (Config linkVivo). TOTAL solo si tiene un pedido de ese vivo.
     !liveActivo ? 'VIVO: no hay vivo en curso. Los totales de los vivos anteriores ya se mandaron: atendé normal (comprobantes, entrega, cuentas si las pide). No digas "cuando termine el vivo" ni pases el link del vivo.'
       : 'VIVO: hay un vivo en curso ahora. Link para conectarse: ' + String(cfg.linkVivo || 'tiktok.com/@emma_indumentaria/live') + '. ' + (!(estado?.pedidos_abiertos || []).some((p: any) => p.fecha_live === liveActivo) ? 'Esta clienta no tiene pedido en este vivo.' : totalEnviado ? 'TOTAL: ya se le mandó el total de su pedido (puede pagar).' : 'TOTAL: todavía NO se le mandó el total de su pedido de este vivo (puede seguir sumando).'),
+    delCatalogo ? 'PEDIDO DEL CATÁLOGO WEB: el mensaje de la clienta es la lista que arma el catálogo web (prendas con código, talle y precio). Es la ÚNICA excepción a "vendemos solo en los vivos" (CONSULTAS DE PRENDAS no se aplica a este mensaje): llamá crear_pedido_web (sin parámetros, lee el mensaje tal como llegó) y seguí lo que devuelve. No digas por tu cuenta qué hay o qué no hay, ni hagas cuentas: el total, el plazo y lo que no queda salen de la herramienta. Para cualquier otra consulta de prendas que no venga del catálogo, la regla de los vivos sigue igual.' : '',
     `FORMAS DE PAGO (texto oficial de Config; no lo reenvíes salvo que la clienta lo pida):\n${typeof cfg.msgPago === 'string' ? cfg.msgPago : '(no cargado)'}`,
     devuelta ? 'CONVERSACIÓN DEVUELTA POR YANAINA: Yanaina atendió esta conversación y te la devolvió. Lo que haya quedado pendiente o mal en tus mensajes anteriores ya lo resolvió ella (pudo cambiar prendas, total o marcar el pago en la app). El ESTADO ACTUAL es la verdad: no pidas disculpas ni expliques diferencias con lo que dijiste antes; seguí desde ahí con lo que la clienta pide ahora.' + (cv?.datos?.notaDevuelta ? ' NOTA DE YANAINA AL DEVOLVERLA (tenela en cuenta; no se la cites a la clienta): ' + String(cv.datos.notaDevuelta).slice(0, 400) : '') : '',
     pagoRevTxt,
@@ -672,6 +681,8 @@ async function repasarPendientes(soloTel = '', dry = false) {
   const solo: string[] = Array.isArray(cfg.mabelSolo) ? cfg.mabelSolo.map((x: string) => telKeyDe(x)).filter(Boolean) : [];
   const ignorar: string[] = Array.isArray(cfg.mabelIgnorar) ? cfg.mabelIgnorar.map((x: any) => telKeyDe(String(x && typeof x === 'object' ? x.tel : x))).filter(Boolean) : []; // 7/11: proveedores, mayoristas, contactos personales: Mabel nunca les contesta ni los repasa
   const equipo = [...ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean), ...ignorar];
+  // 23/11 (Paso 2): pedidos del catálogo web sin pagar con el plazo vencido: quedan marcados "para liberar" (aviso + bandeja)
+  if (!soloTel && !dry) { try { const n = await vencerPedidosWeb(); if (n) hechos.push({ pedidos_web_vencidos: n }); } catch (e) { hechos.push({ pedidos_web_vencidos: 'error ' + String((e as Error).message || e).slice(0, 120) }); } }
   // 25/11: antes traía las primeras 500 de todas (ya había 486): ahora solo las que el repaso puede necesitar
   const qc = sb.from('conversaciones').select('id,datos').eq('borrado', false);
   const { data: convs, error: eCv } = await (soloTel ? qc.eq('id', soloTel) : qc.or('datos->>estado.eq.yanaina,datos->>devuelta.not.is.null,datos->>buscar.not.is.null').limit(2000));
@@ -923,12 +934,20 @@ Deno.serve(async (req) => {
         await sb.from('clientas').delete().eq('id', 'cb' + telKey);
         await sb.from('lives').delete().like('id', 'lbanco-' + telKey + '%');
         await sb.from('paquetes').delete().like('id', 'kb' + telKey + '%');
+        await sb.from('lives').delete().eq('id', 'lbventas-' + telKey);
+        await sb.from('cobros').delete().eq('datos->>clienteId', 'cb' + telKey);
+        // 23/11 (pedido web): pedidos web, prendas y modelos de prueba de este número (ids pw<tel>-…, sb<tel>-N, mdb<tel>-N)
+        await sb.from('pagos').delete().like('pedido_id', 'pw' + telKey + '-%');
+        await sb.from('pedidos').delete().like('id', 'pw' + telKey + '-%');
+        await sb.from('movimientos').delete().like('stock_id', 'sb' + telKey + '-%');
+        await sb.from('stock').delete().like('id', 'sb' + telKey + '-%');
+        await sb.from('modelos').delete().like('id', 'mdb' + telKey + '-%');
       }
-      if (b.borrar_live_banco) { await sb.from('pagos').delete().like('pedido_id', 'pb99000%'); await sb.from('pedidos').delete().like('live_id', 'lbanco-%'); await sb.from('clientas').delete().like('id', 'cb99000%'); await sb.from('lives').delete().like('id', 'lbanco-%'); }
+      if (b.borrar_live_banco) { await sb.from('pagos').delete().like('pedido_id', 'pb99000%'); await sb.from('pedidos').delete().like('live_id', 'lbanco-%'); await sb.from('clientas').delete().like('id', 'cb99000%'); await sb.from('lives').delete().like('id', 'lbanco-%'); await sb.from('lives').delete().like('id', 'lbventas-99000%'); await sb.from('cobros').delete().like('datos->>clienteId', 'cb99000%'); await sb.from('pedidos').delete().like('id', 'pw99000%'); await sb.from('movimientos').delete().like('stock_id', 'sb99000%'); await sb.from('stock').delete().like('id', 'sb99000%'); await sb.from('modelos').delete().like('id', 'mdb99000%'); }
       if (b.solo_limpiar) return Response.json({ ok: true, limpio: telKey });
       if (b.fixture && typeof b.fixture === 'object') { // 19/11: ficha y pedidos de prueba en un live "BANCO MABEL (prueba, no tocar)" propio de ese número (el número de pedido es único por live)
         const fx = b.fixture, ahoraIso = new Date().toISOString(), lf = String(fx.live_fecha || '2026-11-13');
-        const lid = 'lbanco-' + telKey, lv = { id: lid, fecha: lf, nombre: 'BANCO MABEL (prueba, no tocar)', descuento: 0, fechaPago: 'el sábado 21/11', fechaPagoISO: String(fx.fecha_pago || '2026-11-21'), pedidoCounter: 999 };
+        const lid = 'lbanco-' + telKey, lv = { id: lid, fecha: lf, nombre: 'BANCO MABEL (prueba, no tocar)', descuento: 0, fechaPago: fx.fecha_pago ? (() => { const d = new Date(String(fx.fecha_pago) + 'T12:00:00Z'); return 'el ' + ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][d.getUTCDay()] + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1); })() : 'el sábado 21/11', fechaPagoISO: String(fx.fecha_pago || '2026-11-21'), pedidoCounter: 999 };
         await sb.from('lives').upsert({ id: lid, nombre: lv.nombre, fecha: lf, datos: lv, borrado: false, actualizado: ahoraIso });
         const cid = 'cb' + telKey, cd = { id: cid, tel: '0' + telKey, telKey, nombre: fx.nombre || 'Prueba Banco', alias: [], creado: ahoraIso, saldoFavor: 0, historialViejo: [], ...(fx.clienta || {}) };
         await sb.from('clientas').upsert({ id: cid, nombre: cd.nombre, tel_key: telKey, datos: cd, borrado: false, actualizado: ahoraIso });
@@ -953,6 +972,25 @@ Deno.serve(async (req) => {
         if (fx.paquete) { // 26/11: paquete armado hoy con el pedido N (fx.paquete = número de orden en fixture.pedidos, desde 1)
           const pidK = 'pb' + telKey + '-' + (+fx.paquete || 1), kid = 'kb' + telKey, f0 = new Date().toISOString();
           await sb.from('paquetes').upsert({ id: kid, tipo: 'agencia', fecha: f0, pedidos: [pidK], datos: { id: kid, tipo: 'agencia', fecha: f0, pedidos: [pidK], nums: [900], clienteId: cid }, borrado: false, actualizado: f0 });
+        }
+        // 23/11 (pedido web): prendas de prueba [k, nombre, talle, stock, precio, publicado?] → modelo num 9<tel3><k> (ej. 91041), stock sb<tel>-<k>
+        // El modelo queda 🌐 publicado (m.web.pub con una foto, como Gestión) salvo que el 6º valor sea false.
+        // 7º valor = código con letras (ej. "RP"): el modelo queda sin número y con código RP<tel3><k>, como la mayoría de los modelos de la app.
+        // 8º valor = "precio para la clienta" de las fotos (m.web.precio), el que muestra el catálogo.
+        for (const [k, nombre, talle, cant, precio, pub, letras, precioWeb] of (Array.isArray(fx.stock) ? fx.stock : [])) {
+          const mid = 'mdb' + telKey + '-' + k, sid = 'sb' + telKey + '-' + k + '-' + String(talle || 'U'), mnum = letras ? 0 : +('9' + telKey.slice(-3) + k);
+          const md = { id: mid, num: mnum, nombre: String(nombre || 'PRENDA PRUEBA'), categoria: 'Otro', tipoTalle: 'letras', precioVenta: +precio || 0, alias: letras ? [String(letras).toUpperCase() + telKey.slice(-3) + k] : [], activo: true, creado: ahoraIso,
+            web: { fotos: [{ p: 'prueba/' + mid + '.jpg', u: 'https://example.invalid/prueba/' + mid + '.jpg' }], pub: pub !== false, ...(pub !== false ? { publicado: ahoraIso } : {}), ...(+precioWeb ? { precio: +precioWeb } : {}) } };
+          await sb.from('modelos').upsert({ id: mid, num: mnum, datos: md, borrado: false, actualizado: ahoraIso });
+          const sd = { id: sid, modeloId: mid, talle: String(talle || 'U'), codigo: 'B' + telKey.slice(-3) + k + String(talle || 'U'), descripcion: md.nombre + (talle && talle !== 'U' ? ' T.' + talle : ''), categoria: 'Otro', stock: +cant || 0, precioVenta: +precio || 0, activo: true };
+          const { error: eS } = await sb.from('stock').upsert({ id: sid, codigo: sd.codigo, datos: sd, borrado: false, actualizado: ahoraIso });
+          if (eS) return Response.json({ error: 'fixture stock: ' + eS.message }, { status: 500 });
+        }
+        // Pedido web ya hecho: q.web_vence_min = minutos hasta el plazo (negativo = ya venció)
+        for (const [i, q] of (Array.isArray(fx.pedidos) ? fx.pedidos : []).entries()) if (q.web_vence_min !== undefined) {
+          const pid = 'pb' + telKey + '-' + (i + 1), { data: r0 } = await sb.from('pedidos').select('datos').eq('id', pid).single();
+          const vence = new Date(Date.now() + (+q.web_vence_min) * 60e3).toISOString();
+          await sb.from('pedidos').update({ datos: { ...r0!.datos, web: { mensaje: 'fixture', firma: 'fixture', creado: new Date(Date.now() - 125 * 60e3).toISOString(), pagarHasta: vence } } }).eq('id', pid);
         }
         if (fx.total_mandado) await sb.from('mabel_mensajes').insert({ id: uid('prev'), tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'plantilla', texto: 'Hola bella! Te paso el detalle de tu pedido', procesado: true, creado: new Date(Date.now() - 20 * 3600e3).toISOString() });
       }
