@@ -32,10 +32,25 @@ const barrioOpciones = (v: string) => {
 const CUENTAS_DEF = ['BROU', 'Mi Dinero', 'OCA', 'Mercado Pago', 'Efectivo'];
 // 20/11 (Tanda E, decisión del 13/11): cuentas que se aceptan para marcar pagos pero nunca se ofrecen (no están en el mensaje de totales).
 const CUENTAS_SOLO_MARCAR = ['PREX YOAN'];
+// 26/11 (caso #24): cuentas que ya no se usan para cobrar. config.cuentasRetiradas = [{ nombre, claves: [número de cuenta, apellido], frase? }]
+// (los números viven SOLO en la base: el repo es público). Sin la clave en Config vale "Prex vieja": cualquier destino Prex que no sea PREX YOAN.
+const CUENTAS_RETIRADAS_DEF = [{ nombre: 'Prex vieja', claves: [] as string[], prex: true }];
+export const FRASE_PREX_VIEJA = 'Bella, esa cuenta Prex ya no la estamos usando para cobrar. Le paso tu comprobante a Yanaina para que se fije si llegó 🫶';
+export function cuentaRetirada(cfg: any, a: any): { nombre: string; frase: string } | null {
+  const lista: any[] = Array.isArray(cfg?.cuentasRetiradas) && cfg.cuentasRetiradas.length ? [...cfg.cuentasRetiradas, ...CUENTAS_RETIRADAS_DEF] : CUENTAS_RETIRADAS_DEF;
+  const txt = normB([a?.destino, a?.titular_destino, a?.banco, a?.cuenta].filter(Boolean).join(' ')), dig = txt.replace(/\D/g, '');
+  for (const r of lista) {
+    const claves = (Array.isArray(r?.claves) ? r.claves : []).map((k: any) => String(k || '').trim()).filter(Boolean);
+    const hit = claves.some((k: string) => { const kd = k.replace(/\D/g, ''); return kd.length >= 4 && kd.length >= k.replace(/[\s.\-]/g, '').length - 1 ? dig.includes(kd) : normB(k).length >= 3 && txt.includes(normB(k)); })
+      || (r?.prex === true && /\bprex\b/.test(txt) && !/yoan/.test(txt));
+    if (hit) { const nombre = String(r.nombre || 'Cuenta vieja'); return { nombre, frase: String(r.frase || '') || (/prex/i.test(nombre) ? FRASE_PREX_VIEJA : 'Bella, esa cuenta ya no la estamos usando para cobrar. Le paso tu comprobante a Yanaina para que se fije si llegó 🫶') }; }
+  }
+  return null;
+}
 const medioDe = (c: string) => /mercado\s*pago/i.test(c || '') ? 'mercadopago' : /efectivo|d[eé]bito|cr[eé]dito/i.test(c || '') ? 'efectivo' : 'transferencia';
 const esHabitual = (a: string) => /^(dac|nu[nñ]ez|correo)/.test(normB(a));
 
-export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean; ausente?: boolean; vivo?: boolean; sinPase?: boolean };
+export type Ctx = { telKey: string; wa: string; clienta: any | null; clientas: any[]; media: { path: string; sha256: string; mime: string } | null; llamadas: string[]; derivado?: boolean; inicio?: string; repaso?: boolean; anteriores?: boolean; ausente?: boolean; vivo?: boolean; sinPase?: boolean; paseSinAviso?: boolean };
 
 // ─── Config ───────────────────────────────────────────────────────
 // 19/11 (banco de casos): solo el modo prueba (x-mabel-test) pone cfgPrueba, para simular Config sin tocar la real.
@@ -185,7 +200,7 @@ export async function buscarPedido(ctx: Ctx) {
     return {
       ...(anteriores.has(r.id) ? { anterior_a_mabel_sin_marcar_pago: true, indicio_en_historial: evidencia[r.id] || null, aviso: 'NO le pidas comprobante de este pedido y no le digas que lo debe: puede estar pagado y sin marcar. Si hace falta, pasalo a Yanaina en silencio.' } : {}),
       numero: p.num, live: live?.nombre || '', fecha_live: live?.fecha || null, plazo_para_pagar_hasta: live?.datos?.fechaPagoISO || null, ...(pagado(p) && p.estado !== 'enviado' && p.pago?.fecha ? { pagado_el: p.pago.fecha, salida_prevista: salidaPrevista(entregaEf(p, c), c?.datos?.agencia || '', p.pago.fecha, cfg) } : {}), total, detalle_del_total: detalle, estado: p.estado, estado_pago: estadoPago(p, c),
-      entrega: entregaEf(p, c), confirmado: !!p.confirmado, guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar, ...(p.horarioEnvio ? { horario_de_este_envio: p.horarioEnvio } : {}),
+      entrega: (p.entrega && p.entrega !== 'sin_definir') ? p.entrega : 'sin_definir', confirmado: !!p.confirmado, // 26/11 (caso #17): sin suponer agencia por la ficha guardado_sin_pagar_hasta: p.guardadoSinPagar?.hasta || null, paga_al_retirar: !!p.pagaAlRetirar, ...(p.horarioEnvio ? { horario_de_este_envio: p.horarioEnvio } : {}),
       cadeteria_cobra_el_cadete: p.entrega === 'cadeteria' ? (p.cobroEnvio === 'pago' ? 0 : p.cobroEnvio === 'monto' ? (+p.cobroMonto || 0) : tar) : null,
       en_cobro_agrupado: cobros.find((k) => (k.datos.pedidos || []).includes(r.id))?.id || null,
     };
@@ -203,8 +218,11 @@ export async function buscarPedido(ctx: Ctx) {
   }
   // 5/11: para cambios — pedidos ya enviados/entregados en los últimos 21 días, con los días que pasaron desde que salieron
   let enviados_recientes: any[] = [];
+  let como_la_otra_vez: any = null, como_la_otra_vez_no: string | null = null;
   if (ctx.clientas.length) {
     const { data: en } = await sb.from('pedidos').select('*').in('clienta_id', ctx.clientas.map((k) => k.id)).eq('borrado', false).eq('estado', 'enviado');
+    // 26/11 (caso #17): "como la otra vez" = la entrega de los últimos pedidos que salieron, no los campos sueltos de la ficha.
+    ({ como_la_otra_vez, como_la_otra_vez_no } = comoLaOtraVez((en || []).map((r: any) => r.datos), c));
     const hoyMs = Date.now(), hoyF = hoyUY(), horaUY = +new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' }).format(new Date());
     // 5/11: "enviado" en la app = etiqueta impresa, NO que salió. Salida real = el equipo ya le mandó la foto del comprobante de envío (o pasaron más de 5 días).
     const minF = (en || []).map((r) => r.datos.fechas?.enviado || r.datos.fechas?.listo).filter(Boolean).sort()[0];
@@ -232,6 +250,8 @@ export async function buscarPedido(ctx: Ctx) {
   }
   return {
     enviados_recientes,
+    como_la_otra_vez,
+    ...(como_la_otra_vez_no ? { como_la_otra_vez_no } : {}),
     clienta_encontrada: !!c,
     nota_de_la_clienta: c?.datos?.notaMabel || '',
     datos_guardados: c ? { direccion: c.datos.direccion || '', barrio: c.datos.barrio || '', agencia: c.datos.agencia || '', ciudad: c.datos.ciudad || '', departamento: c.datos.depto || '', nombre_envio: c.datos.nombreEnvio || '', ci: c.datos.ci || '', nota_cadete: c.datos.notaCadete || '', horario_preferencia: c.datos.horarioPref || '', otras_direcciones: (c.datos.direcciones || []).filter((x: any) => normD(x.direccion) !== normD(c.datos.direccion)).map((x: any) => ({ direccion: x.direccion, barrio: x.barrio || '', etiqueta: x.etiqueta || '' })), puede_guardar_sin_pagar: !!c.datos.puedeGuardarSinPagar } : null,
@@ -241,6 +261,31 @@ export async function buscarPedido(ctx: Ctx) {
     sin_pagar_para_marcar: sinPagar.length,
     config: { tarifa_cadeteria: tar, recargo_mercado_pago_pct: mp, cuentas: cuentasDe(cfg) },
   };
+}
+
+// 26/11 (caso #17): la entrega para ofrecer "como la otra vez". Sale del último pedido enviado y tiene que coincidir con el anterior
+// y con la ficha; si no, no se ofrece (se pregunta "¿cadete a tu casa, agencia o retiro?"). Sin pedidos enviados vale la ficha
+// solo si no está mezclada (agencia o dirección de cadete, no las dos).
+const NO_OTRA_VEZ = 'No ofrezcas "como la otra vez": preguntá "¿Cadete a tu casa, agencia o retiro?".';
+export function comoLaOtraVez(enviados: any[], c: any): { como_la_otra_vez: any; como_la_otra_vez_no: string | null } {
+  const d = c?.datos || {}, s = (v: any) => String(v ?? '').trim();
+  const cad = s(d.direccion) ? { tipo: 'cadeteria', direccion: s(d.direccion), barrio: s(d.barrio) } : null;
+  const ag = s(d.agencia) && s(d.ciudad) ? { tipo: 'agencia', agencia: s(d.agencia), ciudad: s(d.ciudad), departamento: s(d.depto), nombre_envio: s(d.nombreEnvio) } : null;
+  const fecha = (p: any) => String(p?.fechas?.enviado || p?.fechas?.listo || p?.fechas?.creado || '');
+  const ult = (enviados || []).filter((p) => p && ['cadeteria', 'agencia', 'retiro'].includes(p.entrega)).sort((x, y) => fecha(y).localeCompare(fecha(x))).slice(0, 2);
+  if (!c) return { como_la_otra_vez: null, como_la_otra_vez_no: null };
+  if (!ult.length) {
+    const mvd = cad && barrioCanon(cad.barrio);
+    if (ag && !mvd) return { como_la_otra_vez: ag, como_la_otra_vez_no: null };
+    if (cad && !ag) return { como_la_otra_vez: cad, como_la_otra_vez_no: null };
+    return { como_la_otra_vez: null, como_la_otra_vez_no: ag || cad ? 'La ficha tiene datos mezclados (agencia y dirección de cadete). ' + NO_OTRA_VEZ : null };
+  }
+  if (ult.length === 2 && ult[0].entrega !== ult[1].entrega) return { como_la_otra_vez: null, como_la_otra_vez_no: `Los últimos dos pedidos salieron distinto (${ult[0].entrega} y ${ult[1].entrega}). ` + NO_OTRA_VEZ };
+  const tipo = ult[0].entrega;
+  if (tipo === 'retiro') return { como_la_otra_vez: { tipo: 'retiro' }, como_la_otra_vez_no: null };
+  const x = tipo === 'cadeteria' ? cad : ag;
+  if (!x) return { como_la_otra_vez: null, como_la_otra_vez_no: `El último pedido salió por ${tipo} y la ficha no tiene esos datos. ` + NO_OTRA_VEZ };
+  return { como_la_otra_vez: x, como_la_otra_vez_no: null };
 }
 
 // ─── Escritura con control de cambios ─────────────────────────
@@ -448,7 +493,15 @@ export const FRASE_YHAROL = 'Dale bella, le avisamos a Yharol por tu pedido 🫶
 export const frasePase = (ctx?: { ausente?: boolean; vivo?: boolean } | null, categoria?: string) => categoria === 'yharol' ? FRASE_YHAROL : ctx?.ausente ? FRASE_PASE_AUSENTE : ctx?.vivo ? FRASE_PASE_VIVO : FRASE_PASE;
 // Frases de pase (la vieja sigue en el historial): para no repetirla y para sacarla cuando el pase va en silencio.
 export const RE_PASE = /(ya le aviso a yanaina|ya se lo paso a yanaina|contame en un mensaje qu[eé] necesit[aá]s|le avisamos a yharol)/i;
-export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, categoria?: string, frasePropia = false) {
+// 26/11 (caso #24): frases propias de un motivo que también cuentan como "ya se le avisó del pase".
+export const RE_AVISO_PROPIO = /(ya no la estamos usando|le paso tu comprobante a yanaina|te paso con yanaina|lo consulto con yanaina|yanaina te (confirma|escribe|contesta))/i;
+// 26/11: ¿salió alguna frase de pase (o la frase propia del motivo) desde `desde`? Si no, el pase quedó sin aviso.
+export async function seAvisoDesde(telKey: string, desde: string, frase = '') {
+  const { data } = await sb.from('mabel_mensajes').select('texto').eq('tel_key', telKey).eq('direccion', 'out').gte('creado', desde).limit(40);
+  const f = normB(frase).slice(0, 40);
+  return (data || []).some((m: any) => { const t = String(m.texto || ''); return RE_PASE.test(t) || RE_AVISO_PROPIO.test(t) || (!!f && normB(t).includes(f)); });
+}
+export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, categoria?: string, frasePropia = false, fraseCaso = '') {
   // 25/11: en el repaso de una conversación que el equipo ya contestó (y la clienta no volvió a escribir) no se deriva nada.
   if (ctx.sinPase) return { ok: true, derivado: false, no_hace_falta: true, instruccion: 'El equipo ya le contestó a la clienta y ella no volvió a escribir: no hace falta pasarlo. Terminá la nota del repaso.' };
   // 4/11: cuando deriva Mabel, la conversación vuelve sola a Mabel en 1 hora (si Yanaina contesta desde el celu, el eco la deja más tiempo)
@@ -467,18 +520,27 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, 
   if (!dv) return { ok: false, derivado: false, error: 'No se pudo dejar el pase para Yanaina (falla al guardar).', instruccion: 'NO le digas que le avisás a Yanaina ni que alguien le escribe. Contestale solo lo que puedas resolver vos; si no hay nada para contestar, respondé exactamente "(sin mensaje)".' };
   const { data: prevCv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
   const prev = prevCv?.datos || {};
+  // 26/11 (caso #24): el pase repetido solo se calla si a la clienta ya le salió la frase del pase desde el PRIMER pase de este
+  // pendiente. Si el turno que derivó se descartó (reintento) y nunca se le dijo nada, se le dice ahora.
+  const paseDesde = dv.repetido ? String(prev.paseDesde || prev.derivadoEn || ahora.toISOString()) : ahora.toISOString();
+  const sinAviso = !!dv.repetido && !silencio && !ctx.repaso && !(await seAvisoDesde(ctx.telKey, paseDesde, prev.fraseAviso || ''));
+  const repetido = dv.repetido && !sinAviso;
+  const fraseAviso = silencio || repetido ? (dv.repetido ? prev.fraseAviso || '' : '') : (fraseCaso || (frasePropia && categoria !== 'yharol' ? '' : frasePase(ctx, categoria)));
   // 9/11: el repaso tiene que mirar lo que la clienta escribió y nadie contestó: desde el último mensaje nuestro (de Mabel o del equipo) anterior a este pase
   const { data: ultNuestro } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', ctx.telKey).in('direccion', ['out', 'echo']).not('tipo', 'in', '(edit,revoke,reaction,system,ephemeral,unsupported)').order('creado', { ascending: false }).limit(1);
   const revisarDesde = ultNuestro?.[0]?.creado ? new Date(ultNuestro[0].creado).toISOString() : null;
   // 14/11 (punto 8): ya no se calla por "otro pase en las últimas 6 h". Solo se calla si ya había un pendiente del MISMO tema (repetido).
-  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(dv.repetido && !silencio ? { repetido: true } : {}), ...(!silencio && !dv.repetido && !ctx.repaso ? { espera: ahora.toISOString() } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
+  const datos = { id: ctx.telKey, tel: c?.datos?.tel || '0' + ctx.telKey, clienteId: c?.id || null, estado: 'yanaina', motivo: String(motivo || 'Sin motivo').slice(0, 200), desde: ahora.toISOString(), hasta: hasta.toISOString() , derivadoEn: ahora.toISOString(), derivadoAntes: prev.derivadoEn || null, paseDesde, ...(fraseAviso ? { fraseAviso } : {}), ...(repetido && prev.avisado ? { avisado: prev.avisado } : {}), ...(prev.pagoRevision ? { pagoRevision: prev.pagoRevision } : {}), ...(revisarDesde ? { revisarDesde } : {}), ...(silencio ? { silencio: true } : {}), ...(repetido && !silencio ? { repetido: true } : {}), ...(!silencio && !repetido && !ctx.repaso ? { espera: ahora.toISOString() } : {}), ...(prev.repaso ? { repaso: prev.repaso } : {}), ...(prev.buscar ? { buscar: prev.buscar } : {}) };
   const { error } = await sb.from('conversaciones').upsert({ id: ctx.telKey, datos, borrado: false, actualizado: ahora.toISOString() }, { onConflict: 'id' });
   if (error) throw new Error(error.message);
   ctx.derivado = true;
   if (silencio) return { ok: true, derivado: true, en_silencio: true, instruccion: 'Quedó para Yanaina en silencio: NO le escribas nada a la clienta sobre esto (ni "le aviso a Yanaina"). Si no hay otra cosa para contestarle, respondé exactamente "(sin mensaje)".' };
-  if (dv.repetido) return { ok: true, derivado: true, ya_estaba_pendiente: true, instruccion: 'Ya había un pase de este mismo tema esperando a Yanaina: quedó sumado. NO le repitas que le avisás a Yanaina. Si la clienta preguntó otra cosa que podés contestar, contestala; si no, respondé exactamente "(sin mensaje)".' };
-  if (frasePropia && categoria !== 'yharol') return { ok: true, derivado: true, instruccion: 'Quedó para Yanaina. Decile solo la frase propia del caso, sin otra frase de pase.' };
-  return { ok: true, derivado: true, mensaje_para_la_clienta: frasePase(ctx, categoria), ...(silencioNegado ? { nota: 'No va en silencio: nadie del equipo le escribió en la última hora. Decile mensaje_para_la_clienta.' } : {}) };
+  if (sinAviso) ctx.paseSinAviso = true;
+  if (repetido) return { ok: true, derivado: true, ya_estaba_pendiente: true, instruccion: 'Ya había un pase de este mismo tema esperando a Yanaina: quedó sumado. NO le repitas que le avisás a Yanaina. Si la clienta preguntó otra cosa que podés contestar, contestala; si no, respondé exactamente "(sin mensaje)".' };
+  const notaSinAviso = sinAviso ? { nota_pase: 'Ya había un pase de este tema, pero todavía no se le avisó a la clienta: decile la frase ahora (una sola vez).' } : {};
+  if (fraseCaso) return { ok: true, derivado: true, mensaje_para_la_clienta: fraseCaso, ...notaSinAviso };
+  if (frasePropia && categoria !== 'yharol') return { ok: true, derivado: true, instruccion: 'Quedó para Yanaina. Decile solo la frase propia del caso, sin otra frase de pase.', ...notaSinAviso };
+  return { ok: true, derivado: true, mensaje_para_la_clienta: frasePase(ctx, categoria), ...notaSinAviso, ...(silencioNegado ? { nota: 'No va en silencio: nadie del equipo le escribió en la última hora. Decile mensaje_para_la_clienta.' } : {}) };
 }
 
 // 14/11 (MAR-04): ¿es solo un agradecimiento o un "ok"? Mira todas las palabras ("ok gracias", "bien", "Mu has gracias 😘").
@@ -526,8 +588,14 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   // 20/11 (Tanda E, SEG-01): sin comprobante no se marca. Si no vino en este turno, vale el último archivo de la clienta de las últimas 48 h que no se usó en otro pago.
   if (!ctx.media) ctx.media = await comprobanteReciente(ctx);
   if (!ctx.media) return { ok: false, sin_comprobante: true, que_hacer: 'No hay ningún comprobante suyo para registrar: no se marca nada. Si dice que pagó, pedile "¿Me mandás una captura del comprobante, bella?". Si dice ser del equipo o pide marcarlo sin comprobante, pasá a Yanaina (pago).' };
-  if (a.destino_coincide === false) return derivar(ctx, 'El comprobante va a una cuenta que no es de Emma', 'pago');
-  if (!cuenta) return derivar(ctx, `Cuenta "${a.cuenta}" no reconocida en el comprobante`, 'pago');
+  // 26/11 (caso #24): todo pase de pago con comprobante deja anotado qué mandó (PAGO EN REVISIÓN: Mabel no se lo vuelve a pedir).
+  const enRevision = async (motivo: string, frase = '') => { await anotarRevision(ctx, { monto, destino: String(a.destino || a.titular_destino || a.cuenta || '').slice(0, 60) }); return derivar(ctx, motivo, 'pago', frase); };
+  if (a.destino_coincide === false) {
+    const ret = cuentaRetirada(cfg, a);
+    if (ret) return enRevision(`Pagó a la ${ret.nombre} (ya no se usa): revisar si entró $${monto || '?'}`, ret.frase);
+    return enRevision('El comprobante va a una cuenta que no es de Emma');
+  }
+  if (!cuenta) return enRevision(`Cuenta "${a.cuenta}" no reconocida en el comprobante`);
   if (!(monto > 0)) return { error: 'Falta el monto del comprobante: pedile que lo mande de nuevo, más claro.' };
 
   const { filas, lives, cobros } = await abiertos(ctx);
@@ -540,7 +608,7 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     // 21/11 (MAI-08): los pedidos anteriores a Mabel no se suman a lo que paga ahora (igual que en buscar_pedido).
     const ant = filas.filter((r) => esAnteriorAMabel(r, lives.get(r.live_id), cfg));
     const sp = filas.filter((r) => !pagado(r.datos) && r.datos.estado === 'pendiente' && !ant.includes(r));
-    if (!sp.length && ant.length) return derivar(ctx, `Mandó un comprobante de $${monto} y solo tiene pedidos anteriores a Mabel sin marcar (${ant.map((r) => '#' + r.datos.num).join(', ')}): revisar si es de esos`, 'pago');
+    if (!sp.length && ant.length) return enRevision(`Mandó un comprobante de $${monto} y solo tiene pedidos anteriores a Mabel sin marcar (${ant.map((r) => '#' + r.datos.num).join(', ')}): revisar si es de esos`);
     objetivo = sp;
     if (sp.length > 1) {
       // 4/11: varios pedidos sin pagar y sin cobro agrupado: si el monto cierra con el del último live, o con todos juntos, se marca eso
@@ -548,7 +616,7 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
       const cierra = (ps: any[]) => { const b = ps.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0); return [b, b + tar, Math.round(b * (1 + mp / 100)), Math.round((b + tar) * (1 + mp / 100))].some((e) => monto >= e - 2 && monto <= e + 30); };
       if (cierra([ult])) objetivo = [ult];
       else if (cierra(sp)) objetivo = sp;
-      else return derivar(ctx, `Tiene ${sp.length} pedidos sin pagar (${sp.map((r) => '#' + r.datos.num).join(', ')}) y el comprobante de $${monto} no coincide ni con el último ni con todos juntos`, 'pago');
+      else return enRevision(`Tiene ${sp.length} pedidos sin pagar (${sp.map((r) => '#' + r.datos.num).join(', ')}) y el comprobante de $${monto} no coincide ni con el último ni con todos juntos`);
     }
   }
   if (!objetivo.length) return { error: 'No hay ningún pedido sin pagar para marcar. Si dice que ya pagó, pasalo a Yanaina.' };
@@ -557,12 +625,12 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   const f = String(a.fecha_comprobante || '').slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(f)) {
     const fl = objetivo.map((r) => lives.get(r.live_id)?.fecha).filter(Boolean).sort()[0];
-    if (fl && f < String(fl).slice(0, 10)) return derivar(ctx, `Comprobante de fecha ${f}, anterior al live (${String(fl).slice(0, 10)})`, 'pago');
+    if (fl && f < String(fl).slice(0, 10)) return enRevision(`Comprobante de fecha ${f}, anterior al live (${String(fl).slice(0, 10)})`);
   }
   // Comprobante ya usado
   if (ctx.media?.sha256) {
     const { data: dup } = await sb.from('pagos').select('id').eq('borrado', false).filter('datos->>sha256', 'eq', ctx.media.sha256).limit(1);
-    if (dup?.length) return derivar(ctx, 'Ese comprobante ya figura en otro pago', 'pago');
+    if (dup?.length) return enRevision('Ese comprobante ya figura en otro pago');
   }
   // 21/11 (SEG-01 paso 3): otra captura del mismo comprobante tiene otra huella. Se compara lo leído: mismo monto, fecha y cuenta,
   // y además la misma hora o el mismo número de operación (sin hora ni número no se compara, para no frenar dos pagos iguales del mismo día).
@@ -571,12 +639,12 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   if (/^\d{4}-\d{2}-\d{2}$/.test(f) && (hora || oper.length >= 4)) {
     const { data: igu } = await sb.from('pagos').select('id,datos').eq('borrado', false).filter('datos->lectura->>fecha', 'eq', f).filter('datos->lectura->>monto', 'eq', String(monto)).limit(20);
     const rep = (igu || []).find((g: any) => normB(g.datos?.cuenta) === normB(cuenta) && ((hora && g.datos?.lectura?.hora === hora) || (oper.length >= 4 && g.datos?.lectura?.operacion === oper)));
-    if (rep) return derivar(ctx, `Ese comprobante ya figura en otro pago (mismo monto, fecha${hora ? ', hora' : ''}${oper.length >= 4 ? ', n° de operación' : ''} y cuenta)`, 'pago');
+    if (rep) return enRevision(`Ese comprobante ya figura en otro pago (mismo monto, fecha${hora ? ', hora' : ''}${oper.length >= 4 ? ', n° de operación' : ''} y cuenta)`);
   }
   // Esperado (sin cadetería, salvo cobro agrupado que ya la trae) y faltante
   const base = objetivo.reduce((s, r) => s + calcTotal(r.datos, lives.get(r.live_id)), 0);
   const esp = esperadoDe(base, envCobro, cuenta, mp);
-  if (monto < esp.total) return derivar(ctx, `Transfirió de menos (faltan $${esp.total - monto}) · esperado $${esp.total}, transfirió $${monto} por ${cuenta}`, 'pago');
+  if (monto < esp.total) return enRevision(`Transfirió de menos (faltan $${esp.total - monto}) · esperado $${esp.total}, transfirió $${monto} por ${cuenta}`);
 
   // Registrar (misma lógica que registrarPagos de la app)
   const ajuste = monto - esp.total;
@@ -627,7 +695,17 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
       : `Sobran $${ajuste}: preguntale por qué ("Vi que transferiste $${monto} y era $${esp.total}, ¿es por algo en especial?"). Si dice que es por la cadetería (vale $${tar}), guardá la entrega con envio_transferido=${ajuste} y avisale cuánto falta ($${tar - ajuste}) que se lo paga al cadete. Si es por otra cosa o no queda claro, pasalo a Yanaina con la diferencia.`,
   };
 }
-async function derivar(ctx: Ctx, motivo: string, categoria?: string) { const r = await pasarAYanaina(ctx, motivo, false, categoria || categoriaDe(motivo)); return { ...r, ok: false, motivo }; }
+async function derivar(ctx: Ctx, motivo: string, categoria?: string, frase = '') { const r = await pasarAYanaina(ctx, motivo, false, categoria || categoriaDe(motivo), false, frase); return { ...r, ok: false, motivo }; }
+// 26/11: lo que mandó la clienta y quedó para que Yanaina lo revise (conversaciones.datos.pagoRevision). Lo lee atender (PAGO EN REVISIÓN).
+async function anotarRevision(ctx: Ctx, r: { monto: number; destino: string }) {
+  try {
+    let fecha = new Date().toISOString();
+    if (ctx.media?.path) { const { data: mm } = await sb.from('mabel_mensajes').select('creado').eq('tel_key', ctx.telKey).eq('direccion', 'in').filter('media->>path', 'eq', ctx.media.path).limit(1); if (mm?.[0]?.creado) fecha = new Date(mm[0].creado).toISOString(); }
+    const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', ctx.telKey).maybeSingle();
+    const d = { ...(cv?.datos || { id: ctx.telKey, estado: 'agente' }), pagoRevision: { fecha, monto: r.monto || 0, destino: r.destino } };
+    await sb.from('conversaciones').upsert({ id: ctx.telKey, datos: d, borrado: false, actualizado: new Date().toISOString() }, { onConflict: 'id' });
+  } catch (e) { console.error('pagoRevision:', (e as Error).message || e); }
+}
 
 // ─── guardar_entrega ───────────────────────────────────────────
 const AVISO_BARRIO = 'Falta el barrio de la cadetería';
@@ -647,6 +725,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
 
   const s = (v: any) => String(v ?? '').trim();
   const cambiosCli: Record<string, string> = {};
+  const extraCli: any = { ultimaEntrega: { tipo, fecha: hoyUY() } }; // 26/11: cómo pidió que le llegue la última vez
   const hint: any = {};
   // 11/11 (Yoan, caso Xime): el barrio ya no frena la carga. Si falta o no se reconoce, la cadetería se carga igual con la dirección,
   // queda el aviso "Falta el barrio" en Despacho y Mabel lo pregunta una sola vez; si la clienta contesta, se vuelve a llamar con el barrio.
@@ -658,6 +737,8 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     if (!barrio) { faltaBarrio = true; opBarrio = s(a.barrio) ? barrioOpciones(s(a.barrio)) : []; }
     cambiosCli.direccion = s(a.direccion); if (barrio) cambiosCli.barrio = barrio;
     if (s(a.nombre_retira)) cambiosCli.nombreEnvio = s(a.nombre_retira);
+    // 26/11 (caso #17): la ficha no queda mezclada. La agencia de antes pasa a agenciaAnterior (no se pierde) y se vacía.
+    { const f0 = ctx.clienta?.datos || {}; if (s(f0.agencia) || s(f0.ciudad)) { extraCli.agenciaAnterior = { agencia: s(f0.agencia), ciudad: s(f0.ciudad), depto: s(f0.depto) }; cambiosCli.agencia = ''; cambiosCli.ciudad = ''; cambiosCli.depto = ''; } }
     // 24/11 (caso Carolina #85): la nota del cadete es solo lo fijo (timbre, portón, apto). Si Mabel reenvía lo que ya está en la ficha
     // (o el horario guardado), no se toca: el horario va aparte y nunca sale solo.
     const fichaC = ctx.clienta?.datos || {}, nc = s(a.nota_cadete);
@@ -669,6 +750,14 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
     if (!s(a.agencia) || !s(a.ciudad)) return { error: 'Faltan la agencia y la ciudad.' };
     // 24/11 (Yoan, casos Rita y Mel): el departamento es obligatorio en agencia. Vale el de la ficha solo si es la misma ciudad.
     const fichaV = ctx.clienta?.datos || {}, mismaCiudad = normD(fichaV.ciudad) === normD(a.ciudad);
+    // 26/11 (caso #17): agencia con departamento Montevideo y una ciudad de otro departamento, o con dirección de casa (calle y número):
+    // no cierra. No se guarda y se pregunta una vez cadete o agencia (salvo que ya lo confirmó: confirma_agencia).
+    {
+      const dep = s(a.departamento) || (mismaCiudad ? s(fichaV.depto) : '');
+      const ciudadMvd = normD(a.ciudad) === 'montevideo' || !!barrioCanon(s(a.ciudad));
+      const dirCasa = /\p{L}[\p{L}.']*(\s+\p{L}[\p{L}.']*)*\s+(n[°º.]?\s*)?\d{2,5}\b/u.test(s(a.direccion));
+      if (normD(dep) === 'montevideo' && (!ciudadMvd || dirCasa) && a.confirma_agencia !== true) return { error: 'Los datos no cierran con agencia (Montevideo + dirección de casa). No se guardó nada. Preguntale una vez: ¿te lo mandamos con cadete a esa dirección o por agencia? Si elige cadete, guardá la entrega con tipo cadeteria (dirección y barrio). Si confirma agencia, volvé a llamar con confirma_agencia=true.', no_cierra: true };
+    }
     if (!s(a.departamento) && !(mismaCiudad && s(fichaV.depto))) return { error: 'Falta el departamento. No es una falla: no se cargó nada. Preguntale a la clienta "¿De qué departamento, bella?" (no lo deduzcas por el nombre de la ciudad) y volvé a llamar guardar_entrega con departamento.', falta_departamento: true };
     cambiosCli.agencia = s(a.agencia); cambiosCli.ciudad = s(a.ciudad);
     if (s(a.nombre_retira)) cambiosCli.nombreEnvio = s(a.nombre_retira);
@@ -708,7 +797,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
   }
   const envioNoFigura = tipo === 'cadeteria' && pedido_x > x;
   await conReintento(async () => {
-    if (Object.keys(cambiosCli).length) {
+    {
       const { data } = await sb.from('clientas').select('*').eq('id', ctx.clienta.id).single();
       if (tipo === 'cadeteria' && !cambiosCli.barrio) {
         // Sin barrio nuevo: si es la misma dirección de la ficha y ya tenía barrio, vale ese; si es otra dirección, el barrio viejo no corresponde
@@ -717,7 +806,7 @@ export async function guardarEntrega(ctx: Ctx, a: any) {
         if (conocido) { cambiosCli.barrio = conocido; faltaBarrio = false; } else cambiosCli.barrio = '';
       }
       const extra: any = tipo === 'cadeteria' ? { direcciones: sumarDireccion(data.datos, cambiosCli.direccion, cambiosCli.barrio, s(a.etiqueta).toLowerCase()) } : {};
-      await guardarClienta(data, { ...data.datos, ...cambiosCli, ...extra });
+      await guardarClienta(data, { ...data.datos, ...cambiosCli, ...extraCli, ...extra });
     }
     for (const r of objetivo) {
       const { data } = await sb.from('pedidos').select('*').eq('id', r.id).single();
@@ -994,6 +1083,7 @@ export const HERRAMIENTAS = [
     nota_cadete: { type: 'string', description: 'Cadetería: solo datos fijos para llegar (timbre, portón, apto) que dijo en esta charla. Nunca el horario ni lo que ya figura en datos_guardados' }, horario_envio: { type: 'string', description: 'Cadetería: horario para ESTE envío, solo si lo dijo o confirmó en esta charla (ej. "No hay quien reciba de 17 a 20"). Queda guardado como horario de preferencia' }, sin_horario: { type: 'boolean', description: 'Cadetería: true si dijo que ya no tiene restricción de horario (se borra el guardado)' }, nota_interna: { type: 'string', description: 'Nota para el equipo sobre este pedido (no la ve el cadete)' }, etiqueta: { type: 'string', description: 'Cadetería: casa, trabajo, mamá… si lo dijo' }, con_cambio: { type: 'boolean', description: 'Cadetería: true si el cadete además lleva o retira un cambio' },
     envio_transferido: { type: 'number', description: 'Cadetería: cuánto del envío ya transfirió (0 si lo paga al cadete). Solo cuenta si sobra en un pago ya registrado' },
     agencia: { type: 'string' }, ciudad: { type: 'string', description: 'Agencia: ciudad o localidad tal como la dijo' }, departamento: { type: 'string', description: 'Agencia: obligatorio. El que dijo la clienta; nunca deducido del nombre de la ciudad (Villa San José es de Canelones, no de San José). Si la cambia, se reemplaza toda la dirección anterior' }, ci: { type: 'string', description: 'C.I. de quien retira en la agencia' },
+    confirma_agencia: { type: 'boolean', description: 'Solo true si guardar_entrega devolvió no_cierra y la clienta confirmó que lo quiere por agencia' },
     nombre_retira: { type: 'string', description: 'Nombre y apellido de quien recibe o retira (agencia: obligatorio, salvo que ya esté en datos_guardados.nombre_envio)' }, horario_retiro: { type: 'string', description: 'Retiro: cuándo dice que pasa, con día y fecha (ej. "sábado 21/11 a las 18")' }, retiro_fecha: { type: 'string', description: 'Retiro: fecha del día que pasa, AAAA-MM-DD, sacada de HOY. Pasala siempre que diga un día' }, retiro_hora: { type: 'string', description: 'Retiro: hora aproximada, HH:MM en 24 hs' } }, required: ['tipo'] } },
   { name: 'dejar_aviso_despacho', description: 'Aviso de una línea para quien arma el paquete en Despacho (paquete de Yharol para mandar junto, lo retira otra persona…). Va en sus pedidos abiertos.', input_schema: { type: 'object', properties: { texto: { type: 'string', description: 'Ej: "Tiene paquete de Yharol: enviar junto"' } }, required: ['texto'] } },
   { name: 'vincular_pedido', description: 'Busca en los vivos de hoy y ayer el pedido de una clienta que escribe desde un número sin pedido y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si estaba confirmando el pedido' }, prenda: { type: 'string', description: 'Lo que dice que compró, si lo dijo' } } } },
