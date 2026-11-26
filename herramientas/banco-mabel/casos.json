@@ -3398,6 +3398,13 @@
       "enviado_hace_dias": 0,
       "pagado": {
        "monto": 500
+      },
+      "datos": {
+       "fechas": {
+        "creado": "2026-11-13",
+        "listo": "__HOY_ISO__",
+        "enviado": "__HOY_ISO__"
+       }
       }
      }
     ]
