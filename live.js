@@ -487,6 +487,7 @@ function recResumenAfuera(a, extra) {
   if (a.alRetirar) x.push(`${a.alRetirar} retiro${a.alRetirar > 1 ? 's' : ''} que pagan al llegar`);
   if (a.yanaina) x.push(`${a.yanaina} con Yanaina atendiendo`);
   if (a.equipo) x.push(`${a.equipo} del equipo`);
+  if (a.pago) x.push(`${a.pago} que ya mandaron comprobante (en revisión)`); // 26/11 (caso #24)
   if (a.sinTel) x.push(`${a.sinTel} sin teléfono`);
   if (a.yaMandado) x.push(`${a.yaMandado} ya recibieron este recordatorio`);
   (extra || []).forEach(e => x.push(e));
@@ -509,7 +510,7 @@ async function recordatorioVer(t) {
     (data.res || []).forEach(x => { if (!x.ok) excl.set(x.ref, x); });
   } catch (e) { return toast('No se pudo revisar la cola: ' + (e.message || e), 5000); }
   const grupos = q.grupos.filter(g => !excl.has(g.c.id));
-  q.grupos.forEach(g => { const x = excl.get(g.c.id); if (!x) return; if (x.skip === 'yanaina') q.afuera.yanaina += g.ps.length; else q.afuera.equipo = (q.afuera.equipo || 0) + g.ps.length; });
+  q.grupos.forEach(g => { const x = excl.get(g.c.id); if (!x) return; if (x.skip === 'yanaina') q.afuera.yanaina += g.ps.length; else if (x.skip === 'pago') q.afuera.pago = (q.afuera.pago || 0) + g.ps.length; else q.afuera.equipo = (q.afuera.equipo || 0) + g.ps.length; });
   UI.recCola = { t, ids: grupos.map(g => ({ cid: g.c.id, pids: g.ps.map(p => p.id) })), fecha: q.fecha };
   const afuera = recResumenAfuera(q.afuera);
   if (!grupos.length) return showModal(`<h3>🔔 ${r.nombre} · nadie para avisar</h3><p class="small muted">Quedan afuera: ${esc(afuera.join(' · '))}</p><div class="row mt"><button class="b pri" data-act="closeModal">Cerrar</button></div>`);
