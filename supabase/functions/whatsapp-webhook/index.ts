@@ -13,4 +13,4 @@
 // v118 (25/11): el repaso no reabre lo que el equipo ya contestó (excepción: plazo sin cargar), nota de Yanaina al devolver, repaso sin tope de 500 conversaciones.
 // v119 (26/11): pase sin aviso (reintento y repaso), Prex vieja con frase propia, PAGO EN REVISIÓN, como la otra vez desde los últimos envíos, agencia + Montevideo + casa no cierra (casos #24, #41, #17).
 // v120 (26/11): pedido nuevo → el pagado sin salir espera y sale junto (alerta si el nuevo vence o hay paquete armado), pregunta de envío sin contestar en Despacho, pendientes que se cierran solos, el repaso real no toca los números del banco.
-import 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/f912406143debf9b3d654b7cff1ce2b527a36ed4/supabase/functions/whatsapp-webhook/app.ts';
+import 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/77e7b1c34646e14be43bb1b6d825c3cabb139e17/supabase/functions/whatsapp-webhook/app.ts';
