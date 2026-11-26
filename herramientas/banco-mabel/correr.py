@@ -57,6 +57,12 @@ def fechas(c):
     hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date().isoformat()
     ahora = dt.datetime.now(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
     ayer = (dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date() - dt.timedelta(days=1)).isoformat()
+    # 26/11: los pedidos web "de las 15:00" (__hoy_1500__) pasan a ser de ahora mismo (entre las 6 y las 21), y el plazo
+    # esperado (17:00) pasa a ahora + 2 h. Si no, corrido después de las 17 Mabel ve el plazo ya vencido y lo pasa a Yanaina.
+    uy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).replace(second=0, microsecond=0)
+    if 6 <= uy.hour < 21:
+        p2 = uy + dt.timedelta(hours=2)
+        t = t.replace('__hoy_1500__', uy.isoformat()).replace('17[:.]00', p2.strftime('%H') + '[:.]' + p2.strftime('%M'))
     return json.loads(t.replace('__SAB_DIA__', str(sab.day)).replace('__SAB_ISO__', sab.isoformat()).replace('__HOY_ISO__', hoy).replace('__AYER_ISO__', ayer).replace('__AHORA__', ahora))
 
 

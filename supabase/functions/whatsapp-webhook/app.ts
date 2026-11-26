@@ -518,7 +518,7 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   // 4/11: agradecimientos sueltos (👍, gracias, ok, sticker, emojis) después de un mensaje nuestro que no era pregunta: no se contesta
   {
     const ACK = /^(ok+|oka+y?|okis|dale+|listo+|genial|perfecto|b+ueno+|gracias+|muchas gracias|mil gracias|gracias bella|gracias a vos|igualmente|un beso|besos?|\[sticker\]|\[reaction\]|[\p{Extended_Pictographic}\uFE0F\u200D\s]+)[\s.!¡]*([\p{Extended_Pictographic}\uFE0F\u200D\s]*)$/iu;
-    const soloAck = lote.every((m: any) => !m.media && ACK.test(String(m.texto || '').trim() || '[sticker]'));
+    const soloAck = lote.every((m: any) => !m.media && (ACK.test(String(m.texto || '').trim() || '[sticker]') || (m.tipo === 'text' && esAck(String(m.texto || ''))))); // 26/11: también "ok gracias 😊" (varias palabras de agradecimiento, esAck)
     // 5/11: emojis, stickers y reacciones SOLOS no se contestan nunca (ej. respuestas a un estado de Yanaina con ❤️ o sticker), sin importar qué se dijo antes
     const EMO = /^(\[sticker\]|\[reaction\]|[\p{Extended_Pictographic}\uFE0F\u200D\s]+)$/u;
     const COMPLI = /^(hermos[ao]s?|lind[ao]s?|divin[ao]s?|precios[ao]s?|qu[eé] lind[ao]s?|me encant[aó]|amo|bellas?|j?(a?ja)+j?a*|j?(e?je)+|😂|wow)[\s.!¡]*[\p{Extended_Pictographic}\uFE0F\u200D\s]*$/iu; // 20/11: 'jajaja' y 'jsjs' sueltos ya no llegan al modelo
