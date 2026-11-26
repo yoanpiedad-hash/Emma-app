@@ -3194,7 +3194,7 @@
    },
    "pasos": [
     {
-     "imagen": "k300.jpg",
+     "imagen": "k300_b.jpg",
      "texto": "listo te pagué"
     }
    ],
@@ -3216,7 +3216,7 @@
   },
   {
    "id": "GA7",
-   "nombre": "Igual, y contesta 'sí dale': la alerta se va (26/11, Parte A3)",
+   "nombre": "Igual, y contesta todo ('sí, como la otra vez, a nombre de Ana Prueba'): la alerta se va (26/11, Parte A3)",
    "tanda": "ya",
    "fixture": {
     "total_mandado": true,
@@ -3253,11 +3253,11 @@
    },
    "pasos": [
     {
-     "imagen": "k300.jpg",
+     "imagen": "k300_c.jpg",
      "texto": "listo te pagué"
     },
     {
-     "texto": "si dale, como la otra vez"
+     "texto": "si dale, por correo a La Paloma como la otra vez, a nombre de Ana Prueba"
     }
    ],
    "espera": {
