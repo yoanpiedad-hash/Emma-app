@@ -12,5 +12,5 @@
 // v117 (25/11): vivo en curso por el botón 🔴 de la app (vivo.ts), próximos vivos, espera de 2 min si el pedido no aparece en el vivo, cuentas sin Prex.
 // v118 (25/11): el repaso no reabre lo que el equipo ya contestó (excepción: plazo sin cargar), nota de Yanaina al devolver, repaso sin tope de 500 conversaciones.
 // v119 (26/11): pase sin aviso (reintento y repaso), Prex vieja con frase propia, PAGO EN REVISIÓN, como la otra vez desde los últimos envíos, agencia + Montevideo + casa no cierra (casos #24, #41, #17).
-// v120 (26/11): pedido nuevo → el pagado sin salir espera y sale junto (alerta si el nuevo vence o hay paquete armado), pregunta de envío sin contestar en Despacho, pendientes que se cierran solos.
-import 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/11fccaa1663996bf5a4232991aac2c82d2ab827e/supabase/functions/whatsapp-webhook/app.ts';
+// v120 (26/11): pedido nuevo → el pagado sin salir espera y sale junto (alerta si el nuevo vence o hay paquete armado), pregunta de envío sin contestar en Despacho, pendientes que se cierran solos, el repaso real no toca los números del banco.
+import 'https://raw.githubusercontent.com/yoanpiedad-hash/Emma-app/f912406143debf9b3d654b7cff1ce2b527a36ed4/supabase/functions/whatsapp-webhook/app.ts';
