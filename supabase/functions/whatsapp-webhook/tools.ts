@@ -318,7 +318,7 @@ export async function revisarEsperas(clientaIds: string[] | null = null, ctxNomb
   if (error) return [{ esperas: 'error ' + error.message }];
   const filas = (filas0 || []).filter((r: any) => r.datos && !r.datos.cambio);
   const porCli = new Map<string, any[]>();
-  for (const r of filas) { const k = String(r.clienta_id || ''); if (!k) continue; if (!porCli.has(k)) porCli.set(k, []); porCli.get(k)!.push(r); }
+  for (const r of filas) { const k = String(r.clienta_id || ''); if (!k || (!clientaIds && /^cb99000\d{3}$/.test(k))) continue; // el repaso real no toca las fichas del banco if (!porCli.has(k)) porCli.set(k, []); porCli.get(k)!.push(r); }
   // Paquetes armados hoy (etiqueta impresa, todavía no salieron), por clienta
   const inicioHoy = new Date(hoyUY() + 'T00:00:00-03:00').toISOString();
   const { data: kHoy } = await sb.from('paquetes').select('id,fecha,pedidos,datos').eq('borrado', false).gte('fecha', inicioHoy).limit(500);

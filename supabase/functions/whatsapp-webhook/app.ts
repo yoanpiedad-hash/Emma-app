@@ -724,6 +724,7 @@ async function repasarPendientes(soloTel = '', dry = false) {
   const cand = (convs || []).filter((c: any) => {
     const d = c.datos || {}, rep = d.repaso || '';
     if (soloTel) return c.id === soloTel; // prueba: fuerza una conversación
+    if (/^99000\d{3}$/.test(c.id)) return false; // 26/11 (R05): el repaso real nunca toca los números del banco (099000xxx)
     if (equipo.includes(c.id) || (solo.length && !solo.includes(c.id))) return false;
     if (d.estado === 'yanaina') return !!d.hasta && d.hasta < ahora && rep < d.hasta;
     return d.estado === 'agente' && !!d.devuelta && rep < d.devuelta;
@@ -853,7 +854,7 @@ async function levantarSinRespuesta(excluir: string[], solo: string[], va: [stri
   let n = 0;
   for (const [tel, m] of porTel) {
     if (n >= 10) break;
-    if (excluir.includes(tel) || /^990000/.test(tel) || (solo.length && !solo.includes(tel)) || enVentana(va, m.creado)) continue; // 0990000xx = números de prueba
+    if (excluir.includes(tel) || /^99000\d{3}$/.test(tel) || (solo.length && !solo.includes(tel)) || enVentana(va, m.creado)) continue; // 0990000xx = números de prueba
     if (m.tipo === 'text' && (esAck(m.texto) || String(m.texto || '').trim().length < 4)) continue;
     if (['sticker', 'reaction'].includes(String(m.tipo))) continue; // 26/11 (Parte B, caso soleaguilar): un sticker después de que contestó el equipo no reabre el pendiente
     const t = new Date(m.creado).toISOString();
