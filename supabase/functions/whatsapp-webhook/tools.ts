@@ -433,7 +433,7 @@ export async function marcarPregunta(telKey: string, texto: string | null) {
 // Nunca si lo último de la clienta es una pregunta o un pedido real, si es un reclamo sin respuesta del equipo, si Yanaina tiene
 // tomada la conversación y no le escribió, si es un plazo sin cargar, o si alguien lo reabrió a mano (reabiertoManual) y no hubo nada nuevo.
 // Solo se cierran solos los pendientes con movimiento desde CERRAR_SOLOS_DESDE (los de antes, con el ok de Yoan, por la limpieza).
-export const CERRAR_SOLOS_DESDE = '2026-11-26T13:00:00Z';
+export const CERRAR_SOLOS_DESDE = '2026-11-26T05:20:00Z'; // publicación de v120
 const RE_RECLAMO = /reclam|fall(a|ad[oa])|roto|rota|manchad|descosid|equivocad|no (me )?lleg[oó]|lleg[oó] mal|falt(a|ó|aba) (una|un|la|el)|me mandaron otr|no es (lo|la|el) que ped|devoluci/i;
 const TIPOS_NADA = ['edit', 'revoke', 'system', 'ephemeral'];
 const soloAgradece = (m: any) => ['sticker', 'reaction'].includes(String(m.tipo)) || (String(m.tipo) === 'text' && esAck(String(m.texto || '')));
