@@ -7,7 +7,7 @@
 // y siempre se chequean el WABA ID y el phone number ID de cada aviso.
 // Interruptores en la tabla config: mabelActiva (false = Mabel muda) y mabelSolo (lista de teléfonos; si tiene algo, solo atiende a esos).
 import { resolverPendientes } from './tools.ts';
-import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, conCfgPrueba, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, type Ctx } from './tools.ts';
+import { sb, cargarClienta, hoyUY, ahoraTxtUY, uid, telKeyDe, leerConfig, conCfgPrueba, novedadesVigentes, horariosRetiroTexto, tarifaDe, mpDe, buscarPedido, ejecutar, HERRAMIENTAS, pasarAYanaina, sinSalida, pausaTexto, salidaPrevista, FRASE_PASE_AUSENTE, registrarDerivado, resolverPorEquipo, FRASE_PASE, RE_PASE, categoriaDe, esAck, esPregunta, vincularPedido, confirmarPedido, revisarEsperas, marcarPregunta, cerrarSolos, type Ctx } from './tools.ts';
 import { SYSTEM_BASE } from './prompt.ts';
 import { fechaVivo, proximosVivosTexto } from './vivo.ts';
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1';
@@ -477,6 +477,7 @@ async function procesar(telKey: string, wa: string, opts: { dry?: boolean; esper
     } finally { await sb.rpc('mabel_soltar_turno', { p_tel: telKey }); }
     if (opts.dry || !(await pendienteMasNuevo(telKey))) break; // llegó algo justo al soltar: otra vuelta
   }
+  try { const cs = await cerrarSolos([telKey], opts.dry ? { desde: '' } : {}); if (cs.length) ultima = { ...ultima, cerrados_solos: cs }; } catch (e) { console.error('cerrar solos:', (e as Error).message || e); } // 26/11 (Parte B)
   return ultima;
 }
 
@@ -495,6 +496,8 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   if (ignorar.includes(telKey)) return { respuesta: null, motivo: 'número ignorado (mabelIgnorar)' };
   const equipo = ENV('MABEL_EQUIPO').split(',').map((x) => telKeyDe(x.trim())).filter(Boolean);
   if (!solo.length && equipo.includes(telKey) && !opts.dry) return { respuesta: null, motivo: 'número del equipo' }; // 14/11: en el modo prueba (dry) se puede probar con un número del equipo
+  // 26/11 (Parte A3): la clienta escribió: la pregunta de envío sin contestar se borra de Despacho (si sigue faltando algo, Mabel la vuelve a anotar)
+  if (lote.some((m: any) => !['reaction', 'edit', 'revoke', 'system', 'ephemeral'].includes(String(m.tipo)))) await marcarPregunta(telKey, null).catch(() => 0);
   const { data: conv } = await sb.from('conversaciones').select('datos').eq('id', telKey).maybeSingle();
   // 26/11 (caso #24): salvo que el pase lo haya hecho Mabel y a la clienta nunca le salió nada (el turno que derivó se descartó).
   const sinAviso = conv?.datos?.estado === 'yanaina' ? await paseSinAviso(telKey, conv.datos) : null;
@@ -632,6 +635,14 @@ async function procesarUna(telKey: string, wa: string, opts: { dry?: boolean; re
   const id = opts.dry ? uid('dryout') : await enviar(wa, respuesta);
   await sb.from('mabel_mensajes').insert({ id, tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'text', texto: respuesta, procesado: true, ...(error ? { media: { error: error.slice(0, 500) } } : {}) });
   await marcarAvisado(telKey).catch(() => {}); // 26/11: con un pase abierto, este mensaje ya es el aviso (no se repite)
+  // 26/11 (Parte A3): se registró el pago (o falta un dato de la entrega) y Mabel le preguntó algo: hasta que conteste, Despacho lo muestra con alerta
+  try {
+    const hs = tr.herr.filter((h: any) => h.nombre === 'marcar_pagado' || h.nombre === 'guardar_entrega');
+    const ult = hs[hs.length - 1], res = String(ult?.resultado || '');
+    const falta = ult && /"ok":true/.test(res) && (ult.nombre === 'marcar_pagado' || /falta_barrio|falta_nombre|nombre_guardado|horario_guardado/.test(res));
+    const preg = (respuesta.match(/[^.!?\n]*\?/g) || []).pop();
+    if (falta && preg && !/guardamos para mandarlo junto/i.test(preg)) await marcarPregunta(telKey, preg.replace(/^[¡¿\s]+/, '¿').trim());
+  } catch (e) { console.error('preguntaEnvio:', (e as Error).message || e); }
   await sb.rpc('mabel_anotar_turno', { p_tel: telKey, p_ids: [] });
   return { respuesta, error, ...(pasoAhora ? { sin_leer: true } : {}), ...(opts.dry ? { prueba: true } : {}) };
 }
@@ -807,6 +818,8 @@ async function repasarPendientes(soloTel = '', dry = false) {
     hechos.push({ tel: telKey, nota, ...(rzE ? { resueltos: rzE.cerrados, quedan: rzE.abiertos } : {}) });
   }
   if (dry) return hechos; // banco: no levanta pendientes de otras clientas
+  try { hechos.push(...(await revisarEsperas(null)).map((x: any) => ({ esperas: x }))); } catch (e) { hechos.push({ esperas: 'error ' + String((e as Error).message || e).slice(0, 120) }); } // 26/11 (Parte A)
+  try { hechos.push(...(await cerrarSolos(null)).map((x: any) => ({ tel: x.telKey, cerrado_solo: x.regla || x.error }))); } catch (e) { hechos.push({ cerrar_solos: 'error ' + String((e as Error).message || e).slice(0, 120) }); } // 26/11 (Parte B)
   try { hechos.push(...await levantarSinRespuesta([...equipo], solo, va)); } catch (e) { hechos.push({ sin_respuesta: 'error ' + String((e as Error).message || e).slice(0, 120) }); }
   return hechos;
 }
@@ -842,6 +855,7 @@ async function levantarSinRespuesta(excluir: string[], solo: string[], va: [stri
     if (n >= 10) break;
     if (excluir.includes(tel) || /^990000/.test(tel) || (solo.length && !solo.includes(tel)) || enVentana(va, m.creado)) continue; // 0990000xx = números de prueba
     if (m.tipo === 'text' && (esAck(m.texto) || String(m.texto || '').trim().length < 4)) continue;
+    if (['sticker', 'reaction'].includes(String(m.tipo))) continue; // 26/11 (Parte B, caso soleaguilar): un sticker después de que contestó el equipo no reabre el pendiente
     const t = new Date(m.creado).toISOString();
     if ((ultResp.get(tel) || '') > t) continue; // alguien le contestó (Mabel, el equipo o una reacción de Yanaina)
     if ((ultDv.get(tel) || '') >= t) continue; // ya está en la bandeja con algo de después de ese mensaje
@@ -872,6 +886,14 @@ Deno.serve(async (req) => {
   if (rk) {
     if (!AJ['WEBHOOK_PATH_SECRET'] || rk !== AJ['WEBHOOK_PATH_SECRET']) return new Response('forbidden', { status: 403 });
     let b: any = {}; try { b = JSON.parse(raw || '{}'); } catch (_) { /* vacío */ }
+    // 26/11 (Parte B, limpieza): {"cerrar_solos":"simular"} lista los pendientes abiertos que se cerrarían (todos, sin fecha), sin tocar nada;
+    // {"cerrar_solos":"cerrar","ids":[...]} cierra solo esos (con el ok de Yoan).
+    if (b.cerrar_solos === 'simular') return Response.json(await cerrarSolos(null, { dry: true, desde: '' }));
+    if (b.cerrar_solos === 'cerrar' && Array.isArray(b.ids) && b.ids.length) {
+      const sim = await cerrarSolos(null, { dry: true, desde: '' }), ok = new Set(b.ids.map(String)), tks = [...new Set(sim.filter((x: any) => ok.has(x.id)).map((x: any) => x.telKey))];
+      const hechos = (await cerrarSolos(tks, { desde: '' })).filter((x: any) => ok.has(x.id));
+      return Response.json(hechos);
+    }
     return Response.json(await repasarPendientes(b.tel ? telKeyDe(b.tel) : ''));
   }
   // Modo prueba (sin Meta): corre el agente con el texto/imagen que mandes y devuelve la respuesta sin enviarla por WhatsApp
@@ -898,7 +920,8 @@ Deno.serve(async (req) => {
         await sb.from('pagos').delete().like('pedido_id', 'pb' + telKey + '-%');
         await sb.from('pedidos').delete().like('id', 'pb' + telKey + '-%');
         await sb.from('clientas').delete().eq('id', 'cb' + telKey);
-        await sb.from('lives').delete().eq('id', 'lbanco-' + telKey);
+        await sb.from('lives').delete().like('id', 'lbanco-' + telKey + '%');
+        await sb.from('paquetes').delete().like('id', 'kb' + telKey + '%');
       }
       if (b.borrar_live_banco) { await sb.from('pagos').delete().like('pedido_id', 'pb99000%'); await sb.from('pedidos').delete().like('live_id', 'lbanco-%'); await sb.from('clientas').delete().like('id', 'cb99000%'); await sb.from('lives').delete().like('id', 'lbanco-%'); }
       if (b.solo_limpiar) return Response.json({ ok: true, limpio: telKey });
@@ -909,16 +932,26 @@ Deno.serve(async (req) => {
         const cid = 'cb' + telKey, cd = { id: cid, tel: '0' + telKey, telKey, nombre: fx.nombre || 'Prueba Banco', alias: [], creado: ahoraIso, saldoFavor: 0, historialViejo: [], ...(fx.clienta || {}) };
         await sb.from('clientas').upsert({ id: cid, nombre: cd.nombre, tel_key: telKey, datos: cd, borrado: false, actualizado: ahoraIso });
         for (const [i, q] of (Array.isArray(fx.pedidos) ? fx.pedidos : []).entries()) {
+          // 26/11: un pedido puede ir en otro vivo (q.live = { fecha, fecha_pago }): live lbanco-<tel>-<n>
+          let lidQ = lid;
+          if (q.live && typeof q.live === 'object') {
+            lidQ = lid + '-' + (i + 1); const lf2 = String(q.live.fecha || lf);
+            await sb.from('lives').upsert({ id: lidQ, nombre: 'BANCO MABEL ' + (i + 1) + ' (prueba)', fecha: lf2, datos: { ...lv, id: lidQ, fecha: lf2, nombre: 'BANCO MABEL ' + (i + 1) + ' (prueba)', fechaPagoISO: String(q.live.fecha_pago || fx.fecha_pago || '2026-11-21') }, borrado: false, actualizado: ahoraIso });
+          }
           const pid = 'pb' + telKey + '-' + (i + 1), num = q.num || 900 + i, estado = q.estado || 'pendiente', entrega = q.entrega || 'sin_definir';
           const hace = (d: number) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
-          const pd: any = { id: pid, num, codigo: 'B' + telKey.slice(-3) + num, estado, entrega, liveId: lid, clienteId: cid, notas: '', avisos: [], descuento: null, saldoAplicado: 0,
+          const pd: any = { id: pid, num, codigo: 'B' + telKey.slice(-3) + num, estado, entrega, liveId: lidQ, clienteId: cid, notas: '', avisos: [], descuento: null, saldoAplicado: 0,
             prendas: (q.prendas || [['REMERA', 500, 1]]).map((x: any[]) => ({ qty: x[2] || 1, codigo: null, nombre: x[0], precio: x[1], stockId: null, precioLista: x[1] })),
-            fechas: { creado: lf, ...(estado === 'enviado' ? { listo: hace(q.enviado_hace_dias || 2), enviado: hace(q.enviado_hace_dias || 2) } : {}) },
+            fechas: { creado: String(q.live?.fecha || lf), ...(estado === 'enviado' ? { listo: hace(q.enviado_hace_dias || 2), enviado: hace(q.enviado_hace_dias || 2) } : {}) },
             promoCalc: { fecha: lf, promos: [], vipPct: 0 }, ...(q.datos || {}) };
           if (q.pagado) pd.pago = { id: 'gb' + telKey + '-' + (i + 1), cuenta: q.pagado.cuenta || 'BROU', fecha: q.pagado.fecha || new Date(new Date(Date.now() - 864e5).toISOString().slice(0, 10) + 'T17:00:00Z').toISOString() }; // ayer 14:00 de Uruguay
-          const { error: ePd } = await sb.from('pedidos').upsert({ id: pid, live_id: lid, clienta_id: cid, num, codigo: pd.codigo, estado, entrega, datos: pd, borrado: false, actualizado: ahoraIso });
+          const { error: ePd } = await sb.from('pedidos').upsert({ id: pid, live_id: lidQ, clienta_id: cid, num, codigo: pd.codigo, estado, entrega, datos: pd, borrado: false, actualizado: ahoraIso });
           if (ePd) return Response.json({ error: 'fixture pedido: ' + ePd.message }, { status: 500 });
           if (q.pagado) await sb.from('pagos').upsert({ id: pd.pago.id, pedido_id: pid, cuenta: pd.pago.cuenta, monto: q.pagado.monto || 500, fecha: pd.pago.fecha, comprobante: null, datos: { id: pd.pago.id, pedidoId: pid, clienteId: cid, cuenta: pd.pago.cuenta, monto: q.pagado.monto || 500, fecha: pd.pago.fecha, origen: 'prueba', ajuste: 0 }, borrado: false, actualizado: ahoraIso });
+        }
+        if (fx.paquete) { // 26/11: paquete armado hoy con el pedido N (fx.paquete = número de orden en fixture.pedidos, desde 1)
+          const pidK = 'pb' + telKey + '-' + (+fx.paquete || 1), kid = 'kb' + telKey, f0 = new Date().toISOString();
+          await sb.from('paquetes').upsert({ id: kid, tipo: 'agencia', fecha: f0, pedidos: [pidK], datos: { id: kid, tipo: 'agencia', fecha: f0, pedidos: [pidK], nums: [900], clienteId: cid }, borrado: false, actualizado: f0 });
         }
         if (fx.total_mandado) await sb.from('mabel_mensajes').insert({ id: uid('prev'), tel_key: telKey, wa_id: wa, direccion: 'out', tipo: 'plantilla', texto: 'Hola bella! Te paso el detalle de tu pedido', procesado: true, creado: new Date(Date.now() - 20 * 3600e3).toISOString() });
       }
@@ -934,8 +967,16 @@ Deno.serve(async (req) => {
         const x = b.derivado, min = (v: any) => new Date(Date.now() - (Number(v) || 0) * 60e3).toISOString(), cre = min(x.hace_min || 60);
         const mt = { fecha: cre, categoria: x.categoria || 'otros', motivo: String(x.motivo || 'Prueba'), origen: 'mabel' };
         const dd: any = { id: 'dvb' + telKey, telKey, tel: '0' + telKey, clienteId: 'cb' + telKey, categoria: mt.categoria, motivo: mt.motivo, motivos: [mt], silencio: false, origen: 'mabel', creado: cre, ultimo: cre, veces: 1,
-          resuelto: x.resuelto_hace_min ? min(x.resuelto_hace_min) : null, ...(x.resuelto_hace_min ? { resueltoPor: 'equipo respondió', resueltoEquipo: true } : {}) };
+          resuelto: x.resuelto_hace_min ? min(x.resuelto_hace_min) : null, ...(x.resuelto_hace_min ? { resueltoPor: 'equipo respondió', resueltoEquipo: true } : {}), ...(x.reabierto_hace_min ? { reabiertoManual: min(x.reabierto_hace_min) } : {}) };
         await sb.from('derivados').upsert({ id: dd.id, datos: dd, borrado: false }, { onConflict: 'id' });
+      }
+      // 26/11 (banco): pasos que corren el repaso de esperas (Parte A) o el cierre solo (Parte B) de esta clienta, sin Claude
+      const verPedidos = async () => { const { data: pp } = await sb.from('pedidos').select('num,estado,datos').eq('clienta_id', 'cb' + telKey).eq('borrado', false); return (pp || []).map((x: any) => ({ num: x.num, estado: x.estado, esperaPedido: x.datos?.esperaPedido || null, preguntaEnvio: x.datos?.preguntaEnvio || null, entrega: x.datos?.entrega })); };
+      const verDv = async () => { const { data: dv } = await sb.from('derivados').select('datos').eq('datos->>telKey', telKey).eq('borrado', false); return (dv || []).map((x: any) => x.datos); };
+      if (b.esperas || b.cerrar_solos) {
+        const hechos = b.esperas ? await revisarEsperas(['cb' + telKey]) : await cerrarSolos([telKey], { desde: '' });
+        const dt = await verDv();
+        return Response.json({ respuesta: null, motivo: JSON.stringify(hechos).slice(0, 300), hechos, pedidos: await verPedidos(), derivados: dt.filter((d: any) => !d.resuelto), derivados_todos: dt });
       }
       if (b.repaso) { // 25/11 (banco): corre el repaso de esta conversación sin mandar nada por WhatsApp
         const cpR: Record<string, any> = b.cfg && typeof b.cfg === 'object' ? { ...b.cfg } : {};
@@ -958,7 +999,7 @@ Deno.serve(async (req) => {
         if (b.detalle) { // herramientas del turno y pendientes abiertos, para el banco de casos
           const { data: rg } = await sb.from('mabel_registro').select('resultado,motivo,herramientas').eq('tel_key', telKey).order('creado', { ascending: false }).limit(1);
           const { data: dv } = await sb.from('derivados').select('datos').eq('datos->>telKey', telKey).eq('borrado', false);
-          r.registro = rg?.[0] || null; r.derivados = (dv || []).map((x: any) => x.datos);
+          r.registro = rg?.[0] || null; r.derivados = (dv || []).map((x: any) => x.datos); r.derivados_todos = (dv || []).map((x: any) => x.datos); r.pedidos = await verPedidos();
         }
         return Response.json(r);
       });

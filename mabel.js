@@ -58,6 +58,15 @@ setEstado = function (p, nuevo, fechaISO) {
     const c = cliById(p.clienteId);
     if (c && c.puedeGuardarSinPagar && !pagado(p) && !p.guardadoSinPagar) p.guardadoSinPagar = { desde: hoyISO(), hasta: sumarDias(hoyISO(), plazoGsp()) };
   } else if (p.guardadoSinPagar) delete p.guardadoSinPagar;
+  // 26/11 (Parte A): pedido guardado que esperaba a otro para salir junto. Si sale de guardado a mano, deja de esperar.
+  if (nuevo !== 'guardado' && p.esperaPedido) { delete p.esperaPedido; delete p.alertaEspera; }
+  // Cuando se paga el pedido nuevo, los que lo esperaban vuelven a Despacho para salir juntos (mismo destino que el nuevo).
+  if (nuevo === 'listo' && pagado(p)) todosPedidos().filter(x => x !== p && x.estado === 'guardado' && x.esperaPedido === p.id).forEach(x => {
+    setEstado(x, 'listo');
+    if (p.entrega && p.entrega !== 'sin_definir') x.entrega = p.entrega;
+    const n = `▶️ Vuelve a Despacho: se pagó el #${p.num}, salen juntos`;
+    if (!String(x.notas || '').includes(n)) x.notas = x.notas ? x.notas + '\n' + n : n;
+  });
 };
 const gspDe = () => todosPedidos().filter(p => p.estado === 'guardado' && p.guardadoSinPagar && !pagado(p));
 const gspVencidos = () => gspDe().filter(p => p.guardadoSinPagar.hasta <= hoyISO());

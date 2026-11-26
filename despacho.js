@@ -86,6 +86,10 @@ function abiertosDe(cid) {
 }
 /** 7/11: lo que deja Mabel en el pedido. avisoDespacho = aviso corto para el momento de cerrar ("tiene paquete de Yharol"); retiroCuando = cuándo dijo que pasa a retirar {fecha, hora, texto}. Se ven solo mientras el pedido no salió. */
 const avisosDe = ps => [...new Set(ps.map(p => String(p.avisoDespacho || '').trim()).filter(Boolean))];
+/** 26/11 (Parte A3): Mabel le preguntó algo que falta para despachar y la clienta no contestó (p.preguntaEnvio = { texto, hora }). */
+const preguntasDe = ps => ps.filter(p => p.preguntaEnvio && p.preguntaEnvio.texto && pagado(p));
+const preguntaTxt = p => { const q = p.preguntaEnvio || {}; return `${q.texto || ''}${q.hora ? ' (' + fechaUY(localISO(new Date(q.hora)), 1) + ' ' + pad2(new Date(q.hora).getHours()) + ':' + pad2(new Date(q.hora).getMinutes()) + ')' : ''}`; };
+const esperaTxt = p => { const n = p.esperaPedido && pedById(p.esperaPedido); return n ? `⏸️ espera el #${n.num} para salir junto` : p.esperaPedido ? '⏸️ espera un pedido nuevo' : ''; };
 const DIA_CORTO = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 function retiroDiaTxt(fecha) {
   const h = hoyISO(); if (!fecha) return 'Sin horario';
@@ -209,6 +213,7 @@ function inicioHTML() {
         if (tipo === 'cadeteria' && !(c.direccion || '').trim()) marcas.push('<span class="chip li">⚠️ sin dirección</span>');
         if (tipo === 'agencia' && !(c.agencia || '').trim()) marcas.push('<span class="chip li">⚠️ sin agencia</span>');
         if ((m[cid] || ST0).guardados.length) marcas.push('<span class="chip gu">⏸️ tiene guardado</span>');
+        { const pq = preguntasDe(ps)[0]; if (pq) marcas.push(`<span class="chip li" title="${esc(preguntaTxt(pq))}">⚠️ Le preguntamos si enviamos y no contestó</span>`); }
         if (tipo === 'retiro') {
           if (ps.some(p => !pagado(p))) marcas.push('<span class="chip pe">💵 paga al llegar</span>');
           if (avisosDe(ps).length) marcas.push('<span class="chip li">📌 tiene aviso</span>');
@@ -276,6 +281,7 @@ function clientaHTML() {
   // 7/11: avisos de Mabel (lo que la clienta le dijo) y cuándo pasa a retirar: arriba de todo, para verlos al cerrar
   const rcs = [...new Set(ab.filter(p => entregaEf(p) === 'retiro').map(retiroCuandoTxt).filter(Boolean))];
   if (rcs.length) alertas.unshift(`<div class="alert pe">🕒 Dijo que pasa a retirar: <b>${rcs.map(esc).join(' · ')}</b></div>`);
+  { const pqs = preguntasDe(ab); if (pqs.length) alertas.unshift(`<div class="alert li">⚠️ <b>Le preguntamos si enviamos y no contestó.</b> ${pqs.slice(0, 1).map(p => 'Mabel: “' + esc(preguntaTxt(p)) + '”').join('')} <button class="b sm" data-act="despPregOk" title="Ya está resuelto (o se confirmó por otro lado)">✓ Ya está</button></div>`); }
   avisosDe(ab).reverse().forEach(t => alertas.unshift(`<div class="alert" style="background:#fff3bf;border:1px solid #e0b400;color:#5a4300;font-weight:700">📌 ${esc(t)}</div>`));
   if (h.deudas.length) { const d = h.deudas[h.deudas.length - 1]; alertas.push(`<div class="alert li">⚠️ DEUDORA: pedido sin pagar del ${fechaUY(d.fecha)} por ${fmt(d.total)}${h.deudas.length > 1 ? ' (+' + (h.deudas.length - 1) + ' más)' : ''}</div>`); }
   if (c.saldoFavor > 0) alertas.push(`<div class="alert ok">💰 Tiene ${fmt(c.saldoFavor)} a favor</div>`);
@@ -284,7 +290,7 @@ function clientaHTML() {
     return `<div class="dsp-p${on ? ' on' : ''}" data-act="despTog" data-id="${p.id}">
       <span class="dsp-chk">${on ? '✓' : ''}</span><span class="num">#${p.num}</span>
       <div class="pc-main"><div class="small"><b>${esc(l.nombre)}</b> · ${fechaUY(p.fechas.creado || l.fecha, 1)} · ${p.cambio ? p.cambio.art : t.art} art.</div>
-        <div class="pc-sub">${chipPago(p)}${ent !== 'sin_definir' ? ` <span>${ENTREGA_TXT[ent]}</span>` : ''}</div></div>
+        <div class="pc-sub">${chipPago(p)}${ent !== 'sin_definir' ? ` <span>${ENTREGA_TXT[ent]}</span>` : ''}${esperaTxt(p) ? ` <span class="chip gu">${esc(esperaTxt(p))}</span>` : ''}</div></div>
       <div class="pc-tot">${p.cambio ? (p.cambio.cobrar ? fmt(p.cambio.cobrar) : '🔄') : fmt(t.total)}</div>
       <button class="b sm gh" data-act="despVer" data-id="${p.id}" title="Ver detalle">👁️</button></div>`;
   }).join('');
@@ -752,6 +758,8 @@ function buscarEnter() {
 }
 
 Object.assign(ACT, {
+  // 26/11 (Parte A3): el equipo marca resuelta la pregunta sin contestar (se borra de los pedidos abiertos de la clienta)
+  despPregOk: () => { const c = cliById(UI.desp.cid); if (!c) return; abiertosDe(c.id).forEach(p => { delete p.preguntaEnvio; }); guardar(); toast('✓ Listo'); render(); },
   despPick: d => despPick(+d.i),
   despDarSalida: d => {
     const ids = String(d.ids || '').split(',').filter(Boolean); UI.desp.res = null;
