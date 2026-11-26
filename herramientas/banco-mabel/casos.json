@@ -2438,6 +2438,485 @@
     ],
     "derivado": false
    }
+  },
+  {
+   "id": "N01",
+   "nombre": "Prex vieja: el turno que derivó se descartó (reintento) y llega otro mensaje: recibe la frase de la Prex (26/11, #24)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k500_prexvieja.jpg",
+     "texto": "te pagué, me lo mandan por agencia?",
+     "conv": {
+      "estado": "yanaina",
+      "desde": -1,
+      "hasta": 59,
+      "derivadoEn": -1,
+      "espera": -1,
+      "motivo": "Pagó a la Prex vieja (ya no se usa): revisar si entró $500",
+      "fraseAviso": "Bella, esa cuenta Prex ya no la estamos usando para cobrar. Le paso tu comprobante a Yanaina para que se fije si llegó 🫶"
+     },
+     "derivado": {
+      "categoria": "pago",
+      "motivo": "Pagó a la Prex vieja (ya no se usa): revisar si entró $500",
+      "hace_min": 1
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "Prex",
+     "ya no"
+    ],
+    "derivado": true
+   }
+  },
+  {
+   "id": "N09",
+   "nombre": "Comprobante a una Prex (no la de Yoan): frase propia de la Prex vieja y pase de pago (26/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k500_prexvieja.jpg",
+     "texto": "ahí va"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "Prex",
+     "ya no"
+    ],
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "derivado": true,
+    "derivado_contiene": [
+     "Prex vieja"
+    ]
+   }
+  },
+  {
+   "id": "N02",
+   "nombre": "Repaso: pase de pago sin avisar hace 40 min, sin mensajes nuevos: manda la frase una vez (26/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "tipo": "image",
+       "texto": "[image]",
+       "hace_min": 42
+      },
+      {
+       "dir": "in",
+       "texto": "ahí va el comprobante",
+       "hace_min": 41
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -40,
+      "hasta": 20,
+      "derivadoEn": -40,
+      "espera": -40,
+      "motivo": "El comprobante va a una cuenta que no es de Emma"
+     },
+     "derivado": {
+      "categoria": "pago",
+      "motivo": "El comprobante va a una cuenta que no es de Emma",
+      "hace_min": 40
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "Yanaina"
+    ]
+   }
+  },
+  {
+   "id": "N02b",
+   "nombre": "Repaso: el mismo pase ya avisado: al siguiente repaso no manda nada (26/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "tipo": "image",
+       "texto": "[image]",
+       "hace_min": 42
+      },
+      {
+       "dir": "in",
+       "texto": "ahí va el comprobante",
+       "hace_min": 41
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -40,
+      "hasta": 20,
+      "derivadoEn": -40,
+      "espera": -40,
+      "motivo": "El comprobante va a una cuenta que no es de Emma"
+     },
+     "derivado": {
+      "categoria": "pago",
+      "motivo": "El comprobante va a una cuenta que no es de Emma",
+      "hace_min": 40
+     }
+    },
+    {
+     "texto": "",
+     "repaso": true
+    }
+   ],
+   "espera": {
+    "envia": false
+   }
+  },
+  {
+   "id": "N03",
+   "nombre": "Repaso: pase sin frase pero Yanaina ya le escribió: no manda nada (26/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "tipo": "image",
+       "texto": "[image]",
+       "hace_min": 42
+      },
+      {
+       "dir": "in",
+       "texto": "ahí va el comprobante",
+       "hace_min": 41
+      },
+      {
+       "dir": "echo",
+       "texto": "hola bella, ya lo miro",
+       "hace_min": 30
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -30,
+      "hasta": 30,
+      "derivadoEn": -40,
+      "espera": -40,
+      "motivo": "El comprobante va a una cuenta que no es de Emma"
+     },
+     "derivado": {
+      "categoria": "pago",
+      "motivo": "El comprobante va a una cuenta que no es de Emma",
+      "hace_min": 40
+     }
+    }
+   ],
+   "espera": {
+    "envia": false
+   }
+  },
+  {
+   "id": "N04",
+   "nombre": "Pago en revisión y escribe 'ya pagué': no se le pide el comprobante (26/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "ya pagué hoy de mañana, me confirman?",
+     "previo": [
+      {
+       "dir": "in",
+       "tipo": "image",
+       "texto": "[image]",
+       "hace_min": 300
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 299
+      }
+     ],
+     "conv": {
+      "estado": "agente",
+      "desde": -300,
+      "motivo": "El comprobante va a una cuenta que no es de Emma"
+     },
+     "derivado": {
+      "categoria": "pago",
+      "motivo": "El comprobante va a una cuenta que no es de Emma",
+      "hace_min": 299
+     }
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "no_contiene": [
+     "[Cc]aptura",
+     "no me figura",
+     "no me lleg",
+     "mand[aá]s el comprobante"
+    ]
+   }
+  },
+  {
+   "id": "N06",
+   "nombre": "Pase en silencio a propósito (cambio en plazo): el repaso y el siguiente mensaje siguen en silencio (26/11)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "",
+     "repaso": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "quiero cambiar la remera por talle M",
+       "hace_min": 41
+      }
+     ],
+     "conv": {
+      "estado": "yanaina",
+      "desde": -40,
+      "hasta": 20,
+      "derivadoEn": -40,
+      "silencio": true,
+      "motivo": "Cambio en plazo: remera por talle M"
+     },
+     "derivado": {
+      "categoria": "cambio",
+      "motivo": "Cambio en plazo: remera por talle M",
+      "hace_min": 40
+     }
+    },
+    {
+     "texto": "y entonces?"
+    }
+   ],
+   "espera": {
+    "envia": false
+   }
+  },
+  {
+   "id": "N07",
+   "nombre": "Ficha con agencia vieja y últimos pedidos por cadetería: ofrece cadete, no la agencia (26/11, #17)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "clienta": {
+     "agencia": "DAC",
+     "ciudad": "Toledo",
+     "depto": "Canelones",
+     "direccion": "Av Italia 1234",
+     "barrio": "Malvín",
+     "nombreEnvio": "Ana Prueba"
+    },
+    "pedidos": [
+     {
+      "num": 901,
+      "estado": "enviado",
+      "entrega": "cadeteria",
+      "enviado_hace_dias": 6
+     },
+     {
+      "num": 902,
+      "estado": "enviado",
+      "entrega": "cadeteria",
+      "enviado_hace_dias": 12
+     },
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "pagado": {
+       "monto": 500
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "hola! cómo hacemos con el envío del pedido nuevo?"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "no_contiene": [
+     "DAC",
+     "Toledo"
+    ],
+    "contiene": [
+     "[Cc]adet|Italia"
+    ]
+   }
+  },
+  {
+   "id": "N08",
+   "nombre": "Agencia + depto Montevideo + calle con número: pregunta cadete o agencia, no cierra la agencia (26/11, #17)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "clienta": {
+     "agencia": "DAC",
+     "ciudad": "Toledo",
+     "depto": "Canelones",
+     "direccion": "Av Italia 1234",
+     "barrio": "Malvín",
+     "nombreEnvio": "Ana Prueba"
+    },
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ],
+      "pagado": {
+       "monto": 500
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "si por dac, departamento montevideo, 8 de octubre 2500 apto 3"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "contiene": [
+     "[Cc]adete",
+     "agencia"
+    ],
+    "no_contiene": [
+     "entre las 17",
+     "foto del comprobante de env"
+    ]
+   }
   }
  ]
 }

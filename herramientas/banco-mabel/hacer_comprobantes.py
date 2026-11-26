@@ -21,6 +21,7 @@ hacer('k300.jpg', 300)
 hacer('k500_ajena.jpg', 500, destino='009988776-00002', titular='CARLOS GOMEZ')
 hacer('k500_vieja.jpg', 500, fecha='10/10/2026 11:05')
 hacer('k1500.jpg', 1500)
+hacer('k500_prexvieja.jpg', 500, destino='Cuenta Prex 5521 0093', titular='TITULAR PRUEBA', banco='PREX')  # 26/11: Prex que ya no se usa (datos inventados)
 hacer('k500_prexyoan.jpg', 500, destino='Cuenta Prex 4417 2281', titular='YOAN PIEDAD', banco='PREX')
 # 21/11 (4C pruebas 2, 4, 5): monto inflado, otra captura del mismo comprobante y pago de otra persona
 hacer('k1000.jpg', 1000)

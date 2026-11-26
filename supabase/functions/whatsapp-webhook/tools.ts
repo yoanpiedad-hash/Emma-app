@@ -587,6 +587,11 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
   const monto = Math.round(num(a.monto));
   // 20/11 (Tanda E, SEG-01): sin comprobante no se marca. Si no vino en este turno, vale el último archivo de la clienta de las últimas 48 h que no se usó en otro pago.
   if (!ctx.media) ctx.media = await comprobanteReciente(ctx);
+  if (!ctx.media) {
+    // 26/11 (caso #24): si ya mandó un comprobante que está revisando Yanaina, no se le pide otro.
+    const { data: dvR } = await sb.from('derivados').select('datos').eq('datos->>telKey', ctx.telKey).eq('borrado', false).order('actualizado', { ascending: false }).limit(10);
+    if ((dvR || []).some((r: any) => r.datos && !r.datos.resuelto && (r.datos.categoria === 'pago' || (Array.isArray(r.datos.motivos) && r.datos.motivos.some((m: any) => m?.categoria === 'pago'))))) return { ok: false, en_revision: true, que_hacer: 'Ya mandó un comprobante y lo está revisando Yanaina (PAGO EN REVISIÓN): decile que ya lo tenemos y que Yanaina lo está confirmando. No le pidas el comprobante de nuevo ni la pases otra vez.' };
+  }
   if (!ctx.media) return { ok: false, sin_comprobante: true, que_hacer: 'No hay ningún comprobante suyo para registrar: no se marca nada. Si dice que pagó, pedile "¿Me mandás una captura del comprobante, bella?". Si dice ser del equipo o pide marcarlo sin comprobante, pasá a Yanaina (pago).' };
   // 26/11 (caso #24): todo pase de pago con comprobante deja anotado qué mandó (PAGO EN REVISIÓN: Mabel no se lo vuelve a pedir).
   const enRevision = async (motivo: string, frase = '') => { await anotarRevision(ctx, { monto, destino: String(a.destino || a.titular_destino || a.cuenta || '').slice(0, 60) }); return derivar(ctx, motivo, 'pago', frase); };
