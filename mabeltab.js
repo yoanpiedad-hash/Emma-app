@@ -122,6 +122,11 @@ function renderDerivados() {
     : `<div class="empty">${q ? 'Ningún pendiente con esa búsqueda' : pend.length ? 'No hay pendientes con este filtro' : '🎉 No hay nada pendiente: Mabel no te pasó nada o ya está todo resuelto'}</div>`;
   if (res.length) h += `<div class="row mt" data-act="dvVerRes" style="cursor:pointer"><span class="small muted">${q ? 'Resueltos' : 'Resueltos hoy'} (${res.length})</span><span class="grow"></span><span class="muted">${UI.mb.verRes ? '▲' : '▼'}</span></div>`
     + (UI.mb.verRes ? '<div class="mt">' + res.map(d => dvItemHTML(d, ix)).join('') + '</div>' : '');
+  // 26/11 (Parte B): los que Mabel cerró sola (el equipo ya contestó y la clienta solo agradeció, el pedido ya salió, el pago entró)
+  const sem = new Date(Date.now() - 7 * 864e5).toISOString();
+  const solos = (DB.derivados || []).filter(d => d.resuelto && d.cerradoSolo && String(d.resuelto) >= sem).sort((a, b) => String(b.resuelto).localeCompare(String(a.resuelto)));
+  if (solos.length) h += `<div class="row mt" data-act="dvVerSolos" style="cursor:pointer"><span class="small muted">🤖 Cerrados solos (últimos 7 días) (${solos.length})</span><span class="grow"></span><span class="muted">${UI.mb.verSolos ? '▲' : '▼'}</span></div>`
+    + (UI.mb.verSolos ? '<div class="mt">' + solos.map(d => `<div class="small muted" style="margin:6px 2px 2px">${esc(String(d.resueltoPor || '').replace(/^cerrado solo: /, '🤖 '))}</div>` + dvItemHTML(d, ix).replace(/data-act="dvDeshacer"([^>]*)>[^<]*</, 'data-act="dvReabrir"$1>↩︎ Reabrir<')).join('') + '</div>' : '');
   $('#mbt-deriv').innerHTML = h;
 }
 
@@ -481,7 +486,10 @@ Object.assign(ACT, {
   dvSinPed: () => { UI.mb.sinPed = !UI.mb.sinPed; render(); },
   dvVerRes: () => { UI.mb.verRes = !UI.mb.verRes; render(); },
   dvResolver: d => { const x = dvPorId(d.id); if (!x) return; x.resuelto = ahoraISO(); x.resueltoPor = (NUBE.user && NUBE.user.email) || ''; saveDerivados(); toast('✓ Resuelto. Si fue sin querer, está en "Resueltos hoy"'); render(); },
-  dvDeshacer: d => { const x = dvPorId(d.id); if (!x) return; x.resuelto = null; delete x.resueltoPor; saveDerivados(); toast('↩︎ Volvió a pendientes'); render(); },
+  dvVerSolos: () => { UI.mb.verSolos = !UI.mb.verSolos; render(); },
+  // 26/11 (Parte B): reabrir uno que Mabel cerró sola. Queda reabiertoManual: Mabel no lo vuelve a cerrar hasta que haya algo nuevo.
+  dvReabrir: d => { const x = dvPorId(d.id); if (!x) return; x.resuelto = null; delete x.resueltoPor; delete x.cerradoSolo; x.reabiertoManual = ahoraISO(); saveDerivados(); toast('↩︎ Volvió a la bandeja'); render(); },
+  dvDeshacer: d => { const x = dvPorId(d.id); if (!x) return; if (x.cerradoSolo) { delete x.cerradoSolo; x.reabiertoManual = ahoraISO(); } x.resuelto = null; delete x.resueltoPor; saveDerivados(); toast('↩︎ Volvió a pendientes'); render(); },
   cvFiltro: d => { UI.mb.convF = d.k; render(); },
   mbVerChat: d => { mbVerChat(telKey(d.tel)); },
   mbWA: d => { abrirWA(d.tel, ''); },

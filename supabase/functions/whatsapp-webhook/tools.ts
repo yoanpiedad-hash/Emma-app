@@ -288,6 +288,217 @@ export function comoLaOtraVez(enviados: any[], c: any): { como_la_otra_vez: any;
   return { como_la_otra_vez: x, como_la_otra_vez_no: null };
 }
 
+// ─── Pedido nuevo → el pagado sin salir espera (26/11, Parte A, reglas de Yoan del 25/11) ───
+// 1) Si una clienta tiene un pedido pagado esperando salir (listo) y en OTRO vivo hace un pedido nuevo que todavía no pagó
+//    (creado el día del pago o después), el viejo sale de Despacho: pasa a guardado con esperaPedido = id del nuevo.
+// 2) Si el nuevo se paga, el viejo vuelve a Despacho (listo) para salir junto. Si vence sin pagar (o se libera o se borra),
+//    el viejo sigue guardado y queda UNA alerta para Yanaina en la bandeja.
+// 3) Si la clienta tiene un paquete armado hoy (etiqueta impresa, todavía no salió) y suma un pedido, no se toca: alerta.
+// Lo corre el repaso de cada hora y marcar_pagado (para la clienta de ese turno).
+const diaUY = (iso: string) => { try { return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(iso)); } catch (_) { return ''; } };
+const ddmm = (f: string) => /^\d{4}-\d{2}-\d{2}/.test(f) ? (+f.slice(8, 10)) + '/' + (+f.slice(5, 7)) : '';
+const sumar1 = (f: string) => new Date(new Date(f + 'T12:00:00Z').getTime() + 864e5).toISOString().slice(0, 10);
+const HORA_LIBERAR_UY = 16; // como la app (negocio.js CORTES.horaLiberar): se libera a las 16 del día siguiente a la fecha de pago
+const fechaNuevo = (r: any, live: any) => String(r.datos?.fechas?.creado || live?.fecha || '').slice(0, 10);
+export function nuevoVencido(r: any, live: any) {
+  const p = r?.datos;
+  if (!r || r.borrado || !p || p.estado === 'liberado') return true;
+  if (pagado(p) || p.estado !== 'pendiente') return false;
+  if (p.web?.pagarHasta) return Date.now() >= Date.parse(p.web.pagarHasta);
+  const fp = String(live?.datos?.fechaPagoISO || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(fp)) return false;
+  const lim = sumar1(fp), hoy = hoyUY(), h = +new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' }).format(new Date());
+  return hoy > lim || (hoy === lim && h >= HORA_LIBERAR_UY);
+}
+const notaMas = (p: any, n: string) => { if (!String(p.notas || '').includes(n)) p.notas = p.notas ? String(p.notas) + '\n' + n : n; };
+export async function revisarEsperas(clientaIds: string[] | null = null, ctxNombre = '') {
+  const hechos: any[] = [];
+  let q = sb.from('pedidos').select('*').eq('borrado', false).in('estado', ['listo', 'pendiente', 'guardado']);
+  if (clientaIds) { if (!clientaIds.length) return hechos; q = q.in('clienta_id', clientaIds); }
+  const { data: filas0, error } = await q.limit(4000);
+  if (error) return [{ esperas: 'error ' + error.message }];
+  const filas = (filas0 || []).filter((r: any) => r.datos && !r.datos.cambio);
+  const porCli = new Map<string, any[]>();
+  for (const r of filas) { const k = String(r.clienta_id || ''); if (!k || (!clientaIds && /^cb99000\d{3}$/.test(k))) continue; /* el repaso real no toca las fichas del banco */ if (!porCli.has(k)) porCli.set(k, []); porCli.get(k)!.push(r); }
+  // Paquetes armados hoy (etiqueta impresa, todavía no salieron), por clienta
+  const inicioHoy = new Date(hoyUY() + 'T00:00:00-03:00').toISOString();
+  const { data: kHoy } = await sb.from('paquetes').select('id,fecha,pedidos,datos').eq('borrado', false).gte('fecha', inicioHoy).limit(500);
+  const paqDe = new Map<string, any>();
+  for (const k of kHoy || []) { const c = String(k.datos?.clienteId || ''); if (c && (!paqDe.has(c) || String(k.fecha) > String(paqDe.get(c).fecha))) paqDe.set(c, k); }
+  // Solo las clientas que pueden necesitar algo: con un pagado sin salir y otro abierto, con un guardado que espera, o con paquete de hoy y un pedido abierto
+  const abierto = (rs: any[]) => rs.some((r) => r.datos.estado === 'pendiente' && !pagado(r.datos));
+  const cand = [...porCli.entries()].filter(([cid, rs]) => rs.some((r) => r.datos.esperaPedido) || (abierto(rs) && (paqDe.has(cid) || rs.some((r) => r.datos.estado === 'listo' && pagado(r.datos)))));
+  if (!cand.length) return hechos;
+  // Pedidos a los que se espera y no están en la lista (pagados y enviados, liberados, borrados)
+  const ids = new Set(filas.map((r: any) => r.id)), faltan = [...new Set(cand.flatMap(([, rs]) => rs.map((r) => r.datos.esperaPedido).filter((x: any) => x && !ids.has(x))))];
+  const extra = new Map<string, any>();
+  if (faltan.length) { const { data: ex } = await sb.from('pedidos').select('*').in('id', faltan); (ex || []).forEach((r: any) => extra.set(r.id, r)); }
+  const lids = [...new Set([...filas, ...extra.values()].map((r: any) => r.live_id).filter(Boolean))];
+  const lives = new Map<string, any>();
+  if (lids.length) { const { data: ls } = await sb.from('lives').select('id,nombre,fecha,datos').in('id', lids); (ls || []).forEach((l: any) => lives.set(l.id, l)); }
+  for (const [cid, rs] of cand) {
+    try {
+      const { data: cl } = await sb.from('clientas').select('id,tel_key,datos').eq('id', cid).maybeSingle();
+      const nombre = String(cl?.datos?.nombre || ctxNombre || 'La clienta'), tk = String(cl?.tel_key || cl?.datos?.telKey || '');
+      const lv = (r: any) => lives.get(r.live_id);
+      const nuevos = rs.filter((r) => r.datos.estado === 'pendiente' && !pagado(r.datos) && Array.isArray(r.datos.prendas) && r.datos.prendas.length && !nuevoVencido(r, lv(r)))
+        .sort((a, b) => fechaNuevo(b, lv(b)).localeCompare(fechaNuevo(a, lv(a))) || (b.datos.num - a.datos.num));
+      // (1) listo pagado + nuevo de otro vivo creado el día del pago o después → guardado esperando el nuevo
+      for (const r of rs.filter((x) => x.datos.estado === 'listo' && pagado(x.datos) && !x.datos.esperaPedido)) {
+        const diaPago = diaUY(String(r.datos.pago?.fecha || '')) || String(lv(r)?.fecha || '');
+        const n = nuevos.find((x) => x.live_id !== r.live_id && fechaNuevo(x, lv(x)) >= diaPago && fechaNuevo(x, lv(x)) >= String(lv(r)?.fecha || '').slice(0, 10));
+        if (!n) continue;
+        await conReintento(async () => {
+          const { data: f } = await sb.from('pedidos').select('*').eq('id', r.id).single();
+          const p = JSON.parse(JSON.stringify(f.datos)); if (p.estado !== 'listo' || p.esperaPedido) return;
+          p.estado = 'guardado'; p.fechas = p.fechas || {}; p.fechas.guardado = hoyUY(); p.esperaPedido = n.id; delete p.preguntaEnvio;
+          notaMas(p, `⏸️ Guardado: espera el pedido #${n.datos.num} del ${ddmm(fechaNuevo(n, lv(n)))} para salir junto`);
+          await guardarPedido(f, p);
+        });
+        hechos.push({ clienta: cid, guardado: r.datos.num, espera: n.datos.num });
+      }
+      // (2) guardados que esperan: si el nuevo se pagó, vuelven a Despacho; si venció, alerta una sola vez
+      const todas = new Map<string, any>([...rs.map((x) => [x.id, x] as [string, any]), ...[...extra.values()].filter((x) => x.clienta_id === cid).map((x) => [x.id, x] as [string, any])]);
+      const vencidos: any[] = [];
+      for (const r of rs.filter((x) => x.datos.estado === 'guardado' && x.datos.esperaPedido)) {
+        const t = todas.get(r.datos.esperaPedido) || extra.get(r.datos.esperaPedido);
+        if (t && !t.borrado && t.datos && pagado(t.datos) && t.datos.estado !== 'liberado') {
+          await conReintento(async () => {
+            const { data: f } = await sb.from('pedidos').select('*').eq('id', r.id).single();
+            const p = JSON.parse(JSON.stringify(f.datos)); if (p.estado !== 'guardado' || !p.esperaPedido) return;
+            p.estado = 'listo'; delete p.esperaPedido; delete p.alertaEspera;
+            if (t.datos.entrega && t.datos.entrega !== 'sin_definir') p.entrega = t.datos.entrega;
+            notaMas(p, `▶️ Vuelve a Despacho: se pagó el #${t.datos.num}, salen juntos`);
+            await guardarPedido(f, p);
+          });
+          hechos.push({ clienta: cid, vuelve: r.datos.num, con: t.datos.num });
+        } else if (!t || nuevoVencido(t, lv(t))) {
+          if (r.datos.alertaEspera === r.datos.esperaPedido) continue; // ya se avisó por ese pedido
+          vencidos.push({ r, t });
+        }
+      }
+      if (vencidos.length) {
+        const nv = vencidos[0].t?.datos?.num, gs = vencidos.map((v) => '#' + v.r.datos.num).join(' y ');
+        const est = !vencidos[0].t || vencidos[0].t.borrado ? 'se borró' : vencidos[0].t.datos.estado === 'liberado' ? 'se liberó' : 'venció sin pagar';
+        const dv = await registrarDerivado(tk, cl, `${nombre}: el ${nv ? '#' + nv : 'pedido nuevo'} ${est}. Tiene guardado el ${gs} pagado. Preguntarle si se lo mandamos.`, 'entrega', true, 'espera');
+        if (dv) for (const v of vencidos) await conReintento(async () => {
+          const { data: f } = await sb.from('pedidos').select('*').eq('id', v.r.id).single();
+          const p = JSON.parse(JSON.stringify(f.datos)); p.alertaEspera = p.esperaPedido; await guardarPedido(f, p);
+        });
+        hechos.push({ clienta: cid, alerta_vencido: gs });
+      }
+      // (3) paquete armado hoy (todavía no salió) + pedido nuevo creado después: no se mueve, alerta una vez por pedido nuevo
+      if (nuevos.length && tk) {
+        const k = paqDe.get(cid);
+        const nn = k && nuevos.find((x) => !(k.pedidos || []).includes(x.id) && String(x.datos?.fechas?.creado || '9') >= diaUY(String(k.fecha)));
+        if (k && nn) {
+          const mot = `${nombre} tiene paquete armado (${(k.datos?.nums || []).map((x: any) => '#' + x).join(' · ') || 'hoy'}) y sumó el #${nn.datos.num}: ¿lo frenamos?`;
+          const { data: dvs } = await sb.from('derivados').select('datos').eq('datos->>telKey', tk).eq('borrado', false).gte('datos->>ultimo', new Date(Date.now() - 3 * 864e5).toISOString()).limit(10);
+          if (!(dvs || []).some((x: any) => JSON.stringify(x.datos?.motivos || x.datos?.motivo || '').includes(`sumó el #${nn.datos.num}`))) {
+            await registrarDerivado(tk, cl, mot, 'entrega', true, 'espera');
+            hechos.push({ clienta: cid, alerta_paquete: nn.datos.num });
+          }
+        }
+      }
+    } catch (e) { hechos.push({ clienta: cid, esperas: 'error ' + String((e as Error).message || e).slice(0, 120) }); }
+  }
+  return hechos;
+}
+// A3 (26/11): el pago entró, Mabel le preguntó algo que falta para despachar y la clienta no contestó. El pedido aparece igual en
+// Despacho, con la alerta "Le preguntamos si enviamos y no contestó" (preguntaEnvio). Se borra cuando la clienta contesta o el equipo la marca.
+export async function marcarPregunta(telKey: string, texto: string | null) {
+  const { data: cls } = await sb.from('clientas').select('id').eq('tel_key', telKey).eq('borrado', false);
+  if (!cls?.length) return 0;
+  const { data: ps } = await sb.from('pedidos').select('*').in('clienta_id', cls.map((x: any) => x.id)).eq('borrado', false).in('estado', ['listo', 'pendiente']);
+  let n = 0;
+  for (const r of ps || []) {
+    const p0 = r.datos || {};
+    if (texto ? !(pagado(p0) && p0.estado === 'listo' && !p0.cambio) : !p0.preguntaEnvio) continue;
+    try {
+      await conReintento(async () => {
+        const { data: f } = await sb.from('pedidos').select('*').eq('id', r.id).single();
+        const p = JSON.parse(JSON.stringify(f.datos));
+        if (texto) p.preguntaEnvio = { texto: texto.slice(0, 160), hora: new Date().toISOString() }; else { if (!p.preguntaEnvio) return; delete p.preguntaEnvio; }
+        await guardarPedido(f, p); n++;
+      });
+    } catch (e) { console.error('preguntaEnvio:', (e as Error).message || e); }
+  }
+  return n;
+}
+
+// ─── Pendientes que se cierran solos (26/11, Parte B) ───────────────────
+// Un pendiente abierto se cierra solo (resueltoPor "cerrado solo: …", cerradoSolo) cuando:
+//  1) el equipo (o Mabel, sin contar la frase del pase) contestó después del pase y lo que la clienta escribió después es solo agradecimiento;
+//  2) el pedido que lo motivó ya salió (o la clienta no tiene pedidos abiertos) y después de la última respuesta solo agradeció;
+//  3) es de pago y se registró un pago de sus pedidos después del pase.
+// Nunca si lo último de la clienta es una pregunta o un pedido real, si es un reclamo sin respuesta del equipo, si Yanaina tiene
+// tomada la conversación y no le escribió, si es un plazo sin cargar, o si alguien lo reabrió a mano (reabiertoManual) y no hubo nada nuevo.
+// Solo se cierran solos los pendientes con movimiento desde CERRAR_SOLOS_DESDE (los de antes, con el ok de Yoan, por la limpieza).
+export const CERRAR_SOLOS_DESDE = '2026-11-26T05:20:00Z'; // publicación de v120
+const RE_RECLAMO = /reclam|fall(a|ad[oa])|roto|rota|manchad|descosid|equivocad|no (me )?lleg[oó]|lleg[oó] mal|falt(a|ó|aba) (una|un|la|el)|me mandaron otr|no es (lo|la|el) que ped|devoluci/i;
+const TIPOS_NADA = ['edit', 'revoke', 'system', 'ephemeral'];
+const soloAgradece = (m: any) => ['sticker', 'reaction'].includes(String(m.tipo)) || (String(m.tipo) === 'text' && esAck(String(m.texto || '')));
+export async function cerrarSolos(telKeys: string[] | null, opt: { dry?: boolean; desde?: string } = {}) {
+  const desde = opt.desde === undefined ? CERRAR_SOLOS_DESDE : opt.desde;
+  let q = sb.from('derivados').select('id,datos').eq('borrado', false).is('datos->>resuelto', null);
+  if (telKeys) { if (!telKeys.length) return []; q = q.in('datos->>telKey', telKeys); }
+  const { data: rows, error } = await q.limit(600);
+  if (error) return [{ cerrar_solos: 'error ' + error.message }];
+  const out: any[] = [], ahora = new Date().toISOString();
+  for (const row of rows || []) {
+    const d = row.datos || {}; if (d.resuelto || d.unidoA) continue;
+    const tk = String(d.telKey || ''); if (!tk || (!telKeys && /^99000\d{3}$/.test(tk))) continue;
+    const ms0 = motivosDe(d), ultimo = String(d.ultimo || d.creado || ms0[ms0.length - 1]?.fecha || '');
+    if (desde && ultimo < desde) continue;
+    if (d.reabiertoManual && ultimo <= String(d.reabiertoManual)) continue;
+    try {
+      const txtMot = [d.motivo, ...ms0.map((m: any) => m.motivo)].join(' ');
+      if (String(d.motivo || '').includes(FALTA_PLAZO)) continue;
+      const desdeMs = new Date(Date.parse(String(d.creado || ultimo)) - 864e5).toISOString();
+      const { data: msg } = await sb.from('mabel_mensajes').select('direccion,tipo,texto,creado').eq('tel_key', tk).gte('creado', desdeMs).order('creado').limit(200);
+      const ms = (msg || []).filter((m: any) => !TIPOS_NADA.includes(String(m.tipo))).map((m: any) => ({ ...m, t: new Date(m.creado).toISOString() }));
+      const auto = (m: any) => m.tipo === 'plantilla' || m.tipo === 'ausente' || /Gracias por elegir Emma Indumentaria|mensaje autom[aá]tico de Emma|me confirm[aá]s con un S[ÍI]|Formas de pago/i.test(String(m.texto || ''));
+      const resp = ms.filter((m: any) => (m.direccion === 'out' || m.direccion === 'echo') && m.tipo !== 'reaction' && !auto(m));
+      const ult = resp[resp.length - 1];
+      const despues = ms.filter((m: any) => m.direccion === 'in' && (!ult || m.t > ult.t));
+      if (despues.some((m: any) => !soloAgradece(m))) continue; // lo último de ella es una pregunta o un pedido real
+      const ecoDespues = resp.some((m: any) => m.direccion === 'echo' && m.t > ultimo);
+      const { data: cv } = await sb.from('conversaciones').select('datos').eq('id', tk).maybeSingle();
+      if (cv?.datos?.estado === 'yanaina' && String(cv.datos.hasta || '') > ahora && !ecoDespues) continue; // la tiene Yanaina y no le escribió
+      if ((RE_RECLAMO.test(txtMot) || ['cambio', 'especial'].includes(String(d.categoria))) && !ecoDespues) continue;
+      // ¿qué regla aplica?
+      let regla = '';
+      const { data: cls } = await sb.from('clientas').select('id,datos').eq('tel_key', tk).eq('borrado', false);
+      const cids = (cls || []).map((x: any) => x.id);
+      const { data: ped } = cids.length ? await sb.from('pedidos').select('id,num,estado,datos,borrado').in('clienta_id', cids) : { data: [] as any[] };
+      const abiertos = (ped || []).filter((r: any) => !r.borrado && ['pendiente', 'listo', 'guardado'].includes(r.estado) && !r.datos?.cambio);
+      // Más plazo: queda abierto mientras tenga un pedido sin pagar sin el plazo cargado en la app (misma regla que resolverPendientes)
+      if (RE_PLAZO.test(txtMot) && abiertos.some((r: any) => !pagado(r.datos) && !r.datos?.guardadoSinPagar?.hasta)) continue;
+      const esPago = d.categoria === 'pago' || ms0.some((m: any) => m.categoria === 'pago');
+      if (esPago && (ped || []).length) {
+        const fPago = ms0.filter((m: any) => m.categoria === 'pago').map((m: any) => String(m.fecha)).sort()[0] || String(d.creado || '');
+        const { data: gs } = await sb.from('pagos').select('id,fecha').in('pedido_id', (ped || []).map((r: any) => r.id)).eq('borrado', false).gt('fecha', fPago).limit(1);
+        if (gs?.length) regla = 'se registró el pago después del pase';
+      }
+      const respPase = resp.filter((m: any) => m.t > ultimo && !(m.direccion === 'out' && (RE_PASE.test(String(m.texto || '')) || RE_AVISO_PROPIO.test(String(m.texto || '')))));
+      if (!regla && respPase.length && !(esPago && !respPase.some((m: any) => m.direccion === 'echo'))) regla = respPase.some((m: any) => m.direccion === 'echo') ? 'el equipo contestó y la clienta solo agradeció' : 'Mabel contestó y la clienta solo agradeció';
+      if (!regla) {
+        const nums = [...txtMot.matchAll(/#(\d{1,5})/g)].map((x) => +x[1]);
+        const citados = nums.length ? (ped || []).filter((r: any) => nums.includes(+r.num)) : [];
+        // Sin pedidos abiertos cuenta solo si alguno salió o se cerró DESPUÉS del pase (lo que la tenía pendiente se resolvió así);
+        // una pregunta general sin respuesta (ej. "¿venden por mayor?") no se cierra por no tener pedido.
+        const diaPase = diaUY(String(ms0[0]?.fecha || d.creado || ultimo));
+        const cerroDespues = (ped || []).some((r: any) => !['pendiente', 'listo', 'guardado'].includes(r.estado) && String(r.datos?.fechas?.[r.estado] || r.datos?.fechas?.enviado || '') >= diaPase);
+        if (!abiertos.length && cerroDespues) regla = 'no tiene pedidos abiertos (el pedido salió o se cerró después del pase)';
+        else if (citados.length && citados.every((r: any) => r.borrado || !['pendiente', 'listo', 'guardado'].includes(r.estado))) regla = 'el pedido ' + citados.map((r: any) => '#' + r.num).join(', ') + ' ya salió o se cerró';
+      }
+      if (!regla) continue;
+      out.push({ id: row.id, telKey: tk, nombre: String(cls?.[0]?.datos?.nombre || d.tel || tk), motivo: String(ms0[0]?.motivo || d.motivo || '').slice(0, 160), ultimo, regla });
+      if (!opt.dry) await sb.from('derivados').update({ datos: { ...d, resuelto: ahora, resueltoPor: 'cerrado solo: ' + regla, cerradoSolo: true } }).eq('id', row.id);
+    } catch (e) { out.push({ id: row.id, error: String((e as Error).message || e).slice(0, 120) }); }
+  }
+  return out;
+}
+
 // ─── Escritura con control de cambios ─────────────────────────
 const normD = (v: any) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
 // Lista de direcciones de cadetería de la clienta (3/11): la principal es datos.direccion; las demás quedan en datos.direcciones.
@@ -544,7 +755,7 @@ export async function pasarAYanaina(ctx: Ctx, motivo: string, silencio = false, 
 }
 
 // 14/11 (MAR-04): ¿es solo un agradecimiento o un "ok"? Mira todas las palabras ("ok gracias", "bien", "Mu has gracias 😘").
-const PAL_ACK = new Set('ok oka okay okey oki okis dale listo genial perfecto bueno buenisimo bien gracias muchas mil bella bellas a vos igualmente un una beso besos besito besitos aguardo espero respuesta quedo atenta joya barbaro divino divina hermoso hermosa lindo linda super ahi va si sii claro de nada saludos abrazo abrazos amor mu has tranqui todo ya entendido entiendo vale sticker reaction te tu para mi'.split(' '));
+const PAL_ACK = new Set('ok oka okay okey oki okis dale listo genial perfecto bueno buenisimo bien gracias muchas mil bella bellas a vos igualmente un una beso besos besito besitos aguardo espero respuesta quedo atenta joya barbaro divino divina hermoso hermosa lindo linda super ahi va si sii claro de nada saludos abrazo abrazos amor mu has tranqui todo ya entendido entiendo vale sticker reaction te tu para mi mabel yanaina muy amable amables genia genias divinas buenisimo perfecta dios bendiciones bendicion chau nos vemos hablamos ahi'.split(' ')); // 26/11: "gracias mabel muy amable"
 export function esAck(texto: string) {
   const t = String(texto || '');
   if (t.includes('?')) return false;
@@ -687,17 +898,31 @@ export async function marcarPagado(ctx: Ctx, a: { cuenta: string; monto: number;
     }
     return gs.map(({ p }) => p.num);
   });
+  // 26/11 (Parte A): si había pedidos guardados esperando a este, vuelven a Despacho y salen juntos. Si pagó el viejo y tiene otro sin pagar de otro vivo, se le pregunta si lo guarda.
+  let juntosTxt = '';
+  try {
+    const marcados = objetivo.map((r) => r.id);
+    const esp = filas.filter((r) => r.datos.estado === 'guardado' && marcados.includes(r.datos.esperaPedido));
+    if (esp.length) {
+      await revisarEsperas(ctx.clientas.map((k) => k.id), ctx.clienta?.datos?.nombre || '');
+      const ns = [...esp.map((r) => r.datos.num), ...objetivo.map((r) => r.datos.num)];
+      juntosTxt = `Primero decile "Recibido ✅ Te mandamos los ${ns.length === 2 ? 'dos' : ns.length} pedidos juntos (${ns.slice(0, -1).map((n) => '#' + n).join(', ')} y #${ns[ns.length - 1]})." y en el mismo mensaje seguí con la entrega (si figura como_la_otra_vez, ofrecé esa). `;
+    } else {
+      const otro = filas.filter((r) => !marcados.includes(r.id) && r.datos.estado === 'pendiente' && !pagado(r.datos) && (r.datos.prendas || []).length && !objetivo.some((o) => o.live_id === r.live_id)).sort((a, b) => b.datos.num - a.datos.num)[0];
+      if (otro) juntosTxt = `Tiene otro pedido sin pagar (#${otro.datos.num}). En vez de preguntar la entrega, preguntale "¿Te lo guardamos para mandarlo junto con el #${otro.datos.num}?". Si dice que sí, llamá guardar_pedido con junto_con=${otro.datos.num}; si dice que no, seguí con la entrega. `;
+    }
+  } catch (e) { console.error('esperas (pago):', (e as Error).message || e); }
   // 20/11 (Tanda D, pregunta 7): con saldo a favor y un pago de más, lo de más lo ve Yanaina (puede haber pagado sin descontar el saldo).
   const saldoCli = num(ctx.clienta?.datos?.saldoFavor);
   if (saldoCli > 0 && ajuste > 30) {
     await registrarDerivado(ctx.telKey, ctx.clienta, `Pagó $${ajuste} de más y tiene $${saldoCli} de saldo a favor: revisar si pagó sin descontar el saldo`, 'pago', true, 'mabel', ctx.inicio);
-    return { ok: true, pedidos_marcados: res, cuenta, esperado: esp.total, transferido: monto, diferencia: ajuste, que_hacer: 'Quedó pagado. Lo de más ya lo ve Yanaina: no le preguntes por la diferencia ni la pases. Seguí con cómo recibe el pedido.' };
+    return { ok: true, pedidos_marcados: res, cuenta, esperado: esp.total, transferido: monto, diferencia: ajuste, que_hacer: juntosTxt + 'Quedó pagado. Lo de más ya lo ve Yanaina: no le preguntes por la diferencia ni la pases. Seguí con cómo recibe el pedido.' };
   }
   return {
     ok: true, pedidos_marcados: res, cuenta, esperado: esp.total, transferido: monto, diferencia: ajuste,
-    que_hacer: ajuste <= 30 ? 'Es redondeo o exacto: no digas nada de la diferencia. Seguí con cómo recibe el pedido.'
+    que_hacer: juntosTxt + (ajuste <= 30 ? 'Es redondeo o exacto: no digas nada de la diferencia. Seguí con cómo recibe el pedido.'
       : ajuste === tar ? `Sobran justo $${tar}: preguntale "¿los $${tar} de más son para la cadetería?". Si dice que sí, guardá la entrega con tipo cadetería y envio_transferido=${tar}.`
-      : `Sobran $${ajuste}: preguntale por qué ("Vi que transferiste $${monto} y era $${esp.total}, ¿es por algo en especial?"). Si dice que es por la cadetería (vale $${tar}), guardá la entrega con envio_transferido=${ajuste} y avisale cuánto falta ($${tar - ajuste}) que se lo paga al cadete. Si es por otra cosa o no queda claro, pasalo a Yanaina con la diferencia.`,
+      : `Sobran $${ajuste}: preguntale por qué ("Vi que transferiste $${monto} y era $${esp.total}, ¿es por algo en especial?"). Si dice que es por la cadetería (vale $${tar}), guardá la entrega con envio_transferido=${ajuste} y avisale cuánto falta ($${tar - ajuste}) que se lo paga al cadete. Si es por otra cosa o no queda claro, pasalo a Yanaina con la diferencia.`),
   };
 }
 async function derivar(ctx: Ctx, motivo: string, categoria?: string, frase = '') { const r = await pasarAYanaina(ctx, motivo, false, categoria || categoriaDe(motivo), false, frase); return { ...r, ok: false, motivo }; }
@@ -1021,6 +1246,20 @@ export async function vincularPedido(ctx: Ctx, a: any) {
 export async function guardarPedidoCli(ctx: Ctx, a: any) {
   if (!ctx.clienta) return derivar(ctx, 'Pide guardar el pedido pero no hay ficha de clienta para este número', 'especial');
   const { filas, cobros } = await abiertos(ctx);
+  // 26/11 (Parte A): "¿Te lo guardamos para mandarlo junto con el #N?" → se guardan solo los pagados, esperando ese pedido.
+  const jc = parseInt(String(a?.junto_con ?? '').replace(/\D/g, ''), 10) || 0;
+  if (jc) {
+    const t = filas.find((r) => +r.datos.num === jc && r.datos.estado === 'pendiente' && !pagado(r.datos));
+    const pag = filas.filter((r) => r.datos.estado === 'listo' && pagado(r.datos) && r.id !== t?.id);
+    if (!t) return { error: `No encuentro el pedido #${jc} sin pagar. Revisá el número en el ESTADO ACTUAL.` };
+    if (!pag.length) return { ok: true, nada: true, que_hacer: 'No hay pedidos pagados para guardar: seguí normal.' };
+    for (const r0 of pag) await conReintento(async () => {
+      const { data: r } = await sb.from('pedidos').select('*').eq('id', r0.id).single();
+      const p = JSON.parse(JSON.stringify(r.datos)); p.estado = 'guardado'; p.fechas = p.fechas || {}; p.fechas.guardado = hoyUY(); p.esperaPedido = t.id; delete p.preguntaEnvio;
+      notaMas(p, `⏸️ Guardado: espera el pedido #${jc} para salir junto (le dijo a Mabel)`); await guardarPedido(r, p);
+    });
+    return { ok: true, pedidos: pag.map((r) => r.datos.num), espera: jc, mensaje_de_cierre: `Dale bella, te lo guardamos y sale junto con el #${jc} cuando lo pagues 🫶` };
+  }
   let objetivo = filas.filter((r) => ['pendiente', 'listo'].includes(r.datos.estado));
   if (cobros.length) { const ids = cobros[0].datos.pedidos || []; objetivo = filas.filter((r) => ids.includes(r.id)); }
   if (!objetivo.length) return { ok: true, ya_guardado: true, que_hacer: 'Sus pedidos ya están guardados: confirmale corto que siguen guardados.' };
@@ -1092,7 +1331,7 @@ export const HERRAMIENTAS = [
     nombre_retira: { type: 'string', description: 'Nombre y apellido de quien recibe o retira (agencia: obligatorio, salvo que ya esté en datos_guardados.nombre_envio)' }, horario_retiro: { type: 'string', description: 'Retiro: cuándo dice que pasa, con día y fecha (ej. "sábado 21/11 a las 18")' }, retiro_fecha: { type: 'string', description: 'Retiro: fecha del día que pasa, AAAA-MM-DD, sacada de HOY. Pasala siempre que diga un día' }, retiro_hora: { type: 'string', description: 'Retiro: hora aproximada, HH:MM en 24 hs' } }, required: ['tipo'] } },
   { name: 'dejar_aviso_despacho', description: 'Aviso de una línea para quien arma el paquete en Despacho (paquete de Yharol para mandar junto, lo retira otra persona…). Va en sus pedidos abiertos.', input_schema: { type: 'object', properties: { texto: { type: 'string', description: 'Ej: "Tiene paquete de Yharol: enviar junto"' } }, required: ['texto'] } },
   { name: 'vincular_pedido', description: 'Busca en los vivos de hoy y ayer el pedido de una clienta que escribe desde un número sin pedido y le pone este número.', input_schema: { type: 'object', properties: { num: { type: 'number', description: 'Número de pedido si lo dijo' }, nombre: { type: 'string', description: 'Nombre o usuario de TikTok tal como lo escribió' }, confirmar: { type: 'boolean', description: 'true si estaba confirmando el pedido' }, prenda: { type: 'string', description: 'Lo que dice que compró, si lo dijo' } } } },
-  { name: 'guardar_pedido', description: 'Guarda el pedido (que no salga todavía). Decide sola si se puede; si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'AAAA-MM-DD, solo si dijo una fecha' } } } },
+  { name: 'guardar_pedido', description: 'Guarda el pedido (que no salga todavía). Decide sola si se puede; si no, avisa a Yanaina.', input_schema: { type: 'object', properties: { hasta: { type: 'string', description: 'AAAA-MM-DD, solo si dijo una fecha' }, junto_con: { type: 'number', description: 'Número del pedido sin pagar con el que tiene que salir (cuando marcar_pagado te pidió preguntarle si lo guardamos para mandarlo junto)' } } } },
   { name: 'confirmar_pedido', description: 'Marca confirmados sus pedidos del vivo más reciente (últimos 3 días). Sin parámetros.', input_schema: { type: 'object', properties: {} } },
   { name: 'pasar_a_yanaina', description: 'Deja la conversación para Yanaina con el motivo en una línea. Devuelve la frase para la clienta.', input_schema: { type: 'object', properties: { motivo: { type: 'string' }, categoria: { type: 'string', enum: CATEGORIAS, description: 'Obligatoria. pedido = problema con el pedido (desconoce la compra, prenda de más o de menos, mal anotado, reclamo, cancelar o sacar una prenda, número sin pedido que no se pudo vincular) · pago = comprobantes, faltantes, plazo para pagar, pedidos viejos sin marcar pago · entrega = cadetería, agencia, retiro, día de salida, juntar paquetes · cambio = cambio de talle o de prenda · especial = pide algo aparte que no podés resolver (guardar sin pagar, avisar cuando haya algo) · yharol = emprendimiento de Yharol · otros = no entra en ninguna. Si hay más de un tema, el que frena el pedido.' }, en_silencio: { type: 'boolean', description: 'true = no se le escribe a la clienta. Para cambios y pedidos anteriores a Mabel; en lo demás lo controla la herramienta.' }, con_frase_propia: { type: 'boolean', description: 'true si ya le dijiste la frase propia del caso: no devuelve frase de pase' } }, required: ['motivo', 'categoria'] } },
   { name: 'actualizar_nota', description: 'Reescribe la nota de la clienta: máximo 3 líneas, solo hechos con fecha, sin opiniones ni datos sensibles.', input_schema: { type: 'object', properties: { texto: { type: 'string' } }, required: ['texto'] } },

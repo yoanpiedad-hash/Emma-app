@@ -2917,6 +2917,736 @@
      "foto del comprobante de env"
     ]
    }
+  },
+  {
+   "id": "GA1",
+   "nombre": "Pagado (agencia) + pedido nuevo en otro vivo: el viejo pasa a guardado esperando el nuevo (26/11, Parte A)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "estado": "listo",
+      "entrega": "agencia",
+      "pagado": {
+       "monto": 500
+      }
+     },
+     {
+      "num": 901,
+      "live": {
+       "fecha": "__HOY_ISO__",
+       "fecha_pago": "2026-12-30"
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "esperas": true
+    }
+   ],
+   "espera": {
+    "estados": {
+     "900": "guardado",
+     "901": "pendiente"
+    },
+    "derivado": false
+   }
+  },
+  {
+   "id": "GA2",
+   "nombre": "Paga el nuevo: los dos vuelven a Despacho y Mabel nombra los dos números (26/11, Parte A)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "clienta": {
+     "agencia": "Correo Uruguayo",
+     "ciudad": "La Paloma",
+     "depto": "Rocha",
+     "nombreEnvio": "Ana Prueba",
+     "direccion": "",
+     "barrio": ""
+    },
+    "pedidos": [
+     {
+      "num": 900,
+      "estado": "guardado",
+      "entrega": "agencia",
+      "pagado": {
+       "monto": 500
+      },
+      "datos": {
+       "esperaPedido": "__PID2__"
+      }
+     },
+     {
+      "num": 901,
+      "prendas": [
+       [
+        "REMERA",
+        300,
+        1
+       ]
+      ],
+      "live": {
+       "fecha": "2026-11-18",
+       "fecha_pago": "2026-12-30"
+      }
+     },
+     {
+      "num": 902,
+      "estado": "enviado",
+      "entrega": "agencia",
+      "enviado_hace_dias": 15
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k300.jpg",
+     "texto": "ahí va el pago del nuevo"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "contiene": [
+     "juntos",
+     "900",
+     "901"
+    ],
+    "estados": {
+     "900": "listo",
+     "901": "listo"
+    }
+   }
+  },
+  {
+   "id": "GA3",
+   "nombre": "El nuevo vence sin pagar: el viejo sigue guardado y sale una sola alerta (26/11, Parte A)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "estado": "guardado",
+      "entrega": "agencia",
+      "pagado": {
+       "monto": 500
+      },
+      "datos": {
+       "esperaPedido": "__PID2__"
+      }
+     },
+     {
+      "num": 901,
+      "live": {
+       "fecha": "2026-11-10",
+       "fecha_pago": "2026-11-12"
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "esperas": true
+    },
+    {
+     "esperas": true
+    }
+   ],
+   "espera": {
+    "estados": {
+     "900": "guardado"
+    },
+    "derivado": true,
+    "derivado_contiene": [
+     "venci"
+    ],
+    "motivos_max": 1
+   }
+  },
+  {
+   "id": "GA4",
+   "nombre": "Paquete armado hoy + pedido nuevo: no se mueve y sale la alerta (26/11, Parte A)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "paquete": 1,
+    "pedidos": [
+     {
+      "num": 900,
+      "estado": "enviado",
+      "entrega": "agencia",
+      "enviado_hace_dias": 0,
+      "pagado": {
+       "monto": 500
+      }
+     },
+     {
+      "num": 901,
+      "live": {
+       "fecha": "__HOY_ISO__",
+       "fecha_pago": "2026-12-30"
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "esperas": true
+    },
+    {
+     "esperas": true
+    }
+   ],
+   "espera": {
+    "estados": {
+     "900": "enviado",
+     "901": "pendiente"
+    },
+    "derivado": true,
+    "derivado_contiene": [
+     "paquete armado"
+    ],
+    "motivos_max": 1
+   }
+  },
+  {
+   "id": "GA5",
+   "nombre": "Pedido enviado hace días + pedido nuevo: no se toca nada (26/11, Parte A)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "estado": "enviado",
+      "entrega": "agencia",
+      "enviado_hace_dias": 5,
+      "pagado": {
+       "monto": 500
+      }
+     },
+     {
+      "num": 901,
+      "live": {
+       "fecha": "__HOY_ISO__",
+       "fecha_pago": "2026-12-30"
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "esperas": true
+    }
+   ],
+   "espera": {
+    "estados": {
+     "900": "enviado",
+     "901": "pendiente"
+    },
+    "derivado": false
+   }
+  },
+  {
+   "id": "GA6",
+   "nombre": "Paga, Mabel pregunta '¿como la otra vez?' y no contesta: en Despacho con la alerta (26/11, Parte A3)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "clienta": {
+     "agencia": "Correo Uruguayo",
+     "ciudad": "La Paloma",
+     "depto": "Rocha",
+     "nombreEnvio": "Ana Prueba",
+     "direccion": "",
+     "barrio": ""
+    },
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        300,
+        1
+       ]
+      ],
+      "live": {
+       "fecha": "2026-11-18",
+       "fecha_pago": "2026-12-30"
+      }
+     },
+     {
+      "num": 901,
+      "estado": "enviado",
+      "entrega": "agencia",
+      "enviado_hace_dias": 15
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k300_b.jpg",
+     "texto": "listo te pagué"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "herramienta": [
+     "marcar_pagado"
+    ],
+    "contiene": [
+     "\\?"
+    ],
+    "estados": {
+     "900": "listo"
+    },
+    "pregunta": {
+     "900": true
+    }
+   }
+  },
+  {
+   "id": "GA7",
+   "nombre": "Igual, y contesta todo ('sí, como la otra vez, a nombre de Ana Prueba'): la alerta se va (26/11, Parte A3)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "clienta": {
+     "agencia": "Correo Uruguayo",
+     "ciudad": "La Paloma",
+     "depto": "Rocha",
+     "nombreEnvio": "Ana Prueba",
+     "direccion": "",
+     "barrio": ""
+    },
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        300,
+        1
+       ]
+      ],
+      "live": {
+       "fecha": "2026-11-18",
+       "fecha_pago": "2026-12-30"
+      }
+     },
+     {
+      "num": 901,
+      "estado": "enviado",
+      "entrega": "agencia",
+      "enviado_hace_dias": 15
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "imagen": "k300_c.jpg",
+     "texto": "listo te pagué"
+    },
+    {
+     "texto": "si dale, por correo a La Paloma como la otra vez, a nombre de Ana Prueba"
+    }
+   ],
+   "espera": {
+    "envia": true,
+    "pregunta": {
+     "900": false
+    }
+   }
+  },
+  {
+   "id": "GB1",
+   "nombre": "Pase → el equipo contesta → 'ok gracias': se cierra solo (26/11, Parte B)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "cerrar_solos": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "tienen la remera en talle M?",
+       "hace_min": 62
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 61
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella, hay M",
+       "hace_min": 40
+      },
+      {
+       "dir": "in",
+       "texto": "ok gracias",
+       "hace_min": 30
+      }
+     ],
+     "conv": {
+      "estado": "agente"
+     },
+     "derivado": {
+      "categoria": "otros",
+      "motivo": "Pregunta si hay la remera en talle M",
+      "hace_min": 61
+     }
+    }
+   ],
+   "espera": {
+    "cerrado_solo": true
+   }
+  },
+  {
+   "id": "GB2",
+   "nombre": "Pase → el equipo contesta → pregunta otra cosa: sigue abierto (26/11, Parte B)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "cerrar_solos": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "tienen la remera en talle M?",
+       "hace_min": 62
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 61
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella, hay M",
+       "hace_min": 40
+      },
+      {
+       "dir": "in",
+       "texto": "y en talle L tienen?",
+       "hace_min": 30
+      }
+     ],
+     "conv": {
+      "estado": "agente"
+     },
+     "derivado": {
+      "categoria": "otros",
+      "motivo": "Pregunta si hay la remera en talle M",
+      "hace_min": 61
+     }
+    }
+   ],
+   "espera": {
+    "cerrado_solo": false,
+    "derivado": true
+   }
+  },
+  {
+   "id": "GB3",
+   "nombre": "Pase por 'paso mañana a retirar' → el pedido ya se retiró: se cierra solo (26/11, Parte B)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "estado": "enviado",
+      "entrega": "retiro",
+      "enviado_hace_dias": 0,
+      "pagado": {
+       "monto": 500
+      },
+      "datos": {
+       "fechas": {
+        "creado": "2026-11-13",
+        "listo": "__HOY_ISO__",
+        "enviado": "__HOY_ISO__"
+       }
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "cerrar_solos": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "paso mañana a retirar",
+       "hace_min": 62
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 61
+      }
+     ],
+     "derivado": {
+      "categoria": "entrega",
+      "motivo": "Paso mañana a retirar #900",
+      "hace_min": 61
+     }
+    }
+   ],
+   "espera": {
+    "cerrado_solo": true
+   }
+  },
+  {
+   "id": "GB4",
+   "nombre": "Pase de pago → se registra el pago: se cierra solo (26/11, Parte B)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "estado": "listo",
+      "pagado": {
+       "monto": 500,
+       "fecha": "__AHORA__"
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "cerrar_solos": true,
+     "previo": [
+      {
+       "dir": "in",
+       "tipo": "image",
+       "texto": "[image]",
+       "hace_min": 62
+      },
+      {
+       "dir": "in",
+       "texto": "ahí va",
+       "hace_min": 61
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 60
+      }
+     ],
+     "derivado": {
+      "categoria": "pago",
+      "motivo": "El comprobante va a una cuenta que no es de Emma",
+      "hace_min": 60
+     }
+    }
+   ],
+   "espera": {
+    "cerrado_solo": true
+   }
+  },
+  {
+   "id": "GB5",
+   "nombre": "Pase por reclamo sin respuesta del equipo y la clienta dice 'gracias': sigue abierto (26/11, Parte B)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "estado": "enviado",
+      "entrega": "agencia",
+      "enviado_hace_dias": 3,
+      "pagado": {
+       "monto": 500
+      }
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "cerrar_solos": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "me llegó la remera rota",
+       "hace_min": 62
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 61
+      },
+      {
+       "dir": "in",
+       "texto": "gracias",
+       "hace_min": 30
+      }
+     ],
+     "derivado": {
+      "categoria": "especial",
+      "motivo": "Reclamo: le llegó una prenda fallada",
+      "hace_min": 61
+     }
+    }
+   ],
+   "espera": {
+    "cerrado_solo": false,
+    "derivado": true
+   }
+  },
+  {
+   "id": "GB6",
+   "nombre": "Cerrado solo → Reabrir: vuelve a la bandeja y Mabel no lo vuelve a cerrar (26/11, Parte B)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "cerrar_solos": true,
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "tienen la remera en talle M?",
+       "hace_min": 62
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 61
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella, hay M",
+       "hace_min": 40
+      },
+      {
+       "dir": "in",
+       "texto": "ok gracias",
+       "hace_min": 30
+      }
+     ],
+     "conv": {
+      "estado": "agente"
+     },
+     "derivado": {
+      "categoria": "otros",
+      "motivo": "Pregunta si hay la remera en talle M",
+      "hace_min": 61,
+      "reabierto_hace_min": 10
+     }
+    }
+   ],
+   "espera": {
+    "cerrado_solo": false,
+    "derivado": true
+   }
+  },
+  {
+   "id": "GB7",
+   "nombre": "El equipo contestó y la clienta manda 'ok gracias' por WhatsApp: el turno lo cierra solo (26/11, Parte B)",
+   "tanda": "ya",
+   "fixture": {
+    "total_mandado": true,
+    "pedidos": [
+     {
+      "num": 900,
+      "prendas": [
+       [
+        "REMERA",
+        500,
+        1
+       ]
+      ]
+     }
+    ]
+   },
+   "pasos": [
+    {
+     "texto": "ok gracias 😊",
+     "previo": [
+      {
+       "dir": "in",
+       "texto": "tienen la remera en talle M?",
+       "hace_min": 62
+      },
+      {
+       "dir": "out",
+       "texto": "Ya se lo paso a Yanaina. Contame en un mensaje qué necesitás y ella te contesta 🫶",
+       "hace_min": 61
+      },
+      {
+       "dir": "echo",
+       "texto": "si bella, hay M",
+       "hace_min": 40
+      }
+     ],
+     "conv": {
+      "estado": "agente"
+     },
+     "derivado": {
+      "categoria": "otros",
+      "motivo": "Pregunta si hay la remera en talle M",
+      "hace_min": 61
+     }
+    }
+   ],
+   "espera": {
+    "envia": false,
+    "cerrado_solo": true
+   }
   }
  ]
 }

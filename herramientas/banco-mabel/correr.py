@@ -49,11 +49,15 @@ def fechas(c):
     # 24/11: casos con fecha que se vence sola (D03): __SAB_DIA__ / __SAB_ISO__ = el próximo sábado
     sab = proximo_sabado(); t = json.dumps(c, ensure_ascii=False)
     hoy = dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date().isoformat()
-    return json.loads(t.replace('__SAB_DIA__', str(sab.day)).replace('__SAB_ISO__', sab.isoformat()).replace('__HOY_ISO__', hoy))
+    ahora = dt.datetime.now(dt.timezone.utc).isoformat().replace('+00:00', 'Z')
+    ayer = (dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).date() - dt.timedelta(days=1)).isoformat()
+    return json.loads(t.replace('__SAB_DIA__', str(sab.day)).replace('__SAB_ISO__', sab.isoformat()).replace('__HOY_ISO__', hoy).replace('__AYER_ISO__', ayer).replace('__AHORA__', ahora))
 
 
 def correr_caso(c, tel, url, key, ausente):
     c = fechas(c)
+    tk = tel[-8:]  # 26/11: __PID2__ = id del pedido 2 del fixture de este número (pb<tel>-2)
+    c = json.loads(json.dumps(c, ensure_ascii=False).replace('__PID1__', 'pb' + tk + '-1').replace('__PID2__', 'pb' + tk + '-2'))
     post(url, key, {'tel': tel, 'solo_limpiar': True, 'limpiar': True})
     pasos, ultimo = [], None
     try:
@@ -63,7 +67,7 @@ def correr_caso(c, tel, url, key, ausente):
             cfg.update({k: (dias_viaje() if v == '__viaje__' else vivo_ahora() if v == '__vivo__' else v) for k, v in (p.get('cfg') or {}).items()})
             body = {'tel': tel, 'texto': p.get('texto', ''), 'detalle': True, 'cfg': cfg}
             if p.get('ausente'): body['ausente'] = ausente; cfg.pop('mabelAusente', None)
-            for k in ('previo', 'conv', 'imagen_base64', 'mime', 'derivado', 'repaso'):
+            for k in ('previo', 'conv', 'imagen_base64', 'mime', 'derivado', 'repaso', 'esperas', 'cerrar_solos'):
                 if k in p: body[k] = p[k]
             if p.get('imagen'):
                 body['imagen_base64'] = base64.b64encode(open(os.path.join(AQUI, 'comprobantes', p['imagen']), 'rb').read()).decode(); body['mime'] = 'image/jpeg'
@@ -92,6 +96,18 @@ def revisar(c, r, pasos):
         if f'"{h}"' in herr or f"'{h}'" in herr or f'{h}(' in herr: fallas.append('usó ' + h)
     for pat in e.get('derivado_contiene', []):  # 25/11: el motivo del pendiente que quedó abierto
         if not any(re.search(pat, str(d.get('motivo', '')), re.I) for d in (r.get('derivados') or [])): fallas.append(f'el pendiente no dice /{pat}/')
+    # 26/11: estados de los pedidos (por número), pregunta de envío sin contestar, cierre solo, motivos del pendiente
+    peds = {str(p.get('num')): p for p in (r.get('pedidos') or [])}
+    for n, est in (e.get('estados') or {}).items():
+        if (peds.get(n) or {}).get('estado') != est: fallas.append(f'#{n} quedó {(peds.get(n) or {}).get("estado")} y tenía que quedar {est}')
+    for n, v in (e.get('pregunta') or {}).items():
+        if bool((peds.get(n) or {}).get('preguntaEnvio')) != v: fallas.append(f'#{n}: pregunta sin contestar {"falta" if v else "sigue"}')
+    if 'cerrado_solo' in e:
+        hay = any(d.get('cerradoSolo') for d in (r.get('derivados_todos') or []))
+        if hay != e['cerrado_solo']: fallas.append('se cerró solo y no tenía' if hay else 'no se cerró solo')
+    if 'motivos_max' in e:
+        n = max([len(d.get('motivos') or []) for d in (r.get('derivados') or [])] or [0])
+        if n > e['motivos_max']: fallas.append(f'el pendiente tiene {n} motivos (máx {e["motivos_max"]})')
     if 'derivado' in e:
         hay = bool(r.get('derivados'))
         if e['derivado'] and not hay: fallas.append('no dejó pendiente para Yanaina')
