@@ -12,7 +12,7 @@
 const esPrenda = s => /^P\d+(-[A-Z0-9]+)?$/i.test(String(s || '').trim());
 const modeloDeStock = id => { const s = id && DB.stock.find(x => x.id === id); return s ? s.modeloId || null : null; };
 const modeloActNum = n => (DB.modelos || []).find(m => m.activo !== false && +m.num === +n);
-const ORDEN_T = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '34', '36', '38', '40', '42', '44', '46', '48'];
+const ORDEN_T = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '32', '34', '36', '38', '40', '42', '44', '46', '48', '50', '52', '54', '56', '58', '60'];
 const tallesDe = m => DB.stock.filter(s => s.modeloId === m.id && s.activo !== false).sort((a, b) => (ORDEN_T.indexOf(a.talle) + 99) % 99 - (ORDEN_T.indexOf(b.talle) + 99) % 99);
 /** "P142-M", "142-M", "142" (talle único) → la fila de stock de ese talle. */
 function varPorCodigo(txt) {

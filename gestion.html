@@ -488,8 +488,8 @@ async function verificar(key, check) { try { return (await descifrar(check, key)
 // Variante = un talle del modelo: es la fila de stock que vende Pedidos (código "142-M", o "142" si es talle único).
 const CATEGORIAS = ['Remera', 'Camisa', 'Top', 'Jean', 'Pantalón', 'Short', 'Pollera', 'Vestido', 'Buzo/Campera', 'Conjunto', 'Otro'];
 const LETRA_CAT = { R: 'Remera', J: 'Jean', S: 'Short', V: 'Vestido', B: 'Buzo/Campera', C: 'Conjunto' };
-const TALLES = { letras: ['XS', 'S', 'M', 'L', 'XL', 'XXL'], numeros: ['34', '36', '38', '40', '42', '44', '46', '48'], unico: ['U'] };
-const TIPO_TXT = { letras: 'Letras (XS–XXL)', numeros: 'Números (34–48)', unico: 'Talle único' };
+const TALLES = { letras: ['XS', 'S', 'M', 'L', 'XL', 'XXL'], numeros: ['32', '34', '36', '38', '40', '42', '44', '46', '48', '50', '52', '54', '56', '58', '60'], unico: ['U'] };
+const TIPO_TXT = { letras: 'Letras (XS–XXL)', numeros: 'Números (32–60)', unico: 'Talle único' };
 const talleTxt = t => t === 'U' ? 'Único' : t;
 const ordenTalle = t => { for (const k in TALLES) { const i = TALLES[k].indexOf(t); if (i >= 0) return i; } return 99; };
 
